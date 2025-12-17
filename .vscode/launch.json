@@ -4,17 +4,39 @@
   // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
   "version": "0.2.0",
   "configurations": [
-    // {
-    //   "name": "debug rcns",
-    //   "type": "cppvsdbg",
-    //   "request": "launch",
-    //   // rust-analyzer's command
-    //   "program": "${commands.rust-analyzer.debug}",
-    //   "args": [],
-    //   "stopAtEntry": false,
-    //   "cwd": "${fileDirname}",
-    //   "environment": [],
-    //   "console": "internalConsole"
-    // }
+    {
+      "type": "lldb",
+      "request": "launch",
+      // codelldb provide better support as for breakpoint
+      "name": "codelldb debug rcns",
+      "cwd": "${workspaceFolder}",
+      // "program": "${workspaceFolder}/target/debug/rcns.exe",
+      // "preLaunchTask": "rust: cargo build",
+      "cargo": {
+        "args": [
+          "build"
+        ],
+        "filter": {
+          "name": "rcns",
+          "kind": "bin"
+        }
+      },
+      "console": "internalConsole",
+      "stopOnEntry": false,
+      "sourceLanguages": [
+        "rust"
+      ],
+    },
+    {
+      "type": "lldb-dap",
+      "request": "launch",
+      // lldb-dap is more friendly as for debug console
+      "name": "lldb-dap debug rcns",
+      "cwd": "${workspaceFolder}",
+      "program": "${workspaceFolder}/target/debug/rcns.exe",
+      "preLaunchTask": "rust: cargo build",
+      "console": "internalConsole",
+      "stopOnEntry": false,
+    },
   ]
 }

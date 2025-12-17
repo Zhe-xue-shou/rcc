@@ -9,3 +9,4 @@ strum = "0.27"
 strum_macros = "0.25"
 log = "0.4.29"
 pretty_assertions = { version = "1.4.1", features = ["unstable"] }
+bitflags = "2.10.0"

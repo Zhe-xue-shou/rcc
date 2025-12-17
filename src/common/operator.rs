@@ -140,6 +140,8 @@ impl Operator {
         | Operator::Pipe
         | Operator::And
         | Operator::Or
+        // special cases
+        | Operator::Assign // Comma
     )
   }
   // left-.
@@ -169,11 +171,13 @@ impl Operator {
       // bitwise XOR
       Operator::Caret => 0x20,
       // bitwise OR
-      Operator::Pipe => 0x10,
+      Operator::Pipe => 0x18,
       // logical AND
-      Operator::And => 0x08,
+      Operator::And => 0x10,
       // logical OR
-      Operator::Or => 0x04,
+      Operator::Or => 0x08,
+      // assignment - it's a trick since it's most right associative
+      Operator::Assign => 0x04,
       _ => unreachable!(),
     }
   }

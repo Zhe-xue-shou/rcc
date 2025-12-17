@@ -53,27 +53,27 @@ impl Token {
       location,
     }
   }
-  pub fn number(literal: String, location: SourceLocation) -> Self {
+  pub fn number(number: String, location: SourceLocation) -> Self {
     Self {
-      literal: Literal::Number(literal),
+      literal: Literal::Number(number),
       location,
     }
   }
-  pub fn identifier(literal: String, location: SourceLocation) -> Self {
+  pub fn identifier(identifier: String, location: SourceLocation) -> Self {
     Self {
-      literal: Literal::Identifier(literal),
+      literal: Literal::Identifier(identifier),
       location,
     }
   }
-  pub fn keyword(literal: Keyword, location: SourceLocation) -> Self {
+  pub fn keyword(keyword: Keyword, location: SourceLocation) -> Self {
     Self {
-      literal: Literal::Keyword(literal),
+      literal: Literal::Keyword(keyword),
       location,
     }
   }
-  pub fn operator(literal: Operator, location: SourceLocation) -> Self {
+  pub fn operator(operator: Operator, location: SourceLocation) -> Self {
     Self {
-      literal: Literal::Operator(literal),
+      literal: Literal::Operator(operator),
       location,
     }
   }

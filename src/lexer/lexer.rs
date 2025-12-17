@@ -332,6 +332,10 @@ impl Lexer {
     default: Operator,
     patterns: &[(&str, Operator)],
   ) -> Option<Token> {
+    debug_assert!(
+      patterns.windows(2).all(|w| w[0].0.len() >= w[1].0.len()),
+      "compound operator patterns should be sorted from longest to shortest"
+    );
     // note: called after consuming the first character already.
     for (pattern, op) in patterns {
       debug_assert!(

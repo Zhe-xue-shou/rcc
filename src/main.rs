@@ -5,13 +5,13 @@
 #![allow(unreachable_code)]
 #![allow(unused_imports)]
 
-use ::rcns::parser::parser::Parser;
 use ::rcns::breakpoint;
 use ::rcns::lexer::lexer::Lexer;
+use ::rcns::parser::parser::Parser;
 use ::std::env::args;
 use ::std::panic::catch_unwind;
-use std::process::exit;
-use std::{fs::File, io::Read};
+use ::std::process::exit;
+use ::std::{fs::File, io::Read};
 
 fn main() {
   let args = args().collect::<Vec<String>>();
@@ -34,7 +34,10 @@ fn main() {
   let mut lexer = Lexer::new(s);
   let tokens = lexer.lex_all();
   let errors = lexer.errors();
-  tokens.iter().for_each(|t| println!("{t:?}"));
+  tokens
+    .iter()
+    .take(tokens.iter().len() - 1) // last is EOF
+    .for_each(|t| println!("{t:?}"));
   if !errors.is_empty() {
     eprintln!("Lex errors:");
     errors.iter().for_each(|e| eprintln!("{e}"));

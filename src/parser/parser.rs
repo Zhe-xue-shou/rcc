@@ -1,11 +1,17 @@
-use crate::breakpoint;
-
-use crate::common::keyword::Keyword;
-use crate::common::operator::Operator;
-use crate::common::token::{Literal, Token};
-use crate::parser::ast::{Block, Builtin, Declaration, Function, Program, Type, Variable};
-use crate::parser::expression::{Binary, Constant, Expression, Unary};
-use crate::parser::statement::{Return, Statement};
+use crate::{
+  breakpoint,
+  common::{
+    keyword::Keyword,
+    operator::Operator,
+    token::{Literal, Token},
+  },
+  parser::{
+    ast::{Block, Declaration, FunctionDef, Program},
+    expression::{Binary, Constant, Expression, Unary, Variable},
+    statement::{Return, Statement, VarDef},
+    types::{Primitive, Type},
+  },
+};
 #[cfg(test)]
 use pretty_assertions::assert_eq;
 
@@ -41,16 +47,48 @@ impl Parser {
   fn is_at_end(&self) -> bool {
     self.tokens.len() <= self.cursor + 1
   }
+  fn next_vardef(&mut self) -> VarDef {
+    let type_idx = self.get();
+    let var_type = Primitive::new(self.tokens[type_idx].to_owned_string()).as_type();
+
+    let name_idx = self.get();
+
+    let name = if let Literal::Identifier(ref ident) = self.tokens[name_idx].literal {
+      ident.to_string()
+    } else {
+      self
+        .errors
+        .push("Expect identifier as variable name".to_string());
+      "unnamed".to_string()
+    };
+
+    match self.peek(0) {
+      Literal::Operator(Operator::Semicolon) => {
+        self.get(); // skip ';'
+        VarDef::new(name, None)
+      }
+      Literal::Operator(Operator::Assign) => {
+        self.get(); // skip '='
+        let initializer = self.next_expression(0);
+        assert_eq!(*self.peek(0), Literal::Operator(Operator::Semicolon));
+        self.get(); // skip ';'
+        VarDef::new(name, Some(initializer))
+      }
+      _ => {
+        self
+          .errors
+          .push("Expect ';' or '=' after variable name".to_string());
+        VarDef::new(name, None)
+      }
+    }
+  }
   fn next_declaration(&mut self) -> Declaration {
     match self.peek(0) {
       Literal::Keyword(keyword) => match keyword.to_type() {
         Some(_) => match self.peek(1) {
           Literal::Identifier(_) => match self.peek(2) {
             Literal::Operator(Operator::LeftParen) => Declaration::Function(self.next_function()),
-            _ => {
-              breakpoint!("variable");
-              panic!()
-            }
+            _ => Declaration::Variable(self.next_vardef()),
           },
           _ => {
             breakpoint!("others");
@@ -72,7 +110,7 @@ impl Parser {
         while (!self.is_at_end()) && (*self.peek(0) != Literal::Operator(Operator::Semicolon)) {
           self.get();
         }
-        Declaration::Variable(Variable {})
+        Declaration::Variable(VarDef::new("".to_string(), None))
       }
       _ => {
         breakpoint!();
@@ -80,7 +118,7 @@ impl Parser {
       }
     }
   }
-  fn next_function(&mut self) -> Function {
+  fn next_function(&mut self) -> FunctionDef {
     let return_type_idx = self.get();
     let name_idx = self.get();
     self.get(); // skip '('
@@ -101,9 +139,9 @@ impl Parser {
       }
     };
     let name = self.tokens[name_idx].to_owned_string();
-    let return_type = Builtin::new(self.tokens[return_type_idx].to_owned_string()).as_type();
+    let return_type = Primitive::new(self.tokens[return_type_idx].to_owned_string()).as_type();
 
-    Function::new(name, parameters, body, return_type)
+    FunctionDef::new(name, parameters, body, return_type)
   }
   fn next_block(&mut self) -> Block {
     self.get(); // skip '{'
@@ -118,22 +156,37 @@ impl Parser {
     block
   }
   fn next_statement(&mut self) -> Statement {
-    if *self.peek(0) == Literal::Keyword(Keyword::Return) {
-      self.get(); // return
-      let statement = Statement::Return(Return::new(
-        if *self.peek(0) == Literal::Operator(Operator::Semicolon) {
-          None
-        } else {
-          Some(self.next_expression(0))
-        },
-      ));
-      assert_eq!(*self.peek(0), Literal::Operator(Operator::Semicolon));
-      self.get(); // ;
-      return statement;
+    while *self.peek(0) == Literal::Operator(Operator::Semicolon) {
+      self.get(); // skip extra ';'
     }
-    {
-      breakpoint!();
-      panic!()
+    match *self.peek(0) {
+      Literal::Keyword(Keyword::Return) => {
+        self.get(); // return
+        let statement = Statement::Return(Return::new(
+          if *self.peek(0) == Literal::Operator(Operator::Semicolon) {
+            None
+          } else {
+            Some(self.next_expression(0))
+          },
+        ));
+        assert_eq!(*self.peek(0), Literal::Operator(Operator::Semicolon));
+        self.get(); // ;
+        statement
+      }
+      // Literal::Operator(Operator::Semicolon) => {
+      //   self.get(); // skip ';'
+      //   Statement::Empty
+      // }
+      // if it's primitive type, it's a declaration
+      Literal::Keyword(ref keyword) if keyword.to_type().is_some() => {
+        Statement::Declaration(self.next_vardef())
+      }
+      _ => {
+        Statement::Expression(self.next_expression(0))
+
+        // breakpoint!();
+        // panic!()
+      }
     }
   }
   fn next_factor(&mut self) -> Expression {
@@ -165,8 +218,10 @@ impl Parser {
         }
       }
       Literal::Identifier(ident) => {
-        breakpoint!();
-        panic!()
+        // currently just take it as the `a2` in `a = a2 + 1`
+        Expression::Variable(Variable::new(ident.to_string()))
+        // breakpoint!();
+        // panic!()
       }
       Literal::Keyword(keyword) => {
         breakpoint!();
@@ -210,7 +265,7 @@ impl Parser {
     loop {
       // let param_type = self.token_at(self.get());
       let type_idx = self.get();
-      let param_type = Builtin::new(self.tokens[type_idx].to_owned_string()).as_type();
+      let param_type = Primitive::new(self.tokens[type_idx].to_owned_string()).as_type();
       // todo: find that it's a valid type
       match self.peek(0) {
         Literal::Identifier(_) => {

@@ -1,51 +1,27 @@
-use ::std::fmt::{Debug, Display};
-
 use crate::parser::ast::Block;
 use crate::parser::expression::Expression;
 
 pub enum Statement {
   Return(Return),
   If(If),
+  Declaration(VarDef),
+  Expression(Expression),
 }
 
 pub struct Return {
-  expression: Option<Expression>,
+  pub(crate) expression: Option<Expression>,
 }
 
 pub struct If {
-  condition: Expression,
-  if_branch: Block,
-  else_branch: Block,
+  pub(crate) condition: Expression,
+  pub(crate) if_branch: Block,
+  pub(crate) else_branch: Block,
 }
 
-impl Display for Statement {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Statement::Return(ret) => <Return as Display>::fmt(ret, f),
-      Statement::If(if_stmt) => <If as Display>::fmt(if_stmt, f),
-    }
-  }
-}
-
-impl Debug for Statement {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    <Self as Display>::fmt(self, f)
-  }
-}
-
-impl Display for Return {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match &self.expression {
-      Some(expr) => write!(f, "return {:?}", expr),
-      None => write!(f, "return"),
-    }
-  }
-}
-
-impl Debug for Return {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    <Self as Display>::fmt(self, f)
-  }
+pub struct VarDef {
+  pub(crate) name: String,
+  pub(crate) initializer: Option<Expression>,
+  // type: QualifiedType,
 }
 
 impl Return {
@@ -55,18 +31,8 @@ impl Return {
     }
   }
 }
-
-impl Display for If {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "if {:?} {:?}", self.condition, self.if_branch)?;
-    if !self.else_branch.statements.is_empty() {
-      write!(f, " else {:?}", self.else_branch)?;
-    }
-    Ok(())
-  }
-}
-impl Debug for If {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    <Self as Display>::fmt(self, f)
+impl VarDef {
+  pub fn new(name: String, initializer: Option<Expression>) -> Self {
+    Self { name, initializer }
   }
 }

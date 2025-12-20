@@ -134,6 +134,11 @@ impl Lexer {
           self.skip_line_comment();
           None
         }
+        '*' => {
+          self.advance();
+          self.skip_block_comment();
+          None
+        }
         '=' => {
           self.advance();
           Some(Token::operator(Operator::SlashAssign, start_loc))
@@ -283,8 +288,23 @@ impl Lexer {
       }
     }
 
-    let text = self.slice_str(start, self.cursor);
-    Token::number(text.to_string(), start_loc)
+    let text = self.slice_str(start, self.cursor).to_string();
+
+    // check so that `10foo` or `0x123bar` are not treated as valid numbers
+    if matches!(self.peek(0), c if Self::is_ident_start(c)) {
+      let current = self.cursor;
+      let errloc = self.loc();
+      while matches!(self.peek(0), c if Self::is_ident_continue(c)) {
+        self.advance();
+      }
+      let invalid_text = self.slice_str(current, self.cursor);
+      self.errors.push(format!(
+        "Invalid number literal '{}' at {}:{}",
+        invalid_text, errloc.line, errloc.column
+      ));
+    }
+
+    Token::number(text, start_loc)
   }
 
   fn is_digit_of_base(c: char, base: u32) -> bool {
@@ -320,6 +340,17 @@ impl Lexer {
     Token::string(text.to_string(), start_loc)
   }
 
+  fn skip_block_comment(&mut self) {
+    while !self.is_at_end() {
+      if self.peek(0) == ('*') && self.peek(1) == ('/') {
+        self.advance_n(2); // consume '*/'
+        break;
+      } else {
+        self.advance();
+      }
+    }
+  }
+
   fn skip_line_comment(&mut self) {
     while !self.is_at_end() && self.peek(0) != ('\n') {
       self.advance();
@@ -330,7 +361,7 @@ impl Lexer {
     &mut self,
     start_loc: SourceLocation,
     default: Operator,
-    patterns: &[(&str, Operator)],
+    patterns: &'static [(&'static str, Operator)],
   ) -> Option<Token> {
     debug_assert!(
       patterns.windows(2).all(|w| w[0].0.len() >= w[1].0.len()),

@@ -1,8 +1,9 @@
 use crate::{
-  common::operator::Operator,
-  parser::{declaration::Initializer, types::QualifiedType},
+  common::{operator::Operator, types::QualifiedType},
+  parser::declaration::Initializer,
 };
 pub enum Expression {
+  Empty, // no-op and also for error recovery
   Constant(Constant),
   Unary(Unary),
   Binary(Binary),
@@ -128,9 +129,28 @@ impl Binary {
     Self::from_operator(operator, left, right).unwrap()
   }
 }
+impl Ternary {
+  pub fn new(condition: Expression, if_branch: Expression, else_branch: Expression) -> Self {
+    Self {
+      condition: Box::new(condition),
+      if_branch: Box::new(if_branch),
+      else_branch: Box::new(else_branch),
+    }
+  }
+}
 
+impl Call {
+  pub fn new(callee: Expression, arguments: Vec<Expression>) -> Self {
+    Self {
+      callee: Box::new(callee),
+      arguments,
+    }
+  }
+}
 mod fmt {
-  use crate::parser::expression::{Assignment, Binary, Constant, Expression, Unary, Variable};
+  use crate::parser::expression::{
+    Assignment, Binary, Call, Constant, Expression, Ternary, Unary, Variable,
+  };
   use ::std::fmt::{Debug, Display};
   impl Display for Variable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -140,7 +160,7 @@ mod fmt {
 
   impl Display for Assignment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      write!(f, "({} = {})", self.left, self.right)
+      write!(f, "({} {} =)", self.left, self.right)
     }
   }
 
@@ -152,12 +172,34 @@ mod fmt {
         Expression::Binary(b) => <Binary as Display>::fmt(b, f),
         Expression::Assignment(a) => <Assignment as Display>::fmt(a, f),
         Expression::Variable(v) => <Variable as Display>::fmt(v, f),
+        Expression::Ternary(t) => <Ternary as Display>::fmt(t, f),
+        Expression::Call(call) => <Call as Display>::fmt(call, f),
+        Expression::Empty => write!(f, "<noop>"),
         _ => todo!(),
       }
     }
   }
 
   impl Debug for Expression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      <Self as Display>::fmt(self, f)
+    }
+  }
+
+  impl Display for Call {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      write!(f, "{}(", self.callee)?;
+      for (i, arg) in self.arguments.iter().enumerate() {
+        write!(f, "{}", arg)?;
+        if i != self.arguments.len() - 1 {
+          write!(f, ", ")?;
+        }
+      }
+      write!(f, ")")
+    }
+  }
+
+  impl Debug for Call {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       <Self as Display>::fmt(self, f)
     }
@@ -190,7 +232,7 @@ mod fmt {
 
   impl Display for Unary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      write!(f, "({} {})", self.operator, self.expression)
+      write!(f, "({} {})", self.expression, self.operator)
     }
   }
 
@@ -202,7 +244,16 @@ mod fmt {
 
   impl Display for Binary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      write!(f, "({} {} {})", self.operator, self.left, self.right)
+      write!(f, "({} {} {})", self.left, self.right, self.operator)
+    }
+  }
+  impl Display for Ternary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      write!(
+        f,
+        "({} ? {} : {})",
+        self.condition, self.if_branch, self.else_branch
+      )
     }
   }
 

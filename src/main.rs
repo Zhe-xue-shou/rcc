@@ -44,13 +44,19 @@ fn main() {
     errors.iter().for_each(|e| eprintln!("{e}"));
     exit(1);
   }
-  if kind == "--lex" {
+  if kind == "--lex" || kind == "lex" {
     println!("Lex succeeded.");
     return;
   }
   let mut parser = Parser::new(tokens);
   let program = parser.parse();
-  println!("{:?}", program);
+  println!("{}", program);
+
+  let parse_warnings = parser.warnings();
+  if !parse_warnings.is_empty() {
+    eprintln!("Parse warnings:");
+    parse_warnings.iter().for_each(|e| eprintln!("{e}"));
+  }
 
   let parse_errors = parser.errors();
   if !parse_errors.is_empty() {

@@ -4,4 +4,3 @@ mod expression;
 #[allow(unused_variables)]
 pub mod parser;
 mod statement;
-mod types;

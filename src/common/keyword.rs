@@ -1,6 +1,7 @@
+use std::marker::ConstParamTy;
 use strum_macros::{Display, EnumString};
 
-#[derive(Debug, Clone, Display, EnumString, PartialEq, Eq)]
+#[derive(Debug, Clone, Display, EnumString, PartialEq, Eq, ConstParamTy)]
 pub enum Keyword {
   // C
   #[strum(serialize = "auto")]

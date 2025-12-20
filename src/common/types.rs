@@ -120,15 +120,13 @@ impl Primitive {
   pub fn maybe_new(str: String) -> Option<Self> {
     Primitive::from_str(&str).ok()
   }
-  pub fn as_type(self) -> Type {
+  pub fn to_type(self) -> Type {
     Type::Primitive(self)
   }
 }
 
 mod fmt {
-  use crate::parser::types::{
-    Array, ArraySize, FunctionPrototype, QualifiedType, Qualifiers, Type,
-  };
+  use super::{Array, ArraySize, FunctionPrototype, QualifiedType, Qualifiers, Type};
   use ::std::fmt::{Debug, Display};
 
   impl Display for Qualifiers {

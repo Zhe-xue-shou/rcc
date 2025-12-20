@@ -1,6 +1,6 @@
+use std::marker::ConstParamTy;
 use strum_macros::{Display, EnumString};
-
-#[derive(Debug, Clone, Display, EnumString, PartialEq, Eq)]
+#[derive(Debug, Clone, Display, EnumString, PartialEq, Eq, ConstParamTy)]
 pub enum Operator {
   // one-character operators
   #[strum(serialize = "+")]
@@ -101,7 +101,7 @@ pub enum Operator {
   #[strum(serialize = "##")]
   HashHash,
 
-  #[strum(serialize = "\033")] // just a garbage value
+  #[strum(disabled)]
   EOF,
 }
 

@@ -1,9 +1,11 @@
-use crate::common::keyword::Keyword;
-use crate::parser::expression::Expression;
-use crate::parser::statement::Statement;
-use crate::parser::types::Primitive;
+use ::strum_macros::{Display, EnumString};
 
-pub struct Program {
+use crate::common::keyword::Keyword;
+use crate::common::types::Primitive;
+use crate::parser::expression::Expression;
+use crate::parser::statement::Compound;
+
+pub struct TranslationUnit {
   pub declarations: Vec<Declaration>,
 }
 pub enum Declaration {
@@ -18,9 +20,13 @@ pub enum Storage {
   Extern,
   TypeDef, // ??? this counted as storage class?
 }
+#[derive(EnumString, Display)]
 pub enum Qualifier {
+  #[strum(serialize = "const")]
   Const,
+  #[strum(serialize = "volatile")]
   Volatile,
+  #[strum(serialize = "restrict")]
   Restrict,
 }
 pub enum Modifier {
@@ -42,29 +48,48 @@ pub struct Member {
   pub bit_width: Option<Expression>,
 }
 pub struct Parameter {
-  pub specifications: Vec<DeclSpecs>,
-  pub declarator: Option<Declarator>,
+  pub specifications: DeclSpecs,
+  pub declarator: Declarator,
 }
 pub struct Struct {
   pub name: Option<String>,
   pub members: Vec<Member>,
 }
 
+#[derive(EnumString, Display)]
 pub enum Specifier {
+  #[strum(serialize = "void")]
   Void,
+  #[strum(serialize = "char")]
   Char,
+  #[strum(serialize = "short")]
   Short,
+  #[strum(serialize = "int")]
   Int,
+  #[strum(serialize = "long")]
   Long,
+  #[strum(serialize = "float")]
   Float,
+  #[strum(serialize = "double")]
   Double,
+  #[strum(serialize = "signed")]
   Signed,
+  #[strum(serialize = "unsigned")]
   Unsigned,
+  #[strum(serialize = "_Bool")]
+  #[strum(serialize = "bool")]
   Bool,
+  #[strum(serialize = "_Complex")]
+  #[strum(serialize = "complex")]
   Complex,
+  // vvv below should be wrong, but now don't care
+  #[strum(disabled)]
   Struct(Struct),
+  #[strum(disabled)]
   Union(Struct),
+  #[strum(disabled)]
   Enum(EnumSpecifier),
+  #[strum(disabled)]
   TypedefName(String),
 }
 pub struct DeclSpecs {
@@ -74,22 +99,14 @@ pub struct DeclSpecs {
   pub specifiers: Vec<Specifier>,
 }
 pub struct Function {
-  decl: FunctionDecl,
-  body: Block,
+  pub declspec: DeclSpecs,
+  pub declarator: Declarator,
+  pub body: Option<Compound>,
 }
 pub struct VarDef {
   pub declspec: DeclSpecs,
   pub declarator: Declarator,
   pub initializer: Option<Initializer>,
-}
-pub struct FunctionDecl {
-  pub declspec: DeclSpecs,
-  pub name: String,
-  pub modifiers: Vec<Modifier>,
-}
-
-pub struct Block {
-  pub statements: Vec<Statement>,
 }
 
 pub struct ArrayModifier {
@@ -137,19 +154,37 @@ impl EnumSpecifier {
   }
 }
 impl Function {
-  pub fn new(decl: FunctionDecl, body: Block) -> Self {
-    Self { decl, body }
-  }
-}
-impl Block {
-  pub fn new() -> Self {
+  pub fn new(declspec: DeclSpecs, declarator: Declarator, body: Option<Compound>) -> Self {
     Self {
-      statements: Vec::new(),
+      declspec,
+      declarator,
+      body,
     }
   }
 }
-
-impl Program {
+impl FunctionSignature {
+  pub fn new(parameters: Vec<Parameter>, is_variadic: bool) -> Self {
+    Self {
+      parameters,
+      is_variadic,
+    }
+  }
+  pub fn default() -> Self {
+    Self {
+      parameters: Vec::new(),
+      is_variadic: false,
+    }
+  }
+}
+impl Parameter {
+  pub fn new(specifications: DeclSpecs, declarator: Declarator) -> Self {
+    Self {
+      specifications,
+      declarator,
+    }
+  }
+}
+impl TranslationUnit {
   pub fn new() -> Self {
     Self {
       declarations: Vec::new(),
@@ -193,17 +228,10 @@ impl VarDef {
     }
   }
 }
-impl FunctionDecl {
-  pub fn new(declspec: DeclSpecs, name: String, modifiers: Vec<Modifier>) -> Self {
-    Self {
-      declspec,
-      name,
-      modifiers,
-    }
-  }
-}
 mod fmt {
-  use crate::parser::declaration::{Block, DeclSpecs, Declaration, Function, Program, VarDef};
+  use crate::parser::declaration::{
+    DeclSpecs, Declaration, Function, FunctionSignature, Modifier, TranslationUnit, VarDef,
+  };
   use ::std::fmt::{Debug, Display};
 
   impl Display for Declaration {
@@ -220,7 +248,7 @@ mod fmt {
     }
   }
 
-  impl Display for Program {
+  impl Display for TranslationUnit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       self
         .declarations
@@ -228,17 +256,111 @@ mod fmt {
         .try_for_each(|decl| write!(f, "{}\n", decl))
     }
   }
-  impl Debug for Program {
+  impl Debug for TranslationUnit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       <Self as Display>::fmt(self, f)
     }
   }
   impl Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      write!(f, "<function {}>\n{}", self.decl.name, self.body)
+      write!(
+        f,
+        "<{} {}: {} -> {}> {}",
+        match &self.body {
+          Some(_) => "function",
+          None => "functiondecl",
+        },
+        self.declarator.name,
+        self
+          .declarator
+          .modifiers
+          .iter()
+          .map(|m| m.to_string())
+          .collect::<Vec<_>>()
+          .join(", "),
+        self
+          .declspec
+          .specifiers
+          .iter()
+          .map(|s| s.to_string())
+          .collect::<Vec<_>>()
+          .join(" "),
+        match &self.body {
+          Some(block) => format!("{}", block),
+          None => ";".to_string(),
+        }
+      )
     }
   }
   impl Debug for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      <Self as Display>::fmt(self, f)
+    }
+  }
+
+  impl Display for Modifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      match self {
+        Modifier::Pointer(qualifiers) => {
+          write!(
+            f,
+            "*{}",
+            if qualifiers.is_empty() {
+              "".to_string()
+            } else {
+              format!(
+                " {}",
+                qualifiers
+                  .iter()
+                  .map(|q| q.to_string())
+                  .collect::<Vec<_>>()
+                  .join(" ")
+              )
+            }
+          )
+        }
+        Modifier::Array(_) => todo!(),
+        Modifier::Function(function_signature) => {
+          <FunctionSignature as Display>::fmt(function_signature, f)
+        }
+      }
+    }
+  }
+  impl Debug for Modifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      <Self as Display>::fmt(self, f)
+    }
+  }
+
+  impl Display for FunctionSignature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      write!(f, "(")?;
+      for (i, param) in self.parameters.iter().enumerate() {
+        if i > 0 {
+          write!(f, ", ")?;
+        }
+        write!(
+          f,
+          "{}",
+          param
+            .specifications
+            .specifiers
+            .iter()
+            .map(|m| m.to_string())
+            .collect::<Vec<_>>()
+            .join(" ")
+        )?;
+      }
+      if self.is_variadic {
+        if !self.parameters.is_empty() {
+          write!(f, ", ")?;
+        }
+        write!(f, "...")?;
+      }
+      write!(f, ")")
+    }
+  }
+  impl Debug for FunctionSignature {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       <Self as Display>::fmt(self, f)
     }
@@ -267,21 +389,6 @@ mod fmt {
     }
   }
   impl Debug for DeclSpecs {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      <Self as Display>::fmt(self, f)
-    }
-  }
-  impl Display for Block {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      write!(f, "{{\n")?;
-      for stmt in &self.statements {
-        write!(f, "  {}\n", stmt)?;
-      }
-      write!(f, "}}")
-    }
-  }
-
-  impl Debug for Block {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       <Self as Display>::fmt(self, f)
     }

@@ -9,27 +9,21 @@ use crate::{
   parser::{
     declaration::{
       DeclSpecs, Declaration, Declarator, DeclaratorType, Function, FunctionSignature, Initializer,
-      Modifier, Parameter, Qualifier, Specifier, Storage, TranslationUnit, VarDef,
+      Modifier, Parameter, Program, Qualifier, Specifier, Storage, VarDef,
     },
     expression::{Binary, Call, Constant, Expression, Ternary, Unary, Variable},
     statement::{
-      Compound, DoWhile, For, If, Return, SingleLabel, Statement, While, new_loop_dummy_identifier,
+      Break, Compound, Continue, DoWhile, For, If, Return, Statement, While,
+      new_loop_dummy_identifier,
     },
   },
 };
 #[cfg(test)]
 use pretty_assertions::assert_eq;
 
-pub struct Parser {
-  tokens: Vec<Token>,
-  cursor: usize,
-  errors: Vec<String>,
-  warnings: Vec<String>,
-  loop_labels: Vec<String>,
-  // contest-sensitive part :(. needed to parse `T * x`.
-  typedefs: UnitScope,
-}
+use crate::parser::Parser;
 
+/// utility functions
 impl Parser {
   pub fn new(tokens: Vec<Token>) -> Self {
     assert_eq!(
@@ -51,9 +45,11 @@ impl Parser {
   pub fn errors(&self) -> &[String] {
     &self.errors
   }
-  pub fn parse(&mut self) -> TranslationUnit {
-    let mut program = TranslationUnit::new();
+  pub fn parse(&mut self) -> Program {
+    let mut program = Program::new();
+    self.typedefs.push_scope(); // global scope
     while !self.is_at_end() {
+      debug_assert!(self.typedefs.is_top_level());
       program.declarations.push(self.next_declaration());
     }
 
@@ -127,29 +123,49 @@ impl Parser {
   //   }
   // }
   fn add_error(&mut self, message: String) {
+    let token = &self.tokens[self.cursor];
     self.errors.push(format!(
-      "{} at line {} column {}",
-      message, self.tokens[self.cursor].location.line, self.tokens[self.cursor].location.column
+      "In file {}:{}:{}: {}",
+      token.location.file.to_str().unwrap_or("<invalid utf8>"),
+      token.location.line,
+      token.location.column,
+      message
     ));
   }
   fn add_warning(&mut self, message: String) {
+    let token = &self.tokens[self.cursor];
     self.warnings.push(format!(
-      "{} at line {} column {}",
-      message, self.tokens[self.cursor].location.line, self.tokens[self.cursor].location.column
+      "In file {}:{}:{}: {}",
+      token.location.file.to_str().unwrap_or("<invalid utf8>"),
+      token.location.line,
+      token.location.column,
+      message
     ));
   }
+}
+/// meta
+impl Parser {
   fn is_type_specifier(&mut self) -> bool {
     match self.peek(0) {
       Literal::Keyword(Keyword::Struct) => todo!(),
       Literal::Keyword(Keyword::Union) => todo!(),
       Literal::Keyword(Keyword::Enum) => todo!(),
       Literal::Keyword(keyword) => keyword.is_type_specifier(),
-      Literal::Identifier(ident) => self.typedefs.contains(&ident.to_string()),
+      Literal::Identifier(ident) => self.typedefs.contains(ident),
       _ => false,
     }
   }
+  // while (expr) stmt -- here stmt cannot be a declaration
+  fn ios_c_strict_check_for_decl(&mut self, statement: &Statement) {
+    if matches!(statement, Statement::Declaration(_)) {
+      self.add_error(
+        "C standard pre C23 does not allow declaration in 'if', 'while', 'for' statements. If it's intended, please use surrounding braces '{}' to form a block."
+          .to_string(),
+      );
+    }
+  }
   fn parse_declspecs(&mut self) -> DeclSpecs {
-    let mut declspecs = DeclSpecs::new();
+    let mut declspecs = DeclSpecs::default();
 
     loop {
       if self.peek(0).is_qualifier() {
@@ -158,13 +174,21 @@ impl Parser {
         self.get(); // get the qualifier
       } else if self.peek(0).is_storage_class() {
         let storage_class = Storage::from(self.peek(0));
-        declspecs.storage_classes.push(storage_class);
+        if declspecs.storage_class.is_some() {
+          self.add_error(format!(
+            "Cannot combine '{}' with '{}'; ignoring latter.",
+            storage_class,
+            declspecs.storage_class.as_ref().unwrap()
+          ));
+        } else {
+          declspecs.storage_class = Some(storage_class);
+        }
         self.get(); // get the storage class
       // 1. it's a keyword type specifier
       // 2. it's an identifier and we already have some type specifier -- break
       } else if self.is_type_specifier() {
         let specifier = if let Literal::Keyword(keyword) = self.peek(0) {
-          Specifier::from(keyword)
+          Specifier::try_from(keyword).unwrap()
         } else if let Literal::Identifier(ident) = self.peek(0) {
           if !declspecs.specifiers.is_empty() {
             // already have some type specifier
@@ -175,7 +199,7 @@ impl Parser {
           unreachable!()
         };
         declspecs.specifiers.push(specifier);
-        self.get(); // consume the type specifier; only one for now
+        self.get();
       } else if self.peek(0).is_function_specifier() {
         // only inline for now
         declspecs.inline_hint = true;
@@ -239,6 +263,58 @@ impl Parser {
     self.must_get_op::<{ Operator::RightParen }>();
     arguments
   }
+
+  fn parse_function_params(&mut self) -> FunctionSignature {
+    // C17: a function declaration without a parameter list
+    //  or function body provides no information about that function’s parameters
+    // but I won't support that obselete feature :(
+    if let Literal::Keyword(Keyword::Void) = self.tokens[self.cursor].literal {
+      // single void parameter
+      self.must_get_key::<{ Keyword::Void }>();
+      if *self.peek(0) != Literal::Operator(Operator::RightParen) {
+        self.add_error("Unexpected token after 'void' in parameter list".to_string());
+        while *self.peek(0) != Literal::Operator(Operator::RightParen) {
+          self.get();
+        }
+      }
+      FunctionSignature::default()
+    } else {
+      let mut parameters = Vec::new();
+      loop {
+        let mut declspecs = self.parse_declspecs();
+        let declarator = self.parse_declarator::<{ DeclaratorType::Maybe }, false>();
+        if declspecs.storage_class.is_some() {
+          self.add_error(
+            "Storage class specifier is not allowed in parameter declaration".to_string(),
+          );
+          declspecs.storage_class = None;
+        }
+        parameters.push(Parameter::new(declspecs, declarator));
+
+        match self.peek(0) {
+          Literal::Operator(Operator::RightParen) => break,
+          Literal::Operator(Operator::Comma) => {
+            self.must_get_op::<{ Operator::Comma }>();
+            if self.peek(0) == &Literal::Operator(Operator::RightParen) {
+              self.add_error("Trailing comma in parameter list is not allowed in C.".to_string());
+              break;
+            }
+          }
+          _ => {
+            if !(self.is_type_specifier()) {
+              self.add_error("Expect ',', ')', or type specifier in parameter list".to_string());
+              break;
+            }
+            // continuing parsing
+          }
+        }
+      }
+      FunctionSignature::new(parameters, false)
+    }
+  }
+}
+/// grammars
+impl Parser {
   fn next_vardef(&mut self, declspec: DeclSpecs, declarator: Declarator) -> VarDef {
     let initializer = match self.peek(0) {
       Literal::Operator(Operator::Semicolon) => {
@@ -281,10 +357,27 @@ impl Parser {
       }
     }
 
+    let mut recovery = false;
+    // block definition is not allowed in top
+    if *self.peek(0) == Literal::Operator(Operator::LeftBrace) {
+      self.add_error("Block definition is not allowed here.".to_string());
+      self.must_get_op::<{ Operator::LeftBrace }>();
+      recovery = true;
+    }
+
     let declspecs = self.parse_declspecs();
     let declarator = self.parse_declarator::<{ DeclaratorType::Maybe }, true>();
 
-    if declarator
+    if matches!(declspecs.storage_class, Some(Storage::Typedef)) {
+      if let Some(ref name) = declarator.name {
+        self.typedefs.declare(name.clone());
+      } else {
+        self.add_warning("Typedef defines nothing.".to_string());
+      }
+      self.must_get_op::<{ Operator::Semicolon }>();
+      return Declaration::Variable(VarDef::new(declspecs, declarator, None));
+    }
+    let declaration = if declarator
       .modifiers
       .iter()
       .any(|m| matches!(m, Modifier::Function(_)))
@@ -297,7 +390,11 @@ impl Parser {
     } else {
       // `int;` is allowed although useless
       Declaration::Variable(self.next_vardef(declspecs, declarator))
+    };
+    if recovery {
+      self.recoverable_get::<{ Operator::RightBrace }>();
     }
+    declaration
   }
   fn next_function_body(&mut self, declspec: DeclSpecs, declarator: Declarator) -> Function {
     let body = match self.tokens[self.cursor].literal {
@@ -312,12 +409,13 @@ impl Parser {
   }
   fn next_block(&mut self) -> Compound {
     self.must_get_op::<{ Operator::LeftBrace }>();
+    self.typedefs.push_scope();
     let mut block = Compound::new();
 
     while *self.peek(0) != Literal::Operator(Operator::RightBrace) {
       block.statements.push(self.next_statement());
     }
-
+    self.typedefs.pop_scope();
     self.must_get_op::<{ Operator::RightBrace }>();
     block
   }
@@ -328,6 +426,9 @@ impl Parser {
     } else {
       Some(self.next_expression(0))
     };
+
+    assert_eq!(*self.peek(0), Literal::Operator(Operator::Semicolon));
+    self.must_get_op::<{ Operator::Semicolon }>();
     Return::new(expression)
   }
   fn next_if(&mut self) -> If {
@@ -344,9 +445,12 @@ impl Parser {
       } else {
         self.must_get_op::<{ Operator::RightParen }>();
         let if_branch = self.next_statement();
+        self.ios_c_strict_check_for_decl(&if_branch);
         let else_branch = if *self.peek(0) == Literal::Keyword(Keyword::Else) {
           self.must_get_key::<{ Keyword::Else }>();
-          Some(self.next_statement())
+          let body = self.next_statement();
+          self.ios_c_strict_check_for_decl(&body);
+          Some(body)
         } else {
           None
         };
@@ -369,6 +473,7 @@ impl Parser {
         self.must_get_op::<{ Operator::RightParen }>();
         self.loop_labels.push(new_loop_dummy_identifier("while"));
         let body = self.next_statement();
+        self.ios_c_strict_check_for_decl(&body);
         let while_stmt = While::new(condition, body, self.loop_labels.last().unwrap().clone());
         self.loop_labels.pop();
         while_stmt
@@ -379,6 +484,7 @@ impl Parser {
     self.must_get_key::<{ Keyword::Do }>();
     self.loop_labels.push(new_loop_dummy_identifier("do_while"));
     let body = self.next_statement();
+    self.ios_c_strict_check_for_decl(&body);
     self.must_get_key::<{ Keyword::While }>();
     if *self.peek(0) != Literal::Operator(Operator::LeftParen) {
       self.add_error("Expect '(' after 'while'".to_string());
@@ -457,6 +563,7 @@ impl Parser {
       };
       self.loop_labels.push(new_loop_dummy_identifier("for"));
       let body = self.next_statement();
+      self.ios_c_strict_check_for_decl(&body);
       let for_stmt = For::new(
         initializer,
         condition,
@@ -470,12 +577,7 @@ impl Parser {
   }
   fn next_statement(&mut self) -> Statement {
     match *self.peek(0) {
-      Literal::Keyword(Keyword::Return) => {
-        let statement = Statement::Return(self.next_return());
-        assert_eq!(*self.peek(0), Literal::Operator(Operator::Semicolon));
-        self.must_get_op::<{ Operator::Semicolon }>();
-        statement
-      }
+      Literal::Keyword(Keyword::Return) => Statement::Return(self.next_return()),
       Literal::Operator(Operator::LeftBrace) => Statement::Compound(self.next_block()),
       Literal::Operator(Operator::Semicolon) => {
         self.must_get_op::<{ Operator::Semicolon }>();
@@ -486,52 +588,51 @@ impl Parser {
       Literal::Keyword(Keyword::While) => Statement::While(self.next_while()),
       Literal::Keyword(Keyword::Do) => Statement::DoWhile(self.next_dowhile()),
       Literal::Keyword(Keyword::For) => Statement::For(self.next_for()),
-      Literal::Keyword(Keyword::Break) => {
-        self.must_get_key::<{ Keyword::Break }>();
-        self.recoverable_get::<{ Operator::Semicolon }>();
-        match self.loop_labels.last() {
-          Some(ref label) => Statement::Break(SingleLabel::new(label.to_string())),
-          None => {
-            self.add_error("Break statement not within a loop".to_string());
-            Statement::Break(SingleLabel::new("invalid_loop".to_string()))
-          }
-        }
-      }
-      Literal::Keyword(Keyword::Continue) => {
-        self.must_get_key::<{ Keyword::Continue }>();
-
-        self.recoverable_get::<{ Operator::Semicolon }>();
-        // we need to handle continus differently; since the continue cannot be used to `continue` a switch.
-        // search reversely for the nearest loop label which does not start with 'switch_'
-        let mut found_label: Option<String> = None;
-        for label in self.loop_labels.iter().rev() {
-          if !label.starts_with("switch_") {
-            found_label = Some(label.to_string());
-            break;
-          }
-        }
-        match found_label {
-          Some(label) => Statement::Continue(SingleLabel::new(label)),
-          None => {
-            self.add_error("Continue statement not within a loop".to_string());
-            Statement::Continue(SingleLabel::new("invalid_loop".to_string()))
-          }
-        }
-      }
-      // if it's primitive type, it's a declaration
-      Literal::Keyword(ref keyword) if keyword.to_type().is_some() => {
-        Statement::Declaration(self.next_declaration())
-      }
-      _ => {
-        let exprstmt = Statement::Expression(self.next_expression(0));
-        self.recoverable_get::<{ Operator::Semicolon }>();
-        exprstmt
-
-        // breakpoint!();
-        // panic!()
+      Literal::Keyword(Keyword::Break) => Statement::Break(self.next_break()),
+      Literal::Keyword(Keyword::Continue) => Statement::Continue(self.next_continue()),
+      Literal::Keyword(_) => Statement::Declaration(self.next_declaration()),
+      _ => Statement::Expression(self.next_stmtexpr()),
+    }
+  }
+  fn next_stmtexpr(&mut self) -> Expression {
+    let expr = self.next_expression(0);
+    self.recoverable_get::<{ Operator::Semicolon }>();
+    expr
+  }
+  fn next_break(&mut self) -> Break {
+    self.must_get_key::<{ Keyword::Break }>();
+    self.recoverable_get::<{ Operator::Semicolon }>();
+    match self.loop_labels.last() {
+      Some(label) => Break::new(label.to_string()),
+      None => {
+        self.add_error("Break statement not within a loop".to_string());
+        Break::new("invalid_loop".to_string())
       }
     }
   }
+
+  fn next_continue(&mut self) -> Continue {
+    self.must_get_key::<{ Keyword::Continue }>();
+
+    self.recoverable_get::<{ Operator::Semicolon }>();
+    // we need to handle continus differently; since the continue cannot be used to `continue` a switch.
+    // search reversely for the nearest loop label which does not start with 'switch_'
+    let mut found_label: Option<String> = None;
+    for label in self.loop_labels.iter().rev() {
+      if !label.starts_with("switch_") {
+        found_label = Some(label.to_string());
+        break;
+      }
+    }
+    match found_label {
+      Some(label) => Continue::new(label),
+      None => {
+        self.add_error("Continue statement not within a loop".to_string());
+        Continue::new("invalid_loop".to_string())
+      }
+    }
+  }
+
   fn next_factor(&mut self) -> Expression {
     self.get();
     let literal = &self
@@ -567,10 +668,6 @@ impl Parser {
         } else {
           ident_expr
         }
-        // currently just take it as the `a2` in `a = a2 + 1`
-        // Expression::Variable(Variable::new(ident.to_string()))
-        // breakpoint!();
-        // panic!()
       }
       Literal::Keyword(_keyword) => {
         breakpoint!();
@@ -607,48 +704,5 @@ impl Parser {
       }
     }
     current
-  }
-
-  fn parse_function_params(&mut self) -> FunctionSignature {
-    // C17: a function declaration without a parameter list
-    //  or function body provides no information about that function’s parameters
-    // but I won't support that obselete feature :(
-    if let Literal::Keyword(Keyword::Void) = self.tokens[self.cursor].literal {
-      // single void parameter
-      self.must_get_key::<{ Keyword::Void }>();
-      if *self.peek(0) != Literal::Operator(Operator::RightParen) {
-        self.add_error("Unexpected token after 'void' in parameter list".to_string());
-        while *self.peek(0) != Literal::Operator(Operator::RightParen) {
-          self.get();
-        }
-      }
-      FunctionSignature::default()
-    } else {
-      let mut parameters = Vec::new();
-      loop {
-        let declspecs = self.parse_declspecs();
-        let declarator = self.parse_declarator::<{ DeclaratorType::Maybe }, false>();
-        parameters.push(Parameter::new(declspecs, declarator));
-
-        match self.peek(0) {
-          Literal::Operator(Operator::RightParen) => break,
-          Literal::Operator(Operator::Comma) => {
-            self.must_get_op::<{ Operator::Comma }>();
-            if self.peek(0) == &Literal::Operator(Operator::RightParen) {
-              self.add_error("Trailing comma in parameter list is not allowed in C.".to_string());
-              break;
-            }
-          }
-          _ => {
-            if !(self.is_type_specifier()) {
-              self.add_error("Expect ',', ')', or type specifier in parameter list".to_string());
-              break;
-            }
-            // continuing parsing
-          }
-        }
-      }
-      FunctionSignature::new(parameters, false)
-    }
   }
 }

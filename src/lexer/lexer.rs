@@ -1,20 +1,14 @@
 use crate::common::keyword::Keyword;
 use crate::common::operator::Operator;
 use crate::common::token::{SourceLocation, Token};
-use std::str::FromStr;
+use ::std::path::PathBuf;
+use ::std::rc::Rc;
+use ::std::str::FromStr;
 
-pub struct Lexer {
-  source: String,
-  chars: Vec<char>,
-  byte_positions: Vec<usize>,
-  cursor: usize,
-  cur_line: u32,
-  cur_column: u32,
-  errors: Vec<String>,
-}
+use crate::lexer::Lexer;
 
 impl Lexer {
-  pub fn new(source: String) -> Self {
+  pub fn new(source: String, filepath: PathBuf) -> Self {
     let chars: Vec<char> = source.chars().collect();
     let byte_positions: Vec<usize> = source.char_indices().map(|(pos, _)| pos).collect();
 
@@ -23,13 +17,24 @@ impl Lexer {
       chars,
       byte_positions,
       cursor: 0,
-      cur_line: 1,
-      cur_column: 1,
+      line: 1,
+      column: 1,
       errors: Vec::new(),
+      filepath: Rc::new(filepath),
     }
   }
   pub fn errors(self) -> Vec<String> {
     self.errors
+  }
+
+  fn add_error(&mut self, message: String) {
+    self.errors.push(format!(
+      "In file {}:{}:{}: {}",
+      self.filepath.display(),
+      self.line,
+      self.column,
+      message
+    ));
   }
 
   fn is_at_end(&self) -> bool {
@@ -59,10 +64,10 @@ impl Lexer {
     self.cursor += 1;
 
     if ch == '\n' {
-      self.cur_line += 1;
-      self.cur_column = 1;
+      self.line += 1;
+      self.column = 1;
     } else {
-      self.cur_column += 1;
+      self.column += 1;
     }
 
     Some(ch)
@@ -70,8 +75,9 @@ impl Lexer {
 
   fn loc(&self) -> SourceLocation {
     SourceLocation {
-      line: self.cur_line,
-      column: self.cur_column,
+      file: Rc::clone(&self.filepath),
+      line: self.line,
+      column: self.column,
     }
   }
 
@@ -280,31 +286,67 @@ impl Lexer {
       self.advance();
     }
 
+    let mut is_floating = false;
+
     // decimal point for base-10 numbers
     if base == 10 && matches!(self.peek(0), '.') && matches!(self.peek(1), ('0'..='9')) {
       self.advance(); // consume '.'
+      is_floating = true;
       while matches!(self.peek(0), ('0'..='9')) {
         self.advance();
       }
     }
 
-    let text = self.slice_str(start, self.cursor).to_string();
+    let head = self.cursor;
+    let num = self.slice_str(start, head).to_string();
 
-    // check so that `10foo` or `0x123bar` are not treated as valid numbers
-    if matches!(self.peek(0), c if Self::is_ident_start(c)) {
-      let current = self.cursor;
-      let errloc = self.loc();
-      while matches!(self.peek(0), c if Self::is_ident_continue(c)) {
+    // literal suffixes
+    const INTEGER_SUFFIXES: &'static [&'static str] = &[
+      "u", "U", //
+      "l", "ll", "L", "LL", //
+      "ul", "uL", "Ul", "UL", "lu", "lU", "Lu", "LU", //
+      "ull", "uLL", "Ull", "ULL", "llu", "llU", "LLu", "LLU", //
+    ];
+    const FLOATING_SUFFIXES: &'static [&'static str] = &[
+      "l", "f", "df", "dd", "dl", //
+      "L", "F", "DF", "DD", "DL", //
+    ];
+    let suffix = if matches!(self.peek(0), c if Self::is_ident_start(c)) {
+      // number not allowed in suffix: is_ident_start excludes digits
+      while matches!(self.peek(0), c if Self::is_ident_start(c)) {
         self.advance();
       }
-      let invalid_text = self.slice_str(current, self.cursor);
-      self.errors.push(format!(
-        "Invalid number literal '{}' at {}:{}",
-        invalid_text, errloc.line, errloc.column
-      ));
-    }
+      let s = self.slice_str(head, self.cursor);
+      match is_floating {
+        true => {
+          if FLOATING_SUFFIXES.contains(&s) {
+            Some(s)
+          } else {
+            self.add_error(format!("Invalid floating point literal suffix '{}'", s));
+            None
+          }
+        }
+        false => {
+          if INTEGER_SUFFIXES.contains(&s) {
+            Some(s)
+          } else {
+            self.add_error(format!("Invalid integer literal suffix '{}'", s));
+            None
+          }
+        }
+      }
+    } else {
+      None
+    };
 
-    Token::number(text, start_loc)
+    Token::number(
+      if let Some(suffix) = suffix {
+        format!("{}{}", num, suffix)
+      } else {
+        num
+      },
+      start_loc,
+    )
   }
 
   fn is_digit_of_base(c: char, base: u32) -> bool {
@@ -325,10 +367,7 @@ impl Lexer {
     }
 
     if self.is_at_end() {
-      self.errors.push(format!(
-        "Unterminated string at {}:{}",
-        start_loc.line, start_loc.column
-      ));
+      self.add_error("Unterminated string literal".to_string());
       let text = self.slice_str(start, self.cursor);
       return Token::string(text.to_string(), start_loc);
     }

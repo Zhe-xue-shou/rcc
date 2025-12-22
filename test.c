@@ -1,20 +1,11 @@
-// // int f();     // FunctionNoProto in clang AST
-// // int g(void); // FunctionProto in clang AST
-// inline volatile int *h(const volatile int *x) { return x; }
-// int main(void) {
-//   int a = 12345;
-//   int i;
-
-//   typedef volatile int *(*p)(const volatile int *);
-
-//   for (i = 5; i >= 0; i = i - 1)
-//     a = a / 3;
-//   h(&a);
-//   return a;
-// }
-int foo(int a) { return a + 1; }
+extern int j;
+static int j = 0;
+static int foo(int a) { return a + 1; }
 int main(void) { //
   int f(int, int);
+  typedef int INT;
+  INT x = 5;
+  static int y = 1;
   return f(2, 3);
 }
 

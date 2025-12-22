@@ -52,6 +52,9 @@ impl UnitScope {
     );
     current.unwrap().insert(name);
   }
+  pub fn is_top_level(&self) -> bool {
+    self.scopes.len() == 1
+  }
 }
 impl<T> Scope<T> {
   pub fn new() -> Self {
@@ -87,5 +90,8 @@ impl<T> Scope<T> {
     );
     current.unwrap().insert(name, val.clone());
     val
+  }
+  pub fn is_top_level(&self) -> bool {
+    self.scopes.len() == 1
   }
 }

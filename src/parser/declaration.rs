@@ -6,7 +6,7 @@ use crate::parser::statement::Compound;
 use ::strum_macros::{Display, EnumString};
 use std::marker::ConstParamTy;
 
-pub struct TranslationUnit {
+pub struct Program {
   pub declarations: Vec<Declaration>,
 }
 /// declaration:
@@ -19,12 +19,29 @@ pub enum Declaration {
   Variable(VarDef),
 }
 /// storage-class-specifier
+#[derive(Display)]
 pub enum Storage {
+  /// variables that declared in block scope without any storage-class specifier
+  /// are considered to have automatic storage duration.
   Automatic,
   Register,
+  /// - Function declarations with no storage-class specifier are always handled
+  /// as though they include an extern specifier
+  /// - if variable declarations appear at file scope, they have external linkage
+  /// - use extern to declare an identifier that’s already visible.
+  /// ```c
+  /// static int a;
+  /// extern int a; // this is valid and a has internal linkage
+  /// extern int b;
+  /// static int b = 0; // this is also valid... (internal linkage)
+  /// ```
   Extern,
+  /// - At file scope, the static specifier indicates that a function or variable
+  /// has internal linkage.
+  /// - At block scope(i.e., for variables), the static specifier controls storage duration, not linkage.
   Static,
-  TypeDef,     // ??? this counted as storage class?
+  /// according to standard, `typedef` is categorized as a storage-class specifier for **syntactic convenience only**.
+  Typedef,
   ThreadLocal, // I won't care about this now
   Constexpr,   // ditto
 }
@@ -35,7 +52,7 @@ impl From<&Keyword> for Storage {
       Keyword::Register => Storage::Register,
       Keyword::Extern => Storage::Extern,
       Keyword::Static => Storage::Static,
-      Keyword::Typedef => Storage::TypeDef,
+      Keyword::Typedef => Storage::Typedef,
       Keyword::ThreadLocal => Storage::ThreadLocal,
       // Keyword::Constexpr => Storage::Constexpr,
       _ => panic!("cannot convert {:?} to Storage", kw),
@@ -160,28 +177,31 @@ pub enum Specifier {
   #[strum(disabled)]
   Typedef(String),
 }
-impl From<&Keyword> for Specifier {
-  fn from(kw: &Keyword) -> Self {
+
+impl TryFrom<&Keyword> for Specifier {
+  type Error = ();
+  fn try_from(kw: &Keyword) -> Result<Self, Self::Error> {
     match kw {
-      Keyword::Void => Specifier::Void,
-      Keyword::Char => Specifier::Char,
-      Keyword::Short => Specifier::Short,
-      Keyword::Int => Specifier::Int,
-      Keyword::Long => Specifier::Long,
-      Keyword::Float => Specifier::Float,
-      Keyword::Double => Specifier::Double,
-      Keyword::Signed => Specifier::Signed,
-      Keyword::Unsigned => Specifier::Unsigned,
-      Keyword::Bool => Specifier::Bool,
-      _ => panic!("cannot convert {:?} to Specifier", kw),
+      Keyword::Void => Ok(Specifier::Void),
+      Keyword::Char => Ok(Specifier::Char),
+      Keyword::Short => Ok(Specifier::Short),
+      Keyword::Int => Ok(Specifier::Int),
+      Keyword::Long => Ok(Specifier::Long),
+      Keyword::Float => Ok(Specifier::Float),
+      Keyword::Double => Ok(Specifier::Double),
+      Keyword::Signed => Ok(Specifier::Signed),
+      Keyword::Unsigned => Ok(Specifier::Unsigned),
+      Keyword::Bool => Ok(Specifier::Bool),
+      _ => Err(()),
     }
   }
 }
-impl From<&Literal> for Specifier {
-  fn from(literal: &Literal) -> Self {
+impl TryFrom<&Literal> for Specifier {
+  type Error = ();
+  fn try_from(literal: &Literal) -> Result<Self, Self::Error> {
     match literal {
-      Literal::Keyword(kw) => Specifier::from(kw),
-      _ => panic!("cannot convert {:?} to Specifier", literal),
+      Literal::Keyword(kw) => Specifier::try_from(kw),
+      _ => Err(()),
     }
   }
 }
@@ -194,7 +214,7 @@ impl From<&Literal> for Specifier {
 ///    function-specifier
 pub struct DeclSpecs {
   pub inline_hint: bool, // function-specifier: inline and _Noreturn
-  pub storage_classes: Vec<Storage>,
+  pub storage_class: Option<Storage>,
   pub qualifiers: Vec<Qualifier>,
   pub specifiers: Vec<Specifier>,
 }
@@ -204,7 +224,7 @@ pub struct Function {
   pub body: Option<Compound>,
 }
 pub struct VarDef {
-  pub declspec: DeclSpecs,
+  pub declspecs: DeclSpecs,
   pub declarator: Declarator,
   pub initializer: Option<Initializer>,
 }
@@ -269,7 +289,9 @@ impl FunctionSignature {
       is_variadic,
     }
   }
-  pub fn default() -> Self {
+}
+impl ::core::default::Default for FunctionSignature {
+  fn default() -> Self {
     Self {
       parameters: Vec::new(),
       is_variadic: false,
@@ -284,7 +306,7 @@ impl Parameter {
     }
   }
 }
-impl TranslationUnit {
+impl Program {
   pub fn new() -> Self {
     Self {
       declarations: Vec::new(),
@@ -305,11 +327,11 @@ impl Declarator {
     }
   }
 }
-impl DeclSpecs {
-  pub fn new() -> Self {
+impl ::core::default::Default for DeclSpecs {
+  fn default() -> Self {
     Self {
       inline_hint: false,
-      storage_classes: Vec::new(),
+      storage_class: None,
       qualifiers: Vec::new(),
       specifiers: Vec::new(),
     }
@@ -317,21 +339,32 @@ impl DeclSpecs {
 }
 impl VarDef {
   pub fn new(
-    declspec: DeclSpecs,
+    declspecs: DeclSpecs,
     declarator: Declarator,
     initializer: Option<Initializer>,
   ) -> Self {
     Self {
-      declspec,
+      declspecs,
       declarator,
       initializer,
     }
   }
+  pub fn is_typedef(&self) -> bool {
+    let maybe = matches!(self.declspecs.storage_class, Some(Storage::Typedef));
+    if maybe {
+      debug_assert!(
+        self.initializer.is_none(),
+        "typedef variable cannot have initializer"
+      );
+    }
+    maybe
+  }
+  pub fn is_vardef(&self) -> bool {
+    !self.is_typedef()
+  }
 }
 mod fmt {
-  use crate::parser::declaration::{
-    DeclSpecs, Declaration, Function, FunctionSignature, Modifier, TranslationUnit, VarDef,
-  };
+  use super::{DeclSpecs, Declaration, Function, FunctionSignature, Modifier, Program, VarDef};
   use ::std::fmt::{Debug, Display};
 
   impl Display for Declaration {
@@ -348,7 +381,7 @@ mod fmt {
     }
   }
 
-  impl Display for TranslationUnit {
+  impl Display for Program {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       self
         .declarations
@@ -356,7 +389,7 @@ mod fmt {
         .try_for_each(|decl| write!(f, "{}\n", decl))
     }
   }
-  impl Debug for TranslationUnit {
+  impl Debug for Program {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       <Self as Display>::fmt(self, f)
     }

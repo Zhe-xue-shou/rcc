@@ -1,5 +1,6 @@
 use crate::common::keyword::Keyword;
 use crate::common::operator::Operator;
+use ::std::{path::PathBuf, rc::Rc};
 use std::fmt::{Debug, Display};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -11,8 +12,9 @@ pub enum Literal {
   Operator(Operator),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct SourceLocation {
+  pub file: Rc<PathBuf>,
   pub line: u32,
   pub column: u32,
 }

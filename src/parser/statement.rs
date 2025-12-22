@@ -30,6 +30,9 @@ pub fn new_loop_dummy_identifier(str: &'static str) -> String {
 pub struct SingleLabel {
   pub label: String,
 }
+
+pub type Break = SingleLabel;
+pub type Continue = SingleLabel;
 pub struct Return {
   pub expression: Option<Expression>,
 }

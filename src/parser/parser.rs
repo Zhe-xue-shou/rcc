@@ -5,11 +5,12 @@ use crate::{
     keyword::Keyword,
     operator::Operator,
     token::{Literal, Token},
+    types::Qualifiers,
   },
   parser::{
     declaration::{
-      DeclSpecs, Declaration, Declarator, DeclaratorType, Function, FunctionSignature, Initializer,
-      Modifier, Parameter, Program, Qualifier, Specifier, Storage, VarDef,
+      DeclSpecs, Declaration, Declarator, DeclaratorType, Function, FunctionSignature,
+      FunctionSpecifier, Initializer, Modifier, Parameter, Program, Storage, TypeSpecifier, VarDef,
     },
     expression::{Binary, Call, Constant, Expression, Ternary, Unary, Variable},
     statement::{
@@ -39,12 +40,6 @@ impl Parser {
       typedefs: UnitScope::new(),
     }
   }
-  pub fn warnings(&self) -> &[String] {
-    &self.warnings
-  }
-  pub fn errors(&self) -> &[String] {
-    &self.errors
-  }
   pub fn parse(&mut self) -> Program {
     let mut program = Program::new();
     self.typedefs.push_scope(); // global scope
@@ -52,6 +47,7 @@ impl Parser {
       debug_assert!(self.typedefs.is_top_level());
       program.declarations.push(self.next_declaration());
     }
+    self.typedefs.pop_scope();
 
     program
   }
@@ -73,7 +69,7 @@ impl Parser {
   }
   fn must_get_key<const KEY: Keyword>(&mut self) -> usize {
     let index = self.get();
-    if matches!(&self.tokens[index].literal, Literal::Keyword(kw) if *kw != KEY) {
+    if matches!(&self.tokens[index].literal, Literal::Keyword(kw) if kw != &KEY) {
       breakpoint!(
         "check your code! expected: {:?}, found: {:?}",
         KEY,
@@ -127,6 +123,15 @@ impl Parser {
   //     self.get();
   //   }
   // }
+}
+/// diagnostic functions
+impl Parser {
+  pub fn errors(&self) -> &[String] {
+    &self.errors
+  }
+  pub fn warnings(&self) -> &[String] {
+    &self.warnings
+  }
   fn add_error(&mut self, message: String) {
     let token = &self.tokens[self.cursor];
     self.errors.push(format!(
@@ -148,19 +153,8 @@ impl Parser {
     ));
   }
 }
-/// meta
+/// opt checks
 impl Parser {
-  fn is_type_specifier(&mut self) -> bool {
-    match self.peek(0) {
-      Literal::Keyword(Keyword::Struct) => todo!(),
-      Literal::Keyword(Keyword::Union) => todo!(),
-      Literal::Keyword(Keyword::Enum) => todo!(),
-      Literal::Keyword(keyword) => keyword.is_type_specifier(),
-      Literal::Identifier(ident) => self.typedefs.contains(ident),
-      _ => false,
-    }
-  }
-  // while (expr) stmt -- here stmt cannot be a declaration
   fn ios_c_strict_check_for_decl(&mut self, statement: &Statement) {
     if matches!(statement, Statement::Declaration(_)) {
       self.add_error(
@@ -169,54 +163,84 @@ impl Parser {
       );
     }
   }
+}
+/// meta
+impl Parser {
+  fn parse_type_specifier(&mut self) -> Option<TypeSpecifier> {
+    match self.peek(0) {
+      Literal::Keyword(Keyword::Struct) => todo!(),
+      Literal::Keyword(Keyword::Union) => todo!(),
+      Literal::Keyword(Keyword::Enum) => todo!(),
+      Literal::Keyword(keyword) => TypeSpecifier::try_from(keyword).ok(),
+      Literal::Identifier(ident) => {
+        if self.typedefs.contains(ident) {
+          Some(TypeSpecifier::Typedef(ident.to_string()))
+        } else {
+          None
+        }
+      }
+      _ => None,
+    }
+  }
+  fn parse_function_specifier(&mut self) -> Option<FunctionSpecifier> {
+    match self.peek(0) {
+      Literal::Keyword(kw) => FunctionSpecifier::try_from(kw).ok(),
+      _ => None,
+    }
+  }
   fn parse_declspecs(&mut self) -> DeclSpecs {
     let mut declspecs = DeclSpecs::default();
 
     loop {
       if self.peek(0).is_qualifier() {
-        let qualifier = Qualifier::from(self.peek(0));
-        declspecs.qualifiers.push(qualifier);
+        let qualifier = Qualifiers::from(self.peek(0));
+        // qualifiers is a bitfield
+        if declspecs.qualifiers & qualifier != Qualifiers::empty() {
+          self.add_warning(format!("Redundant qualifier '{}'.", qualifier));
+        } else {
+          declspecs.qualifiers |= qualifier;
+        }
         self.get(); // get the qualifier
       } else if self.peek(0).is_storage_class() {
         let storage_class = Storage::from(self.peek(0));
-        if declspecs.storage_class.is_some() {
-          self.add_error(format!(
-            "Cannot combine '{}' with '{}'; ignoring latter.",
-            storage_class,
-            declspecs.storage_class.as_ref().unwrap()
-          ));
-        } else {
-          declspecs.storage_class = Some(storage_class);
+        match declspecs.storage_class {
+          Some(ref existing_storage) if existing_storage == &storage_class => {
+            self.add_warning(format!(
+              "Redundant storage class specifier '{}'.",
+              storage_class
+            ));
+          }
+          Some(ref existing_storage) => {
+            self.add_error(format!(
+              "Cannot combine '{}' with '{}'.",
+              storage_class, existing_storage
+            ));
+          }
+          None => {
+            declspecs.storage_class = Some(storage_class);
+          }
         }
         self.get(); // get the storage class
       // 1. it's a keyword type specifier
       // 2. it's an identifier and we already have some type specifier -- break
-      } else if self.is_type_specifier() {
-        let specifier = if let Literal::Keyword(keyword) = self.peek(0) {
-          Specifier::try_from(keyword).unwrap()
-        } else if let Literal::Identifier(ident) = self.peek(0) {
-          if !declspecs.specifiers.is_empty() {
-            // already have some type specifier
-            break;
-          }
-          Specifier::Typedef(ident.to_string())
-        } else {
-          unreachable!()
-        };
-        declspecs.specifiers.push(specifier);
+      } else if let Some(specifier) = self.parse_type_specifier() {
+        if !declspecs.type_specifiers.is_empty() {
+          // already have some type specifier
+          break;
+        }
+        declspecs.type_specifiers.push(specifier);
         self.get();
-      } else if self.peek(0).is_function_specifier() {
-        // only inline for now
-        declspecs.inline_hint = true;
-        self.must_get_key::<{ Keyword::Inline }>();
+      } else if let Some(kw) = self.parse_function_specifier() {
+        declspecs.function_specifiers.push(kw);
+        self.get();
       } else {
         break;
       }
     }
 
-    if declspecs.specifiers.is_empty() {
+    if declspecs.type_specifiers.is_empty() {
       self.add_error("Expect type specifier in declaration, default to int".to_string());
-      declspecs.specifiers.push(Specifier::Int);
+      declspecs.type_specifiers.push(TypeSpecifier::Int);
     }
 
     declspecs
@@ -306,7 +330,7 @@ impl Parser {
             }
           }
           _ => {
-            if !(self.is_type_specifier()) {
+            if self.parse_type_specifier().is_none() {
               self.add_error("Expect ',', ')', or type specifier in parameter list".to_string());
               break;
             }
@@ -338,7 +362,7 @@ impl Parser {
     let mut body = Vec::new();
     while self.peek(0) != &Literal::Keyword(Keyword::Case)
       && self.peek(0) != &Literal::Keyword(Keyword::Default)
-        && self.peek(0) != &Literal::Operator(Operator::RightBrace)
+      && self.peek(0) != &Literal::Operator(Operator::RightBrace)
     {
       body.push(self.next_statement());
     }
@@ -367,7 +391,7 @@ impl Parser {
     Default::new(body)
   }
 }
-/// grammars
+/// declarations
 impl Parser {
   fn next_vardef(&mut self, declspecs: DeclSpecs, declarator: Declarator) -> VarDef {
     let initializer = match self.peek(0) {
@@ -450,6 +474,9 @@ impl Parser {
     }
     declaration
   }
+}
+/// statements
+impl Parser {
   fn next_function_body(&mut self, declspec: DeclSpecs, declarator: Declarator) -> Function {
     let body = match self.tokens[self.cursor].literal {
       Literal::Operator(Operator::LeftBrace) => Some(self.next_block()),
@@ -631,6 +658,18 @@ impl Parser {
       Literal::Keyword(Keyword::Switch) => Statement::Switch(self.next_switch()),
       Literal::Operator(Operator::LeftBrace) => Statement::Compound(self.next_block()),
       Literal::Operator(Operator::Semicolon) => self.next_emptystmt(),
+      Literal::Keyword(Keyword::Case) => {
+        self.add_error("Case label not within switch statement".to_string());
+        // attempt to recover
+        _ = self.parse_case();
+        Statement::Empty()
+      }
+      Literal::Keyword(Keyword::Default) => {
+        self.add_error("Default label not within switch statement".to_string());
+        // ditto
+        _ = self.parse_default();
+        Statement::Empty()
+      }
       Literal::Keyword(Keyword::Goto) => self.next_gotostmt(),
       Literal::Keyword(_) => Statement::Declaration(self.next_declaration()),
       Literal::Identifier(ref ident) if self.typedefs.contains(&ident) => {
@@ -719,7 +758,9 @@ impl Parser {
       }
     }
   }
-
+}
+/// expressions
+impl Parser {
   fn next_factor(&mut self) -> Expression {
     self.get();
     let literal = &self

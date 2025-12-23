@@ -100,8 +100,10 @@ pub enum Keyword {
   #[strum(serialize = "imaginary")] // macro
   #[strum(serialize = "_Imaginary")]
   Imaginary,
+  // ^^^ pre C23 / C23 vvv
+  #[strum(serialize = "constexpr")]
+  Constexpr,
 }
-// ^^^ pre C23 / C23 vvv
 #[derive(Debug, Clone, Display, EnumString, PartialEq, Eq, ConstParamTy)]
 #[allow(unused)]
 pub enum Reserved {
@@ -111,8 +113,6 @@ pub enum Reserved {
   #[strum(serialize = "typeof_unqual")] // C23
   #[strum(serialize = "__typeof_unqual__")]
   TypeOfUnqual,
-  #[strum(serialize = "constexpr")]
-  Constexpr,
   #[strum(serialize = "nullptr")]
   Nullptr,
   #[strum(serialize = "true")]

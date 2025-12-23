@@ -1,7 +1,7 @@
 
 extern int j;
 static int j = 0;
-static int foo(int a) { return a + 1; }
+inline static static int foo(int a) { return a + 1; }
 int main(void) { //
   goto label;
   {
@@ -13,6 +13,7 @@ int main(void) { //
   INT x = 5;
   static int y = 1;
   switch (x) {
+  case 0:
   case 1:
     y = y + 1;
     x = x + 1;

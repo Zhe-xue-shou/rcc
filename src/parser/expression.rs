@@ -13,7 +13,6 @@ pub enum Expression {
   MemberAccess(MemberAccess),
   Ternary(Ternary),
   SizeOf(SizeOf),
-  Identifier(Identifier),
   Cast(Cast),                       // (int)x
   ArraySubscript(ArraySubscript),   // arr[i]
   CompoundLiteral(CompoundLiteral), // (struct Point){.x=1, .y=2}

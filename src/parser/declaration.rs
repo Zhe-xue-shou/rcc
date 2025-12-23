@@ -1,9 +1,9 @@
 use crate::common::keyword::Keyword;
 use crate::common::token::Literal;
-use crate::common::types::Primitive;
+use crate::common::types::Qualifiers;
 use crate::parser::expression::Expression;
 use crate::parser::statement::Compound;
-use ::strum_macros::{Display, EnumString};
+use ::strum_macros::Display;
 
 pub struct Program {
   pub declarations: Vec<Declaration>,
@@ -18,11 +18,13 @@ pub enum Declaration {
   Variable(VarDef),
 }
 /// storage-class-specifier
-#[derive(Display)]
+#[derive(Display, PartialEq, Eq)]
 pub enum Storage {
   /// variables that declared in block scope without any storage-class specifier
   /// are considered to have automatic storage duration.
+  #[strum(serialize = "auto")]
   Automatic,
+  #[strum(serialize = "register")]
   Register,
   /// - Function declarations with no storage-class specifier are always handled
   /// as though they include an extern specifier
@@ -34,15 +36,22 @@ pub enum Storage {
   /// extern int b;
   /// static int b = 0; // this is also valid... (internal linkage)
   /// ```
+  #[strum(serialize = "extern")]
   Extern,
   /// - At file scope, the static specifier indicates that a function or variable
   /// has internal linkage.
   /// - At block scope(i.e., for variables), the static specifier controls storage duration, not linkage.
+  #[strum(serialize = "static")]
   Static,
   /// according to standard, `typedef` is categorized as a storage-class specifier for **syntactic convenience only**.
+  #[strum(serialize = "typedef")]
   Typedef,
+  /// the variable is allocated when the thread is created
+  #[strum(serialize = "thread_local")]
   ThreadLocal, // I won't care about this now
-  Constexpr,   // ditto
+  /// C23, `#define VAR value` is the same `constexpr TYPE VAR = value;` with fewer name collisions
+  #[strum(serialize = "constexpr")]
+  Constexpr, // ditto
 }
 impl From<&Keyword> for Storage {
   fn from(kw: &Keyword) -> Self {
@@ -53,7 +62,7 @@ impl From<&Keyword> for Storage {
       Keyword::Static => Storage::Static,
       Keyword::Typedef => Storage::Typedef,
       Keyword::ThreadLocal => Storage::ThreadLocal,
-      // Keyword::Constexpr => Storage::Constexpr,
+      Keyword::Constexpr => Storage::Constexpr,
       _ => panic!("cannot convert {:?} to Storage", kw),
     }
   }
@@ -66,42 +75,22 @@ impl From<&Literal> for Storage {
     }
   }
 }
-/// type-specifier-qualifier:
-///      type-specifier
-///      type-qualifier
-///      alignment-specifier (don't care)
-/// type-qualifier
-#[derive(EnumString, Display)]
-pub enum Qualifier {
-  #[strum(serialize = "const")]
-  Const,
-  #[strum(serialize = "volatile")]
-  Volatile,
-  #[strum(serialize = "restrict")]
-  Restrict,
-  #[strum(serialize = "_Atomic")]
-  #[strum(serialize = "atomic")]
-  Atomic, // (don't care)
-}
-impl From<&Literal> for Qualifier {
+
+impl From<&Literal> for Qualifiers {
   fn from(literal: &Literal) -> Self {
     match literal {
       Literal::Keyword(kw) => match kw {
-        Keyword::Const => Qualifier::Const,
-        Keyword::Volatile => Qualifier::Volatile,
-        Keyword::Restrict => Qualifier::Restrict,
-        Keyword::Atomic => Qualifier::Atomic,
+        Keyword::Const => Qualifiers::Const,
+        Keyword::Volatile => Qualifiers::Volatile,
+        Keyword::Restrict => Qualifiers::Restrict,
+        Keyword::Atomic => Qualifiers::Atomic,
         _ => panic!("cannot convert {:?} to Qualifier", kw),
       },
       _ => panic!("cannot convert {:?} to Qualifier", literal),
     }
   }
 }
-pub enum Modifier {
-  Pointer(Vec<Qualifier>),
-  Array(ArrayModifier),
-  Function(FunctionSignature),
-}
+
 /// abstract declarator: no variable name/identifier
 ///
 /// used in parsing
@@ -113,20 +102,31 @@ pub enum DeclaratorType {
 }
 /// declarator:
 ///     pointer_opt direct-declarator
-/// direct-declarator:
-///     ( declarator )
-///     identifier attribute-specifier-sequence_opt
-///     array-declarator attribute-specifier-sequence_opt
-///     function-declarator attribute-specifier-sequence_opt
-///
-/// currently i only care about identifier and function-declarator!
 pub struct Declarator {
   pub name: Option<String>,
   pub modifiers: Vec<Modifier>, // pointer, array, function
 }
+/// direct-declarator:
+///     - ( declarator )
+///     - identifier attribute-specifier-sequence_opt
+///     - array-declarator attribute-specifier-sequence_opt
+///     - function-declarator attribute-specifier-sequence_opt
+///
+/// pointer:
+///     - \* attribute-specifier-sequenceopt type-qualifier-list_opt
+///     - \* attribute-specifier-sequenceopt type-qualifier-list_opt pointer
+///
+/// won't care about attribute-specifier-sequence for now
+///
+/// this is flatten structure, so the order of `Vec<Modifier>` in `Declarator` matters
+pub enum Modifier {
+  Pointer(Qualifiers),
+  Array(ArrayModifier),
+  Function(FunctionSignature),
+}
 pub struct Member {
-  pub specifiers: Vec<Specifier>,
-  pub qualifiers: Vec<Qualifier>,
+  pub specifiers: Vec<TypeSpecifier>,
+  pub qualifiers: Qualifiers,
   pub modifiers: Vec<Modifier>,
   pub declarator: Option<Declarator>,
   pub bit_width: Option<Expression>,
@@ -140,7 +140,7 @@ pub struct Struct {
   pub members: Vec<Member>,
 }
 /// type-specifier
-pub enum Specifier {
+pub enum TypeSpecifier {
   Void,
   Char,
   Short,
@@ -159,49 +159,55 @@ pub enum Specifier {
   Enum(EnumSpecifier),
 }
 
-// impl TryFrom<&str> for Specifier {
-//   type Error = ();
-//   fn try_from(s: &str) -> Result<Self, Self::Error> {
-//     match s {
-//       "void" => Ok(Specifier::Void),
-//       "char" => Ok(Specifier::Char),
-//       "short" => Ok(Specifier::Short),
-//       "int" => Ok(Specifier::Int),
-//       "long" => Ok(Specifier::Long),
-//       "float" => Ok(Specifier::Float),
-//       "double" => Ok(Specifier::Double),
-//       "signed" => Ok(Specifier::Signed),
-//       "unsigned" => Ok(Specifier::Unsigned),
-//       "bool" | "_Bool" => Ok(Specifier::Bool),
-//       "complex" | "_Complex" => Ok(Specifier::Complex),
-//       _ => Err(()),
-//     }
-//   }
-// }
+pub enum FunctionSpecifier {
+  Inline,
+  Noreturn,
+}
 
-impl TryFrom<&Keyword> for Specifier {
+impl TryFrom<&Keyword> for FunctionSpecifier {
   type Error = ();
   fn try_from(kw: &Keyword) -> Result<Self, Self::Error> {
     match kw {
-      Keyword::Void => Ok(Specifier::Void),
-      Keyword::Char => Ok(Specifier::Char),
-      Keyword::Short => Ok(Specifier::Short),
-      Keyword::Int => Ok(Specifier::Int),
-      Keyword::Long => Ok(Specifier::Long),
-      Keyword::Float => Ok(Specifier::Float),
-      Keyword::Double => Ok(Specifier::Double),
-      Keyword::Signed => Ok(Specifier::Signed),
-      Keyword::Unsigned => Ok(Specifier::Unsigned),
-      Keyword::Bool => Ok(Specifier::Bool),
+      Keyword::Inline => Ok(FunctionSpecifier::Inline),
+      Keyword::_Noreturn => Ok(FunctionSpecifier::Noreturn),
       _ => Err(()),
     }
   }
 }
-impl TryFrom<&Literal> for Specifier {
+
+impl TryFrom<&Literal> for FunctionSpecifier {
   type Error = ();
   fn try_from(literal: &Literal) -> Result<Self, Self::Error> {
     match literal {
-      Literal::Keyword(kw) => Specifier::try_from(kw),
+      Literal::Keyword(kw) => FunctionSpecifier::try_from(kw),
+      _ => Err(()),
+    }
+  }
+}
+
+impl TryFrom<&Keyword> for TypeSpecifier {
+  type Error = ();
+  fn try_from(kw: &Keyword) -> Result<Self, Self::Error> {
+    match kw {
+      Keyword::Void => Ok(TypeSpecifier::Void),
+      Keyword::Char => Ok(TypeSpecifier::Char),
+      Keyword::Short => Ok(TypeSpecifier::Short),
+      Keyword::Int => Ok(TypeSpecifier::Int),
+      Keyword::Long => Ok(TypeSpecifier::Long),
+      Keyword::Float => Ok(TypeSpecifier::Float),
+      Keyword::Double => Ok(TypeSpecifier::Double),
+      Keyword::Signed => Ok(TypeSpecifier::Signed),
+      Keyword::Unsigned => Ok(TypeSpecifier::Unsigned),
+      Keyword::Bool => Ok(TypeSpecifier::Bool),
+      _ => Err(()),
+    }
+  }
+}
+impl TryFrom<&Literal> for TypeSpecifier {
+  type Error = ();
+  fn try_from(literal: &Literal) -> Result<Self, Self::Error> {
+    match literal {
+      Literal::Keyword(kw) => TypeSpecifier::try_from(kw),
       _ => Err(()),
     }
   }
@@ -214,13 +220,13 @@ impl TryFrom<&Literal> for Specifier {
 ///    type-specifier-qualifier
 ///    function-specifier
 pub struct DeclSpecs {
-  pub inline_hint: bool, // function-specifier: inline and _Noreturn
+  pub function_specifiers: Vec<FunctionSpecifier>,
   pub storage_class: Option<Storage>,
-  pub qualifiers: Vec<Qualifier>,
-  pub specifiers: Vec<Specifier>,
+  pub qualifiers: Qualifiers,
+  pub type_specifiers: Vec<TypeSpecifier>,
 }
 pub struct Function {
-  pub declspec: DeclSpecs,
+  pub declspecs: DeclSpecs,
   pub declarator: Declarator,
   pub body: Option<Compound>,
 }
@@ -229,9 +235,13 @@ pub struct VarDef {
   pub declarator: Declarator,
   pub initializer: Option<Initializer>,
 }
-
+/// array-declarator:
+///     - direct-declarator \[ type-qualifier-list_opt assignment-expression_opt \]
+///     - direct-declarator \[ static type-qualifier-list_opt assignment-expression \]
+///     - direct-declarator \[ type-qualifier-list static assignment-expression \]
+///     - direct-declarator \[ type-qualifier-list_opt * \]
 pub struct ArrayModifier {
-  pub qualifiers: Vec<Qualifier>,
+  pub qualifiers: Qualifiers,
   pub is_static: bool,
   pub bound: ArrayBound,
 }
@@ -240,6 +250,8 @@ pub enum ArrayBound {
   Variable(Expression),
   Incomplete,
 }
+/// function-declarator:
+///     - direct-declarator ( parameter-type-list_opt )
 pub struct FunctionSignature {
   pub parameters: Vec<Parameter>,
   pub is_variadic: bool,
@@ -277,7 +289,7 @@ impl EnumSpecifier {
 impl Function {
   pub fn new(declspec: DeclSpecs, declarator: Declarator, body: Option<Compound>) -> Self {
     Self {
-      declspec,
+      declspecs: declspec,
       declarator,
       body,
     }
@@ -314,12 +326,6 @@ impl Program {
     }
   }
 }
-
-impl Keyword {
-  pub fn to_type(&self) -> Option<Primitive> {
-    Primitive::maybe_new(self.to_string())
-  }
-}
 impl Declarator {
   pub fn new(name: Option<String>) -> Self {
     Self {
@@ -331,10 +337,10 @@ impl Declarator {
 impl ::core::default::Default for DeclSpecs {
   fn default() -> Self {
     Self {
-      inline_hint: false,
+      function_specifiers: Vec::new(),
       storage_class: None,
-      qualifiers: Vec::new(),
-      specifiers: Vec::new(),
+      qualifiers: Qualifiers::empty(),
+      type_specifiers: Vec::new(),
     }
   }
 }
@@ -367,8 +373,8 @@ impl VarDef {
 mod fmt {
 
   use super::{
-    DeclSpecs, Declaration, EnumSpecifier, Function, FunctionSignature, Modifier, Program,
-    Specifier, Struct, VarDef,
+    DeclSpecs, Declaration, EnumSpecifier, Function, FunctionSignature, Modifier, Program, Struct,
+    TypeSpecifier, VarDef,
   };
   use ::std::fmt::{Debug, Display};
 
@@ -420,8 +426,8 @@ mod fmt {
           .collect::<Vec<_>>()
           .join(", "),
         self
-          .declspec
-          .specifiers
+          .declspecs
+          .type_specifiers
           .iter()
           .map(|s| s.to_string())
           .collect::<Vec<_>>()
@@ -485,7 +491,7 @@ mod fmt {
           "{}",
           param
             .specifications
-            .specifiers
+            .type_specifiers
             .iter()
             .map(|m| m.to_string())
             .collect::<Vec<_>>()
@@ -514,7 +520,7 @@ mod fmt {
           "typedef {} {};",
           self
             .declspecs
-            .specifiers
+            .type_specifiers
             .iter()
             .map(|s| s.to_string())
             .collect::<Vec<_>>()
@@ -530,7 +536,7 @@ mod fmt {
           "{} {}{}",
           self
             .declspecs
-            .specifiers
+            .type_specifiers
             .iter()
             .map(|s| s.to_string())
             .collect::<Vec<_>>()
@@ -563,28 +569,28 @@ mod fmt {
       <Self as Display>::fmt(self, f)
     }
   }
-  impl Display for Specifier {
+  impl Display for TypeSpecifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       match self {
-        Specifier::Void => write!(f, "void"),
-        Specifier::Char => write!(f, "char"),
-        Specifier::Short => write!(f, "short"),
-        Specifier::Int => write!(f, "int"),
-        Specifier::Long => write!(f, "long"),
-        Specifier::Float => write!(f, "float"),
-        Specifier::Double => write!(f, "double"),
-        Specifier::Signed => write!(f, "signed"),
-        Specifier::Unsigned => write!(f, "unsigned"),
-        Specifier::Bool => write!(f, "bool"),
-        Specifier::Complex => write!(f, "complex"),
-        Specifier::Typedef(name) => write!(f, "{}", name),
-        Specifier::Struct(s) => write!(f, "struct {}", s),
-        Specifier::Union(s) => write!(f, "union {}", s),
-        Specifier::Enum(e) => write!(f, "enum {}", e),
+        TypeSpecifier::Void => write!(f, "void"),
+        TypeSpecifier::Char => write!(f, "char"),
+        TypeSpecifier::Short => write!(f, "short"),
+        TypeSpecifier::Int => write!(f, "int"),
+        TypeSpecifier::Long => write!(f, "long"),
+        TypeSpecifier::Float => write!(f, "float"),
+        TypeSpecifier::Double => write!(f, "double"),
+        TypeSpecifier::Signed => write!(f, "signed"),
+        TypeSpecifier::Unsigned => write!(f, "unsigned"),
+        TypeSpecifier::Bool => write!(f, "bool"),
+        TypeSpecifier::Complex => write!(f, "complex"),
+        TypeSpecifier::Typedef(name) => write!(f, "{}", name),
+        TypeSpecifier::Struct(s) => write!(f, "struct {}", s),
+        TypeSpecifier::Union(s) => write!(f, "union {}", s),
+        TypeSpecifier::Enum(e) => write!(f, "enum {}", e),
       }
     }
   }
-  impl Debug for Specifier {
+  impl Debug for TypeSpecifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       <Self as Display>::fmt(self, f)
     }

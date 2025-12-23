@@ -23,8 +23,8 @@ impl Lexer {
       filepath: Rc::new(filepath),
     }
   }
-  pub fn errors(self) -> Vec<String> {
-    self.errors
+  pub fn errors(&self) -> &[String] {
+    &self.errors
   }
 
   fn add_error(&mut self, message: String) {

@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use std::str::FromStr;
 use strum_macros::EnumString;
 
-// C's built-in types
+// C's built-in types, I only consider x86_64 here for simplicity
 #[derive(Debug, Display, EnumString)]
 pub enum Primitive {
   // assume 64bit
@@ -32,30 +32,34 @@ pub enum Primitive {
   #[strum(serialize = "double")]
   #[strum(serialize = "long double")]
   Float64,
-  #[strum(serialize = "complex")]
+  #[strum(serialize = "void")]
+  Void,
+  // ignore below for now
   #[strum(serialize = "_Complex")]
-  #[strum(serialize = "complex float")]
   #[strum(serialize = "_Complex float")]
   ComplexFloat32,
-  #[strum(serialize = "complex double")]
   #[strum(serialize = "_Complex double")]
   ComplexFloat64,
-  #[strum(serialize = "complex long double")]
   #[strum(serialize = "_Complex long double")]
   ComplexFloat128,
   #[strum(serialize = "bool")]
   #[strum(serialize = "_Bool")]
   Bool, // _Bool, or just bool
-  #[strum(serialize = "void")]
-  Void, // void
-        // others: wchar_t, _Atomic, etc. ignored for now
+        // others: wchar_t, etc.
 }
 bitflags! {
-  #[derive(Copy, Clone)]
+/// type-specifier-qualifier:
+/// -    type-specifier
+/// -    type-qualifier
+/// -    alignment-specifier (don't care)
+///
+/// specifier would be merged into `Type` directly, so here only have qualifiers
+  #[derive(Copy, Clone, PartialEq)]
   pub struct Qualifiers: u8 {
     const Const = 0x01;
     const Volatile = 0x02;
     const Restrict = 0x04;
+    const Atomic = 0x08; // ignore for now
   }
 }
 pub struct QualifiedType {
@@ -66,7 +70,7 @@ pub enum Type {
   Primitive(Primitive),
   Array(Array),
   Pointer(Box<QualifiedType>),
-  FunctionPrototype(FunctionPrototype),
+  FunctionProto(FunctionProto),
   Enum(Enum),
   Record(Record),
   Union(Union),
@@ -76,14 +80,14 @@ pub enum Type {
 pub enum ArraySize {
   Constant(usize),
   Incomplete,
-  // Variable,
+  // Variable, // ignore for now
 }
 pub struct Array {
   pub element_type: Box<QualifiedType>,
   pub size: ArraySize,
 }
 
-pub struct FunctionPrototype {
+pub struct FunctionProto {
   pub return_type: Box<QualifiedType>,
   pub parameter_types: Vec<QualifiedType>,
   pub is_variadic: bool,
@@ -126,7 +130,7 @@ impl Primitive {
 }
 
 mod fmt {
-  use super::{Array, ArraySize, FunctionPrototype, QualifiedType, Qualifiers, Type};
+  use super::{Array, ArraySize, FunctionProto, QualifiedType, Qualifiers, Type};
   use ::std::fmt::{Debug, Display};
 
   impl Display for Qualifiers {
@@ -165,7 +169,7 @@ mod fmt {
     }
   }
 
-  impl Display for FunctionPrototype {
+  impl Display for FunctionProto {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       write!(f, "{}(", self.return_type)?;
       for (i, param) in self.parameter_types.iter().enumerate() {

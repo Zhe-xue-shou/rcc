@@ -1,9 +1,8 @@
+use crate::common::{error::Error, keyword::Keyword, token::Literal};
 use strum_macros::Display;
-use crate::common::keyword::Keyword;
-use crate::common::token::Literal;
 
 /// storage-class-specifier
-#[derive(Debug, Display, PartialEq, Eq)]
+#[derive(Debug, Display, PartialEq, Eq, Clone)]
 pub enum Storage {
   /// variables that declared in block scope without any storage-class specifier
   /// are considered to have automatic storage duration.
@@ -61,4 +60,47 @@ impl From<&Literal> for Storage {
       _ => panic!("cannot convert {:?} to Storage", literal),
     }
   }
+}
+
+impl Storage {
+  pub fn try_merge(lhs: &Storage, rhs: &Storage) -> Result<Storage, Error> {
+    match (lhs, rhs) {
+      (lhs, rhs) if lhs == rhs => Ok(lhs.clone()),
+      (Storage::Constexpr, _) | (_, Storage::Constexpr) => Err(()), // unimplemented
+      (Storage::Typedef, _) | (_, Storage::Typedef) => Err(()),     // unmergeable
+      (Storage::Extern, other) | (other, Storage::Extern) => Ok(other.clone()), // extern is compatible with any other storage class
+      _ => Err(()),
+    }
+  }
+
+  // pub fn try_merge_with_funcspecs(
+  //   lhs: (
+  //     Option<&Storage>,
+  //     &FunctionSpecifier,
+  //     bool, /* is definition */
+  //   ),
+  //   rhs: (
+  //     Option<&Storage>,
+  //     &FunctionSpecifier,
+  //     bool, /* is definition */
+  //   ),
+  // ) -> Result<(Storage, FunctionSpecifier), Error> {
+  //   assert_eq!(
+  //     lhs.2 && rhs.2,
+  //     false,
+  //     "both cannot be definitions and should be handled before calling this"
+  //   );
+  //   type FS = FunctionSpecifier;
+  //   let merged_storage = match (lhs.0, rhs.0) {
+  //     (Some(l), Some(r)) => Some(Storage::try_merge(l, r)?),
+  //     (Some(l), None) => Some(l.clone()),
+  //     (None, Some(r)) => Some(r.clone()),
+  //     (None, None) => None,
+  //   };
+  //   let merged_funcspecs = *lhs.1 | *rhs.1;
+  //   match (merged_storage, merged_funcspecs) {
+  //     (None, funcspecs) => Ok((Storage::Extern, funcspecs)), // default storage class for functions is extern
+  //     (Some(storage), funcspecs) => Ok((storage, funcspecs)),
+  //   }
+  // }
 }

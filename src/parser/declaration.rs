@@ -6,7 +6,7 @@ use crate::{
   parser::{expression::Expression, statement::Compound},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Program {
   pub declarations: Vec<Declaration>,
 }
@@ -81,7 +81,7 @@ pub struct Member {
 }
 #[derive(Debug)]
 pub struct Parameter {
-  pub specifications: DeclSpecs,
+  pub declspecs: DeclSpecs,
   pub declarator: Declarator,
 }
 #[derive(Debug)]
@@ -266,9 +266,9 @@ impl EnumSpecifier {
   }
 }
 impl Function {
-  pub fn new(declspec: DeclSpecs, declarator: Declarator, body: Option<Compound>) -> Self {
+  pub fn new(declspecs: DeclSpecs, declarator: Declarator, body: Option<Compound>) -> Self {
     Self {
-      declspecs: declspec,
+      declspecs,
       declarator,
       body,
     }
@@ -291,9 +291,9 @@ impl ::core::default::Default for FunctionSignature {
   }
 }
 impl Parameter {
-  pub fn new(specifications: DeclSpecs, declarator: Declarator) -> Self {
+  pub fn new(declspecs: DeclSpecs, declarator: Declarator) -> Self {
     Self {
-      specifications,
+      declspecs,
       declarator,
     }
   }
@@ -449,7 +449,7 @@ mod fmt {
           f,
           "{}",
           param
-            .specifications
+            .declspecs
             .type_specifiers
             .iter()
             .map(|m| m.to_string())

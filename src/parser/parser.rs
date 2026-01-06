@@ -80,6 +80,7 @@ impl Parser {
     }
     index
   }
+  /// consume and return the index of the token if it's OP; else, panic.
   fn must_get_op<const OP: Operator>(&mut self) -> usize {
     let index = self.get();
     if matches!(&self.tokens[index].literal, Literal::Operator(op) if *op != OP) {
@@ -101,6 +102,7 @@ impl Parser {
     self.cursor += offset;
     index
   }
+  /// if the next token is OP, consume it; else, report an error - but does not consume it.
   fn recoverable_get<const OP: Operator>(&mut self) {
     if *self.peek(0) != Literal::Operator(OP) {
       self.add_error(format!("Expect '{}' ", OP));
@@ -478,7 +480,7 @@ impl Parser {
 }
 /// statements
 impl Parser {
-  fn next_function_body(&mut self, declspec: DeclSpecs, declarator: Declarator) -> Function {
+  fn next_function_body(&mut self, declspecs: DeclSpecs, declarator: Declarator) -> Function {
     let body = match self.tokens[self.cursor].literal {
       Literal::Operator(Operator::LeftBrace) => Some(self.next_block()),
       _ => {
@@ -487,7 +489,7 @@ impl Parser {
       }
     };
 
-    Function::new(declspec, declarator, body)
+    Function::new(declspecs, declarator, body)
   }
   fn next_block(&mut self) -> Compound {
     self.must_get_op::<{ Operator::LeftBrace }>();
@@ -516,8 +518,8 @@ impl Parser {
   fn next_if(&mut self) -> If {
     self.must_get_key::<{ Keyword::If }>();
     let condition = self.parse_paren_expression();
-    let if_branch = self.next_statement();
-    self.ios_c_strict_check_for_decl(&if_branch);
+    let then_branch = self.next_statement();
+    self.ios_c_strict_check_for_decl(&then_branch);
     let else_branch = if self.peek(0) == &Literal::Keyword(Keyword::Else) {
       self.must_get_key::<{ Keyword::Else }>();
       let body = self.next_statement();
@@ -526,7 +528,7 @@ impl Parser {
     } else {
       None
     };
-    If::new(condition, if_branch, else_branch)
+    If::new(condition, Box::new(then_branch), else_branch.map(Box::new))
   }
   fn next_while(&mut self) -> While {
     self.must_get_key::<{ Keyword::While }>();
@@ -536,7 +538,11 @@ impl Parser {
       .push(Statement::new_loop_dummy_identifier("while"));
     let body = self.next_statement();
     self.ios_c_strict_check_for_decl(&body);
-    let while_stmt = While::new(condition, body, self.loop_labels.last().unwrap().clone());
+    let while_stmt = While::new(
+      condition,
+      Box::new(body),
+      self.loop_labels.last().unwrap().clone(),
+    );
     self.loop_labels.pop();
     while_stmt
   }
@@ -551,7 +557,11 @@ impl Parser {
     let condition = self.parse_paren_expression();
     assert_eq!(*self.peek(0), Literal::Operator(Operator::Semicolon));
     self.must_get_op::<{ Operator::Semicolon }>();
-    let dowhile_stmt = DoWhile::new(body, condition, self.loop_labels.last().unwrap().clone());
+    let dowhile_stmt = DoWhile::new(
+      Box::new(body),
+      condition,
+      self.loop_labels.last().unwrap().clone(),
+    );
     self.loop_labels.pop();
     dowhile_stmt
   }
@@ -608,10 +618,10 @@ impl Parser {
       let body = self.next_statement();
       self.ios_c_strict_check_for_decl(&body);
       let for_stmt = For::new(
-        initializer,
+        initializer.map(Box::new),
         condition,
         increment,
-        body,
+        Box::new(body),
         self.loop_labels.last().unwrap().clone(),
       );
       self.loop_labels.pop();

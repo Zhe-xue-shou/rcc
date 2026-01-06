@@ -90,7 +90,7 @@ pub struct MemberAccess<ExprTy> {
 #[derive(Debug)]
 pub struct Ternary<ExprTy> {
   pub condition: Box<ExprTy>,
-  pub if_branch: Box<ExprTy>,
+  pub then_branch: Box<ExprTy>,
   pub else_branch: Box<ExprTy>,
 }
 #[derive(Debug)]
@@ -153,10 +153,10 @@ impl<ExprTy> Binary<ExprTy> {
   }
 }
 impl<ExprTy> Ternary<ExprTy> {
-  pub fn new(condition: ExprTy, if_branch: ExprTy, else_branch: ExprTy) -> Self {
+  pub fn new(condition: ExprTy, then_branch: ExprTy, else_branch: ExprTy) -> Self {
     Self {
       condition: Box::new(condition),
-      if_branch: Box::new(if_branch),
+      then_branch: Box::new(then_branch),
       else_branch: Box::new(else_branch),
     }
   }
@@ -245,7 +245,7 @@ mod fmt {
       write!(
         f,
         "({} ? {} : {})",
-        self.condition, self.if_branch, self.else_branch
+        self.condition, self.then_branch, self.else_branch
       )
     }
   }

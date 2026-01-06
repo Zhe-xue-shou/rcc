@@ -1,11 +1,11 @@
 use ::bitflags::bitflags;
-use ::strum_macros::Display;
+use ::strum_macros::{Display, IntoStaticStr};
 use std::fmt::Debug;
 use std::str::FromStr;
 use strum_macros::EnumString;
 
 // C's built-in types, I only consider x86_64 here for simplicity
-#[derive(Debug, Display, EnumString, Clone, PartialEq)]
+#[derive(Debug, Display, IntoStaticStr, EnumString, Clone, PartialEq)]
 pub enum Primitive {
   // assume 64bit
   #[strum(serialize = "char")]
@@ -44,7 +44,7 @@ pub enum Primitive {
   #[strum(serialize = "bool")]
   #[strum(serialize = "_Bool")]
   Bool,
-  // wchar_t is a built-in in C++, but not C; in C it's a typedef of unsigned short on x86_64 Windows
+  // wchar_t is a built-in in C++, but not C.
 }
 
 bitflags! {
@@ -97,6 +97,18 @@ pub struct Array {
   pub element_type: Box<QualifiedType>,
   pub size: ArraySize,
 }
+/// function types themselves don't have qualifiers, but pointers to them can.
+/// so the functionproto's qualifiers must be dropped.
+///
+/// ```c
+/// int func(int a, float b);
+/// int (*pfunc)(int, float) = &func;
+/// int (*const cpfunc)(int, float) = &func;
+///
+/// const int* cptr_func(int a, float b);
+/// const int* (*pfunc2)(int, float) = &cptr_func;
+/// const int* (*const cpfunc2)(int, float) = &cptr_func;
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionProto {
   pub return_type: Box<QualifiedType>,
@@ -149,7 +161,28 @@ impl Primitive {
     }
   }
 }
+impl FunctionProto {
+  pub fn new(
+    return_type: QualifiedType,
+    parameter_types: Vec<QualifiedType>,
+    is_variadic: bool,
+  ) -> Self {
+    Self {
+      return_type: Box::new(return_type),
+      parameter_types,
+      is_variadic,
+    }
+  }
+}
 
+impl Type {
+  pub fn function_proto(&self) -> &FunctionProto {
+    match self {
+      Type::FunctionProto(function_proto) => function_proto,
+      _ => panic!("Type is not FunctionProto"),
+    }
+  }
+}
 mod fmt {
   use super::{Array, ArraySize, FunctionProto, QualifiedType, Qualifiers, Type};
   use ::std::fmt::Display;
@@ -207,6 +240,7 @@ mod fmt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       match self {
         Type::Primitive(builtin) => write!(f, "{}", builtin),
+        Type::FunctionProto(proto) => write!(f, "{}", proto),
         _ => todo!(),
       }
     }

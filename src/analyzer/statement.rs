@@ -4,6 +4,7 @@ use crate::{
 };
 // no additional info like that one we do in Expression?
 // alright, just repeat the same structure again -- stop abstracting here
+#[derive(Debug)]
 pub enum Statement {
   Empty(),
   Return(Return),

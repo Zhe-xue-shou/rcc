@@ -46,7 +46,7 @@ pub struct Return<ExprTy> {
 #[derive(Debug)]
 pub struct If<StmtTy, ExprTy> {
   pub condition: ExprTy,
-  pub if_branch: Box<StmtTy>,
+  pub then_branch: Box<StmtTy>,
   pub else_branch: Option<Box<StmtTy>>,
 }
 
@@ -54,23 +54,23 @@ pub struct If<StmtTy, ExprTy> {
 pub struct While<StmtTy, ExprTy> {
   pub condition: ExprTy,
   pub body: Box<StmtTy>,
-  label: String,
+  pub label: String,
 }
 
 #[derive(Debug)]
 pub struct DoWhile<StmtTy, ExprTy> {
   pub body: Box<StmtTy>,
   pub condition: ExprTy,
-  label: String,
+  pub label: String,
 }
 
 #[derive(Debug)]
 pub struct For<StmtTy, ExprTy> {
-  pub initialization: Option<Box<StmtTy>>,
+  pub initializer: Option<Box<StmtTy>>,
   pub condition: Option<ExprTy>,
   pub increment: Option<ExprTy>,
   pub body: Box<StmtTy>,
-  label: String,
+  pub label: String,
 }
 
 #[derive(Debug)]
@@ -158,11 +158,15 @@ impl<StmtTy, ExprTy> Case<StmtTy, ExprTy> {
 }
 
 impl<StmtTy, ExprTy> If<StmtTy, ExprTy> {
-  pub fn new(condition: ExprTy, if_branch: StmtTy, else_branch: Option<StmtTy>) -> Self {
+  pub fn new(
+    condition: ExprTy,
+    then_branch: Box<StmtTy>,
+    else_branch: Option<Box<StmtTy>>,
+  ) -> Self {
     Self {
       condition,
-      if_branch: Box::new(if_branch),
-      else_branch: else_branch.map(Box::new),
+      then_branch,
+      else_branch,
     }
   }
 }
@@ -176,10 +180,10 @@ impl<ExprTy> Return<ExprTy> {
 }
 
 impl<StmtTy, ExprTy> While<StmtTy, ExprTy> {
-  pub fn new(condition: ExprTy, body: StmtTy, label: String) -> Self {
+  pub fn new(condition: ExprTy, body: Box<StmtTy>, label: String) -> Self {
     Self {
       condition,
-      body: Box::new(body),
+      body,
       label,
     }
   }
@@ -189,9 +193,9 @@ impl<StmtTy, ExprTy> While<StmtTy, ExprTy> {
 }
 
 impl<StmtTy, ExprTy> DoWhile<StmtTy, ExprTy> {
-  pub fn new(body: StmtTy, condition: ExprTy, label: String) -> Self {
+  pub fn new(body: Box<StmtTy>, condition: ExprTy, label: String) -> Self {
     Self {
-      body: Box::new(body),
+      body,
       condition,
       label,
     }
@@ -203,17 +207,17 @@ impl<StmtTy, ExprTy> DoWhile<StmtTy, ExprTy> {
 
 impl<StmtTy, ExprTy> For<StmtTy, ExprTy> {
   pub fn new(
-    initialization: Option<StmtTy>,
+    initializer: Option<Box<StmtTy>>,
     condition: Option<ExprTy>,
     increment: Option<ExprTy>,
-    body: StmtTy,
+    body: Box<StmtTy>,
     label: String,
   ) -> Self {
     Self {
-      initialization: initialization.map(Box::new),
+      initializer,
       condition,
       increment,
-      body: Box::new(body),
+      body,
       label,
     }
   }
@@ -284,7 +288,7 @@ mod fmt {
 
   impl<StmtTy: Display, ExprTy: Display> Display for If<StmtTy, ExprTy> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      write!(f, "if {} {}", self.condition, self.if_branch)?;
+      write!(f, "if {} {}", self.condition, self.then_branch)?;
       if let Some(else_branch) = &self.else_branch {
         write!(f, " else {}", else_branch)?;
       }
@@ -319,7 +323,7 @@ mod fmt {
       write!(
         f,
         "for ({}; {}; {}) {}",
-        match &self.initialization {
+        match &self.initializer {
           Some(init) => format!("{}", init),
           None => String::from(""),
         },

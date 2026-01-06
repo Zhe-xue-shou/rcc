@@ -65,7 +65,7 @@ fn main() {
     return;
   }
   let mut analyzer = Analyzer::new(program);
-  let _translation_unit = analyzer.analyze();
+  let translation_unit = analyzer.analyze();
 
   let analyze_warnings = analyzer.warnings();
   if !analyze_warnings.is_empty() {
@@ -78,5 +78,6 @@ fn main() {
     analyze_errors.iter().for_each(|e| eprintln!("{e}"));
     exit(1);
   }
+  println!("{:}", translation_unit.unwrap());
   println!("Analyze succeeded.");
 }

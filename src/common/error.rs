@@ -1,9 +1,2 @@
-use crate::common::token::SourceLocation;
-
-// #[derive(Default, Debug)]
-// pub struct Error {
-//   location: SourceLocation,
-//   message: String,
-// }
-
+/// im focusing the ast right now, so left error handling as a placeholder
 pub type Error = ();

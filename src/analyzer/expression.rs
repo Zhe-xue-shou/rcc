@@ -8,7 +8,7 @@ use crate::{
   type_alias_expr,
 };
 
-type_alias_expr! {Expression,SymbolRef}
+type_alias_expr! {Expression,SymbolRef, QualifiedType}
 #[derive(Debug, Clone, Copy, Display, PartialEq)]
 pub enum ValueCategory {
   LValue,
@@ -55,6 +55,9 @@ impl Expression {
       ..self
     }
   }
+}
+impl Expression {
+  // pub fn decay(self) -> Self {}
 }
 impl ::core::default::Default for Expression {
   fn default() -> Self {

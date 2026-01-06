@@ -69,6 +69,7 @@ pub enum Keyword {
   #[strum(serialize = "restrict")]
   Restrict,
   #[strum(serialize = "thread_local")]
+  #[strum(serialize = "_Thread_local")]
   ThreadLocal,
   #[strum(serialize = "inline")]
   Inline,

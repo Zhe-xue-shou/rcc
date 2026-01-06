@@ -1,12 +1,11 @@
-use crate::common::operator::Operator;
-use crate::common::types::QualifiedType;
+use crate::common::{operator::Operator, types::QualifiedType};
 
 /// likely a sophisticated version of the Two-Level Types  
 /// [this article](https://blog.ezyang.com/2013/05/the-ast-typing-problem/),
 /// I probably used the Parametric Polymorphism to "tie the knot" of recursion.
 #[derive(Debug)]
 #[allow(unused)]
-pub enum RawExpr<ExprTy, VarTy> {
+pub enum RawExpr<ExprTy, VarTy, TypeTy> {
   Empty, // no-op for error recovery; for empty expr should use Option<ExprTy> instead
   Constant(Constant),
   Unary(Unary<ExprTy>),
@@ -16,7 +15,7 @@ pub enum RawExpr<ExprTy, VarTy> {
   Call(Call<ExprTy>),
   MemberAccess(MemberAccess<ExprTy>),
   Ternary(Ternary<ExprTy>),
-  SizeOf(SizeOf<ExprTy>),
+  SizeOf(SizeOf<ExprTy, TypeTy>),
   Cast(Cast<ExprTy>),                     // (int)x
   ArraySubscript(ArraySubscript<ExprTy>), // arr[i]
   CompoundLiteral(CompoundLiteral),       // (struct Point){.x=1, .y=2}
@@ -24,8 +23,8 @@ pub enum RawExpr<ExprTy, VarTy> {
 
 #[macro_export(local_inner_macros)]
 macro_rules! type_alias_expr {
-  ($exprty:ident,$varty:ident) => {
-    pub type RawExpr = crate::common::rawexpr::RawExpr<$exprty, $varty>;
+  ($exprty:ident,$varty:ident,$typety:ident) => {
+    pub type RawExpr = crate::common::rawexpr::RawExpr<$exprty, $varty, $typety>;
     pub type Constant = crate::common::rawexpr::Constant;
     pub type Unary = crate::common::rawexpr::Unary<$exprty>;
     pub type Binary = crate::common::rawexpr::Binary<$exprty>;
@@ -34,7 +33,7 @@ macro_rules! type_alias_expr {
     pub type Call = crate::common::rawexpr::Call<$exprty>;
     pub type MemberAccess = crate::common::rawexpr::MemberAccess<$exprty>;
     pub type Ternary = crate::common::rawexpr::Ternary<$exprty>;
-    pub type SizeOf = crate::common::rawexpr::SizeOf<$exprty>;
+    pub type SizeOf = crate::common::rawexpr::SizeOf<$exprty, $typety>;
     pub type Cast = crate::common::rawexpr::Cast<$exprty>;
     pub type ArraySubscript = crate::common::rawexpr::ArraySubscript<$exprty>;
     pub type CompoundLiteral = crate::common::rawexpr::CompoundLiteral;
@@ -43,23 +42,22 @@ macro_rules! type_alias_expr {
 
 #[derive(Debug)]
 pub enum Constant {
-  Int8(i8),
-  Int16(i16),
-  Int32(i32),
-  Int64(i64),
-  Uint8(u8),
-  Uint16(u16),
-  Uint32(u32),
-  Uint64(u64),
-  Float32(f32),
-  Float64(f64),
+  Char(i8),
+  Short(i16),
+  Int(i32),
+  LongLong(i64),
+  UChar(u8),
+  UShort(u16),
+  UInt(u32),
+  ULongLong(u64),
+  Float(f32),
+  Double(f64),
   Bool(bool),
   String(String),
 }
 #[derive(Debug)]
 pub struct Unary<ExprTy> {
   pub operator: Operator,
-  // This pattern is ubiquitous in Rust AST libraries -- Box is literally everywhere in recursive data structures.
   pub expression: Box<ExprTy>,
 }
 #[derive(Debug)]
@@ -94,8 +92,8 @@ pub struct Ternary<ExprTy> {
   pub else_branch: Box<ExprTy>,
 }
 #[derive(Debug)]
-pub enum SizeOf<ExprTy> {
-  // Type(String), // ignore for now
+pub enum SizeOf<ExprTy, TypeTy> {
+  Type(TypeTy), // ignore for now
   Expression(Box<ExprTy>),
 }
 
@@ -118,7 +116,7 @@ pub struct CompoundLiteral {
 impl Constant {
   pub fn from_str(str: &String) -> Self {
     let int32 = str.clone().parse::<i32>().unwrap();
-    Self::Int32(int32)
+    Self::Int(int32)
   }
 }
 
@@ -180,7 +178,7 @@ mod fmt {
     }
   }
 
-  impl<ExprTy: Display, VarTy> Display for RawExpr<ExprTy, VarTy>
+  impl<ExprTy: Display, VarTy, TypeTy> Display for RawExpr<ExprTy, VarTy, TypeTy>
   where
     Variable<VarTy>: Display,
   {
@@ -215,16 +213,16 @@ mod fmt {
   impl Display for Constant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       match self {
-        Constant::Int8(i) => write!(f, "{}", i),
-        Constant::Int16(i) => write!(f, "{}", i),
-        Constant::Int32(i) => write!(f, "{}", i),
-        Constant::Int64(i) => write!(f, "{}", i),
-        Constant::Uint8(u) => write!(f, "{}", u),
-        Constant::Uint16(u) => write!(f, "{}", u),
-        Constant::Uint32(u) => write!(f, "{}", u),
-        Constant::Uint64(u) => write!(f, "{}", u),
-        Constant::Float32(fl) => write!(f, "{}", fl),
-        Constant::Float64(fl) => write!(f, "{}", fl),
+        Constant::Char(i) => write!(f, "{}", i),
+        Constant::Short(i) => write!(f, "{}", i),
+        Constant::Int(i) => write!(f, "{}", i),
+        Constant::LongLong(i) => write!(f, "{}", i),
+        Constant::UChar(u) => write!(f, "{}", u),
+        Constant::UShort(u) => write!(f, "{}", u),
+        Constant::UInt(u) => write!(f, "{}", u),
+        Constant::ULongLong(u) => write!(f, "{}", u),
+        Constant::Float(fl) => write!(f, "{}", fl),
+        Constant::Double(fl) => write!(f, "{}", fl),
         Constant::Bool(b) => write!(f, "{}", b),
         Constant::String(s) => write!(f, "\"{}\"", s),
       }

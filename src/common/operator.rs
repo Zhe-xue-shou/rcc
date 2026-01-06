@@ -94,7 +94,7 @@ pub enum Operator {
   #[strum(serialize = "->")]
   Arrow,
   #[strum(serialize = "::")]
-  DoubleColon, // in C this is only for [[prefix::attribute]]
+  DoubleColon, // in C this is only for [[prefix::attribute]] in C23 and later
 
   #[strum(serialize = "...")]
   Ellipsis,
@@ -109,6 +109,12 @@ pub enum Operator {
 }
 
 impl Operator {
+  /// default precedence level when parsing expressions
+  pub const DEFAULT: u8 = 0x00;
+  /// when parsing function call arguments or functiondecl, use this to stop at ',' or ')'
+  pub const EXCOMMA: u8 = 0x04;
+  /// use this to stop before `:`, excluding the `,` in ternary operator
+  pub const TERNARY: u8 = 0x06;
   pub fn unary(&self) -> bool {
     matches!(
       self,
@@ -179,9 +185,28 @@ impl Operator {
       Operator::And => 0x10,
       // logical OR
       Operator::Or => 0x08,
+      // Question mark: 0x06,
       // assignment - it's a trick since it's mostly right associative
       Operator::Assign => 0x04,
+      // comma operator
+      Operator::Comma => 0x02,
       _ => unreachable!(),
     }
+  }
+  pub fn is_right_associative(&self) -> bool {
+    matches!(
+      self,
+      Operator::Assign
+        | Operator::PlusAssign
+        | Operator::MinusAssign
+        | Operator::StarAssign
+        | Operator::SlashAssign
+        | Operator::PercentAssign
+        | Operator::AmpersandAssign
+        | Operator::PipeAssign
+        | Operator::CaretAssign
+        | Operator::LeftShiftAssign
+        | Operator::RightShiftAssign
+    )
   }
 }

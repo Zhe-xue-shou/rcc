@@ -10,7 +10,10 @@ use crate::{
     error::Error,
     rawdecl::FunctionSpecifier,
     storage::Storage,
-    types::{Array, ArraySize, FunctionProto, Primitive, QualifiedType, Qualifiers, Type},
+    types::{
+      Array, ArraySize, Compatibility, FunctionProto, Pointer, Primitive, QualifiedType,
+      Qualifiers, Type,
+    },
   },
   parser::{declaration as pd, expression as pe, statement as ps},
 };
@@ -19,7 +22,6 @@ use crate::{
 use ::pretty_assertions::assert_eq;
 
 type TypeRes = Result<Type, Error>;
-type QualifiedTypeRes = Result<QualifiedType, Error>;
 type ExprRes = Result<ae::Expression, Error>;
 type DeclRes<T> = Result<T, Error>;
 type StmtRes<T> = Result<T, Error>;
@@ -154,7 +156,10 @@ impl Analyzer {
       let new_declkind = vardef.symbol.borrow().declkind.clone();
       // todo: type checking so that redeclaration/definition with different type is caught
       // not just compare
-      if prev_symbol_ref.borrow().qualified_type != vardef.symbol.borrow().qualified_type {
+      if !QualifiedType::compatible(
+        &prev_symbol_ref.borrow().qualified_type,
+        &vardef.symbol.borrow().qualified_type,
+      ) {
         return Err(()); // error: conflicting types for redeclaration/definition
       }
       type VDK = VarDeclKind;
@@ -176,8 +181,12 @@ impl Analyzer {
                 _ = error;
                 prev.storage_class.clone()
               });
+            prev.qualified_type = QualifiedType::composite_unchecked(
+              &vardef.symbol.borrow().qualified_type,
+              &prev_symbol_ref.borrow().qualified_type,
+            );
 
-            // drop(prev) and drop(new_symbol)
+            // dropped prev and new_symbol here
           }
 
           Ok(vardef)
@@ -250,8 +259,10 @@ impl Analyzer {
     for modifier in modifiers.into_iter().rev() {
       match modifier {
         pd::Modifier::Pointer(qualifiers) => {
-          qualified_type =
-            QualifiedType::new(Qualifiers::empty(), Type::Pointer(Box::new(qualified_type)));
+          qualified_type = QualifiedType::new(
+            qualifiers,
+            Type::Pointer(Pointer::new(Box::new(qualified_type))),
+          );
         }
         pd::Modifier::Array(array_mod) => {
           let size = match array_mod.bound {
@@ -301,7 +312,7 @@ impl Analyzer {
       .iter()
       .map(|param| match &param.symbol {
         Some(sym) => sym.borrow().qualified_type.clone(),
-        None => QualifiedType::new(Qualifiers::empty(), Type::Primitive(Primitive::Int32)), // default to int
+        None => QualifiedType::new(Qualifiers::empty(), Type::Primitive(Primitive::Int)), // default to int
       })
       .collect::<Vec<QualifiedType>>();
     let functionproto = FunctionProto::new(return_type, parameter_types, is_variadic);
@@ -357,38 +368,38 @@ impl Analyzer {
     // 6.7.3.1
     let m = match type_specifiers.as_slice() {
       [Ts::Void] => Type::Primitive(Primitive::Void),
-      [Ts::Char] => Type::Primitive(Primitive::Int8),
-      [Ts::Signed, Ts::Char] => Type::Primitive(Primitive::Int8),
-      [Ts::Unsigned, Ts::Char] => Type::Primitive(Primitive::Uint8),
+      [Ts::Char] => Type::Primitive(Primitive::Char),
+      [Ts::Signed, Ts::Char] => Type::Primitive(Primitive::Char),
+      [Ts::Unsigned, Ts::Char] => Type::Primitive(Primitive::UChar),
       [Ts::Short]
       | [Ts::Short, Ts::Int]
       | [Ts::Signed, Ts::Short]
-      | [Ts::Signed, Ts::Short, Ts::Int] => Type::Primitive(Primitive::Int16),
+      | [Ts::Signed, Ts::Short, Ts::Int] => Type::Primitive(Primitive::Short),
       [Ts::Unsigned, Ts::Short] | [Ts::Unsigned, Ts::Short, Ts::Int] => {
-        Type::Primitive(Primitive::Uint16)
+        Type::Primitive(Primitive::UShort)
       }
-      [Ts::Int] | [Ts::Signed] | [Ts::Signed, Ts::Int] => Type::Primitive(Primitive::Int32),
-      [Ts::Unsigned] | [Ts::Unsigned, Ts::Int] => Type::Primitive(Primitive::Uint32),
+      [Ts::Int] | [Ts::Signed] | [Ts::Signed, Ts::Int] => Type::Primitive(Primitive::Int),
+      [Ts::Unsigned] | [Ts::Unsigned, Ts::Int] => Type::Primitive(Primitive::UInt),
       [Ts::Long]
       | [Ts::Long, Ts::Int]
       | [Ts::Signed, Ts::Long]
-      | [Ts::Signed, Ts::Long, Ts::Int] => Type::Primitive(Primitive::Int64),
+      | [Ts::Signed, Ts::Long, Ts::Int] => Type::Primitive(Primitive::LongLong),
       [Ts::Unsigned, Ts::Long] | [Ts::Unsigned, Ts::Long, Ts::Int] => {
-        Type::Primitive(Primitive::Uint64)
+        Type::Primitive(Primitive::ULongLong)
       }
       [Ts::Long, Ts::Long]
       | [Ts::Long, Ts::Long, Ts::Int]
       | [Ts::Signed, Ts::Long, Ts::Long]
-      | [Ts::Signed, Ts::Long, Ts::Long, Ts::Int] => Type::Primitive(Primitive::Int64),
+      | [Ts::Signed, Ts::Long, Ts::Long, Ts::Int] => Type::Primitive(Primitive::LongLong),
       [Ts::Unsigned, Ts::Long, Ts::Long] | [Ts::Unsigned, Ts::Long, Ts::Long, Ts::Int] => {
-        Type::Primitive(Primitive::Uint64)
+        Type::Primitive(Primitive::ULongLong)
       }
-      [Ts::Float] => Type::Primitive(Primitive::Float32),
+      [Ts::Float] => Type::Primitive(Primitive::Float),
       // treat long double as double for now
-      [Ts::Double] | [Ts::Long, Ts::Double] => Type::Primitive(Primitive::Float64),
-      [Ts::Float, Ts::Complex] => Type::Primitive(Primitive::Float32),
+      [Ts::Double] | [Ts::Long, Ts::Double] => Type::Primitive(Primitive::Double),
+      [Ts::Float, Ts::Complex] => Type::Primitive(Primitive::Float),
       [Ts::Double, Ts::Complex] | [Ts::Long, Ts::Double, Ts::Complex] => {
-        Type::Primitive(Primitive::Float64)
+        Type::Primitive(Primitive::Double)
       }
       [Ts::Bool] => Type::Primitive(Primitive::Bool),
 
@@ -408,14 +419,53 @@ impl Analyzer {
       pe::Expression::Binary(binary) => self.analyze_binary(binary),
       pe::Expression::Assignment(assignment) => self.analyze_assignment(assignment),
       pe::Expression::Variable(variable) => self.analyze_variable(variable),
-      pe::Expression::Call(call) => todo!(),
+      pe::Expression::Call(call) => self.analyze_call(call),
       pe::Expression::MemberAccess(member_access) => todo!(),
       pe::Expression::Ternary(ternary) => self.analyze_ternary(ternary),
-      pe::Expression::SizeOf(size_of) => todo!(),
+      pe::Expression::SizeOf(sizeof) => self.analyze_sizeof(sizeof),
       pe::Expression::Cast(cast) => todo!(),
       pe::Expression::ArraySubscript(array_subscript) => todo!(),
       pe::Expression::CompoundLiteral(compound_literal) => todo!(),
     }
+  }
+  fn analyze_sizeof(&mut self, sizeof: pe::SizeOf) -> ExprRes {
+    match sizeof {
+      pe::SizeOf::Expression(expression) => {
+        let analyzed_expr = self.analyze_expression(*expression)?;
+        let size = analyzed_expr.qualified_type().unqualified_type.size();
+        Ok(ae::Expression::new(
+          ae::RawExpr::Constant(ae::Constant::ULongLong(size as u64)),
+          QualifiedType::new(Qualifiers::empty(), Type::Primitive(Primitive::ULongLong)),
+          ValueCategory::RValue,
+        ))
+      }
+      pe::SizeOf::Type(unprocessed_type) => {
+        let pe::UnprocessedType {
+          declspecs,
+          declarator,
+        } = unprocessed_type;
+        let qualified_type = {
+          let (_, _, base_type) = Self::parse_declspecs(declspecs)?;
+          Self::apply_modifiers_for_varty(base_type, declarator.modifiers)
+        };
+        Ok(ae::Expression::new(
+          ae::RawExpr::Constant(ae::Constant::ULongLong(qualified_type.size() as u64)),
+          QualifiedType::new(Qualifiers::empty(), Type::Primitive(Primitive::ULongLong)),
+          ValueCategory::RValue,
+        ))
+      }
+    }
+  }
+  fn analyze_call(&mut self, call: pe::Call) -> ExprRes {
+    let pe::Call { arguments, callee } = call;
+    let analyzed_callee = self.analyze_expression(*callee)?;
+    let mut analyzed_arguments = Vec::new();
+    for argument in arguments {
+      let analyzed_argument = self.analyze_expression(argument)?;
+      analyzed_arguments.push(analyzed_argument);
+    }
+    // find the
+    todo!()
   }
   fn analyze_variable(&mut self, variable: pe::Variable) -> ExprRes {
     let symbol = self.environment.find(&variable.name).ok_or(())?;
@@ -430,24 +480,39 @@ impl Analyzer {
     }
   }
   fn analyze_constant(&mut self, constant: pe::Constant) -> ExprRes {
-    let rawtype = match constant {
-      ae::Constant::Int8(_) => Type::Primitive(Primitive::Int8),
-      ae::Constant::Int16(_) => Type::Primitive(Primitive::Int16),
-      ae::Constant::Int32(_) => Type::Primitive(Primitive::Int32),
-      ae::Constant::Int64(_) => Type::Primitive(Primitive::Int64),
-      ae::Constant::Uint8(_) => Type::Primitive(Primitive::Uint8),
-      ae::Constant::Uint16(_) => Type::Primitive(Primitive::Uint16),
-      ae::Constant::Uint32(_) => Type::Primitive(Primitive::Uint32),
-      ae::Constant::Uint64(_) => Type::Primitive(Primitive::Uint64),
-      ae::Constant::Float32(_) => Type::Primitive(Primitive::Float32),
-      ae::Constant::Float64(_) => Type::Primitive(Primitive::Float64),
+    let unqualified_type = match &constant {
+      ae::Constant::Char(_) => Type::Primitive(Primitive::Char),
+      ae::Constant::Short(_) => Type::Primitive(Primitive::Short),
+      ae::Constant::Int(_) => Type::Primitive(Primitive::Int),
+      ae::Constant::LongLong(_) => Type::Primitive(Primitive::LongLong),
+      ae::Constant::UChar(_) => Type::Primitive(Primitive::UChar),
+      ae::Constant::UShort(_) => Type::Primitive(Primitive::UShort),
+      ae::Constant::UInt(_) => Type::Primitive(Primitive::UInt),
+      ae::Constant::ULongLong(_) => Type::Primitive(Primitive::ULongLong),
+      ae::Constant::Float(_) => Type::Primitive(Primitive::Float),
+      ae::Constant::Double(_) => Type::Primitive(Primitive::Double),
       ae::Constant::Bool(_) => Type::Primitive(Primitive::Bool),
-      ae::Constant::String(_) => todo!(),
+      // in C, char[N] is the type of string literal - although it's stored in read-only memory
+      // in C++ it's const char[N]
+      // ^^^ verified by clangd's AST
+      ae::Constant::String(str) => Type::Array(Array::new(
+        Box::new(QualifiedType::new(
+          Qualifiers::empty(),
+          Type::Primitive(Primitive::Char),
+        )),
+        // this is wrong for multi-byte characters, but let's ignore that for now
+        ArraySize::Constant(str.len() + 1 /* null terminator */),
+      )),
+    };
+    let value_category = if matches!(constant, ae::Constant::String(_)) {
+      ValueCategory::LValue
+    } else {
+      ValueCategory::RValue
     };
     Ok(ae::Expression::new(
       ae::RawExpr::Constant(constant),
-      QualifiedType::new(Qualifiers::empty(), rawtype),
-      ValueCategory::RValue,
+      QualifiedType::new(Qualifiers::empty(), unqualified_type),
+      value_category,
     ))
   }
   fn analyze_unary(&mut self, unary: pe::Unary) -> ExprRes {
@@ -457,11 +522,11 @@ impl Analyzer {
     } = unary;
     let expression = self.analyze_expression(*pe_expr)?;
     // TODO: type promotion of the unary and the expr_type
-    let ty = expression.qualified_type().clone();
+    let qualified_type = expression.qualified_type().clone();
     let value_category = ValueCategory::RValue;
     Ok(ae::Expression::new(
       ae::RawExpr::Unary(ae::Unary::new(operator, expression)),
-      ty,
+      qualified_type,
       value_category,
     ))
   }
@@ -474,10 +539,10 @@ impl Analyzer {
     let left = self.analyze_expression(*pe_left)?;
     let right = self.analyze_expression(*pe_right)?;
     // ditto, todo
-    let ty = left.qualified_type().clone();
+    let qualified_type = left.qualified_type().clone();
     Ok(ae::Expression::new(
       ae::RawExpr::Binary(ae::Binary::new(operator, left, right)),
-      ty,
+      qualified_type,
       ValueCategory::RValue,
     ))
   }
@@ -490,14 +555,18 @@ impl Analyzer {
     let condition = self.analyze_expression(*pe_condition)?;
     let then_expr = self.analyze_expression(*pe_then_expr)?;
     let else_expr = self.analyze_expression(*pe_else_expr)?;
-    // ditto, todo
-    let ty = then_expr.qualified_type().clone();
-    if then_expr.raw_type() != else_expr.raw_type() {
+
+    if !then_expr
+      .qualified_type()
+      .compatible_with(&else_expr.qualified_type())
+    {
       Err(())
     } else {
+      let qualified_type =
+        QualifiedType::composite_unchecked(then_expr.qualified_type(), else_expr.qualified_type());
       Ok(ae::Expression::new(
         ae::RawExpr::Ternary(ae::Ternary::new(condition, then_expr, else_expr)),
-        ty,
+        qualified_type,
         ValueCategory::RValue,
       ))
     }
@@ -510,8 +579,9 @@ impl Analyzer {
     let left = self.analyze_expression(*pe_left)?;
     let right = self.analyze_expression(*pe_right)?;
     if !left.is_modifiable_lvalue() {
-      Err(())
+      Err(()) // expression is not assignable
     } else {
+      // check type compatibility, todo
       todo!()
     }
   }
@@ -661,9 +731,9 @@ mod test {
     // 1 + 1
     let mut analyzer = Analyzer::default();
     let expr = pe::Expression::Binary(pe::Binary {
-      left: Box::new(pe::Expression::Constant(pe::Constant::Int32(1))),
+      left: Box::new(pe::Expression::Constant(pe::Constant::Int(1))),
       operator: crate::common::operator::Operator::Plus,
-      right: Box::new(pe::Expression::Constant(pe::Constant::Int32(1))),
+      right: Box::new(pe::Expression::Constant(pe::Constant::Int(1))),
     });
     let analyzed_expr = analyzer.analyze_expression(expr);
     println!("{:#?}", analyzed_expr.unwrap());

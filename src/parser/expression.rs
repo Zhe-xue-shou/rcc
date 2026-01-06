@@ -1,4 +1,7 @@
-use crate::type_alias_expr;
+use crate::{
+  parser::declaration::{DeclSpecs, Declarator},
+  type_alias_expr,
+};
 
 #[derive(Debug)]
 pub enum Expression {
@@ -16,10 +19,23 @@ pub enum Expression {
   ArraySubscript(ArraySubscript),   // arr[i]
   CompoundLiteral(CompoundLiteral), // (struct Point){.x=1, .y=2}
 }
-type_alias_expr! {Expression, String}
+type_alias_expr! {Expression, String, UnprocessedType}
 impl Variable {
   pub fn new(name: String) -> Self {
     Self { name }
+  }
+}
+#[derive(Debug)]
+pub struct UnprocessedType {
+  pub declspecs: DeclSpecs,
+  pub declarator: Declarator,
+}
+impl UnprocessedType {
+  pub fn new(declspecs: DeclSpecs, declarator: Declarator) -> Self {
+    Self {
+      declspecs,
+      declarator,
+    }
   }
 }
 mod fmt {

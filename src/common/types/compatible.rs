@@ -114,10 +114,12 @@ impl Compatibility for Pointer {
 }
 
 impl Compatibility for Primitive {
+  #[inline]
   fn compatible(lhs: &Self, rhs: &Self) -> bool {
     lhs == rhs
   }
 
+  #[inline]
   fn composite(lhs: &Self, rhs: &Self) -> Option<Self>
   where
     Self: Sized,
@@ -128,6 +130,7 @@ impl Compatibility for Primitive {
       Some(Self::composite_unchecked(lhs, rhs))
     }
   }
+  #[inline]
   fn composite_unchecked(lhs: &Self, _rhs: &Self) -> Self
   where
     Self: Sized,
@@ -205,6 +208,7 @@ impl Compatibility for Type {
     }
   }
 
+  #[inline]
   fn composite(lhs: &Self, rhs: &Self) -> Option<Self>
   where
     Self: Sized,
@@ -251,6 +255,7 @@ impl Compatibility for QualifiedType {
     }
     <Type as Compatibility>::compatible(&lhs.unqualified_type, &rhs.unqualified_type)
   }
+  #[inline]
   fn composite(lhs: &QualifiedType, rhs: &QualifiedType) -> Option<QualifiedType> {
     if !QualifiedType::compatible(lhs, rhs) {
       return None;
@@ -271,6 +276,7 @@ impl Compatibility for QualifiedType {
 }
 
 impl Compatibility for Array {
+  #[inline]
   fn compatible(lhs: &Self, rhs: &Self) -> bool {
     if !QualifiedType::compatible(&lhs.element_type, &rhs.element_type) {
       false
@@ -279,6 +285,7 @@ impl Compatibility for Array {
     }
   }
 
+  #[inline]
   fn composite(lhs: &Self, rhs: &Self) -> Option<Self>
   where
     Self: Sized,

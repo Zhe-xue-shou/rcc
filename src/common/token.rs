@@ -1,11 +1,12 @@
 use crate::common::keyword::Keyword;
 use crate::common::operator::Operator;
+use crate::common::rawexpr::Constant;
 use ::std::fmt::Debug;
 use ::std::{path::PathBuf, rc::Rc};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Literal {
-  Number(String),
+  Number(Constant),
   Identifier(String),
   String(String),
   Keyword(Keyword),
@@ -32,7 +33,7 @@ impl Token {
       location,
     }
   }
-  pub fn number(number: String, location: SourceLocation) -> Self {
+  pub fn number(number: Constant, location: SourceLocation) -> Self {
     Self {
       literal: Literal::Number(number),
       location,

@@ -1,6 +1,8 @@
 use strum_macros::{Display, EnumString, IntoStaticStr};
 
 pub mod compatible;
+pub mod conditional;
+pub mod conversion;
 pub mod fmt;
 pub mod promotion;
 pub mod type_info;
@@ -57,15 +59,17 @@ pub enum Primitive {
   LongDouble,
   #[strum(serialize = "void")]
   Void,
-  // ignore below for now
-  #[strum(serialize = "_Complex")]
+  #[strum(serialize = "nullptr_t")]
+  Nullptr,
+  // ignore below for now: __STDC_NO_COMPLEX__
   #[strum(serialize = "_Complex float")]
   ComplexFloat,
+  #[strum(serialize = "_Complex")]
   #[strum(serialize = "_Complex double")]
   ComplexDouble,
   #[strum(serialize = "_Complex long double")]
   ComplexLongDouble,
-  // wchar_t is a built-in in C++, but not C.
+  // wchar_t is a built-in in C++, but not C, in C it's `typedef`-ed as unsigned short on Windows
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -153,6 +157,7 @@ pub struct EnumConstant {
 pub struct Enum {
   pub name: Option<String>,
   pub constants: Vec<EnumConstant>,
+  pub underlying_type: Primitive, // must be integer type
 }
 
 /// rules about the `metadata`. used for declaration and definition.
@@ -186,4 +191,5 @@ pub trait Compatibility {
 }
 pub trait TypeInfo {
   fn size(&self) -> usize;
+  fn is_scalar(&self) -> bool;
 }

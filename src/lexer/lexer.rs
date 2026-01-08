@@ -1,5 +1,6 @@
 use crate::common::keyword::Keyword;
 use crate::common::operator::Operator;
+use crate::common::rawexpr::Constant;
 use crate::common::token::{SourceLocation, Token};
 use ::std::path::PathBuf;
 use ::std::rc::Rc;
@@ -251,7 +252,6 @@ impl Lexer {
       Err(_) => Token::identifier(text.to_string(), start_loc),
     }
   }
-
   fn lex_number(
     &mut self,
     start: usize,
@@ -298,40 +298,70 @@ impl Lexer {
       }
     }
 
+    // exponent part for base-10 (e.g., 1.5e-10, 3E+5, 2e10)
+    if base == 10 && matches!(self.peek(0), 'e' | 'E') {
+      is_floating = true;
+      self.advance(); // consume 'e' or 'E'
+
+      // optional sign
+      if matches!(self.peek(0), '+' | '-') {
+        self.advance();
+      }
+
+      // exponent digits, required
+      if !matches!(self.peek(0), '0'..='9') {
+        self.add_error("Expected digits after exponent marker".to_string());
+      } else {
+        while matches!(self.peek(0), '0'..='9') {
+          self.advance();
+        }
+      }
+    }
+
+    // hexadecimal floating point exponent (e.g., 0x1.5p-3)
+    if base == 16 && matches!(self.peek(0), 'p' | 'P') {
+      is_floating = true;
+      self.advance(); // consume 'p' or 'P'
+
+      // optional sign
+      if matches!(self.peek(0), '+' | '-') {
+        self.advance();
+      }
+
+      if !matches!(self.peek(0), '0'..='9') {
+        self.add_error("Expected digits after hexadecimal exponent marker".to_string());
+      } else {
+        while matches!(self.peek(0), '0'..='9') {
+          self.advance();
+        }
+      }
+    }
+
     let head = self.cursor;
     let num = self.slice_str(start, head).to_string();
 
-    // literal suffixes
-    const INTEGER_SUFFIXES: &'static [&'static str] = &[
-      "u", "U", //
-      "l", "ll", "L", "LL", //
-      "ul", "uL", "Ul", "UL", "lu", "lU", "Lu", "LU", //
-      "ull", "uLL", "Ull", "ULL", "llu", "llU", "LLu", "LLU", //
-    ];
-    const FLOATING_SUFFIXES: &'static [&'static str] = &[
-      "l", "f", "df", "dd", "dl", //
-      "L", "F", "DF", "DD", "DL", //
-    ];
     let suffix = if matches!(self.peek(0), c if Self::is_ident_start(c)) {
-      // number not allowed in suffix: is_ident_start excludes digits
       while matches!(self.peek(0), c if Self::is_ident_start(c)) {
         self.advance();
       }
       let s = self.slice_str(head, self.cursor);
       match is_floating {
         true => {
-          if FLOATING_SUFFIXES.contains(&s) {
+          if Constant::FLOATING_SUFFIXES.contains(&s) {
             Some(s)
           } else {
-            self.add_error(format!("Invalid floating point literal suffix '{}'", s));
+            self.add_error(format!(
+              "Invalid floating point literal suffix '{}', ignoring",
+              s
+            ));
             None
           }
         }
         false => {
-          if INTEGER_SUFFIXES.contains(&s) {
+          if Constant::INTEGER_SUFFIXES.contains(&s) {
             Some(s)
           } else {
-            self.add_error(format!("Invalid integer literal suffix '{}'", s));
+            self.add_error(format!("Invalid integer literal suffix '{}', ignoring", s));
             None
           }
         }
@@ -340,14 +370,12 @@ impl Lexer {
       None
     };
 
-    Token::number(
-      if let Some(suffix) = suffix {
-        format!("{}{}", num, suffix)
-      } else {
-        num
-      },
-      start_loc,
-    )
+    let (constant, error) = Constant::parse(&num, suffix, is_floating);
+    if let Some(e) = error {
+      self.add_error(e);
+    }
+
+    Token::number(constant, start_loc)
   }
 
   fn is_digit_of_base(c: char, base: u32) -> bool {

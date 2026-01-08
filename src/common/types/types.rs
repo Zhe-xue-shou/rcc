@@ -2,8 +2,8 @@ use crate::common::{
   error::Error,
   rawdecl::FunctionSpecifier,
   types::{
-    Array, ArraySize, Compatibility, Enum, FunctionProto, Pointer, Primitive, QualifiedType,
-    Qualifiers, Record, Type, TypeInfo, Union,
+    Array, ArraySize, Compatibility, Enum, EnumConstant, FunctionProto, Pointer, Primitive,
+    QualifiedType, Qualifiers, Record, Type, TypeInfo, Union,
   },
 };
 use ::once_cell::sync::Lazy;
@@ -88,6 +88,23 @@ impl FunctionProto {
 impl Array {
   pub fn new(element_type: Box<QualifiedType>, size: ArraySize) -> Self {
     Self { element_type, size }
+  }
+}
+impl Enum {
+  pub fn new(
+    name: Option<String>,
+    constants: Vec<EnumConstant>,
+    underlying_type: Primitive,
+  ) -> Self {
+    assert!(underlying_type.is_integer());
+    Self {
+      name,
+      constants,
+      underlying_type,
+    }
+  }
+  pub fn into_underlying_type(self) -> Primitive {
+    self.underlying_type
   }
 }
 

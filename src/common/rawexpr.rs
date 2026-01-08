@@ -1,34 +1,34 @@
 use crate::common::{operator::Operator, types::QualifiedType};
 
-/// likely a sophisticated version of the Two-Level Types
-/// [this article](https://blog.ezyang.com/2013/05/the-ast-typing-problem/),
-/// I probably used the Parametric Polymorphism to "tie the knot" of recursion.
-#[derive(Debug)]
-pub enum RawExpr<ExprTy, VarTy, TypeTy> {
-  Empty, // no-op for error recovery; for empty expr should use Option<ExprTy> instead
-  Constant(Constant),
-  Unary(Unary<ExprTy>),
-  Binary(Binary<ExprTy>),
-  Assignment(Assignment<ExprTy>),
-  Variable(Variable<VarTy>),
-  Call(Call<ExprTy>),
-  MemberAccess(MemberAccess<ExprTy>),
-  Ternary(Ternary<ExprTy>),
-  SizeOf(SizeOf<ExprTy, TypeTy>),
-  Cast(Cast<ExprTy>),                     // (int)x
-  ArraySubscript(ArraySubscript<ExprTy>), // arr[i]
-  CompoundLiteral(CompoundLiteral),       // (struct Point){.x=1, .y=2}
-}
-
 #[macro_export(local_inner_macros)]
 macro_rules! type_alias_expr {
-  ($exprty:ident,$varty:ident,$typety:ident) => {
-    pub type RawExpr = crate::common::rawexpr::RawExpr<$exprty, $varty, $typety>;
+  ($exprty:ident,$typety:ident $(, $extra:ident)*) => {
+    /// likely a sophisticated version of the Two-Level Types
+    /// [this article](https://blog.ezyang.com/2013/05/the-ast-typing-problem/),
+    /// I probably used the Parametric Polymorphism to "tie the knot" of recursion.
+    #[derive(Debug)]
+    pub enum RawExpr {
+      Empty, // no-op for error recovery; for empty expr should use Option<ExprTy> instead
+      Constant(Constant),
+      Unary(Unary),
+      Binary(Binary),
+      Assignment(Assignment),
+      Call(Call),
+      MemberAccess(MemberAccess),
+      Ternary(Ternary),
+      SizeOf(SizeOf),
+      Cast(Cast),                     // (int)x
+      ArraySubscript(ArraySubscript), // arr[i]
+      CompoundLiteral(CompoundLiteral), // (struct Point){.x=1, .y=2}
+      $(
+        // Generate a variant for each extra type
+        $extra($extra),
+      )*
+    }
     pub type Constant = crate::common::rawexpr::Constant;
     pub type Unary = crate::common::rawexpr::Unary<$exprty>;
     pub type Binary = crate::common::rawexpr::Binary<$exprty>;
     pub type Assignment = crate::common::rawexpr::Assignment<$exprty>;
-    pub type Variable = crate::common::rawexpr::Variable<$varty>;
     pub type Call = crate::common::rawexpr::Call<$exprty>;
     pub type MemberAccess = crate::common::rawexpr::MemberAccess<$exprty>;
     pub type Ternary = crate::common::rawexpr::Ternary<$exprty>;
@@ -36,10 +36,32 @@ macro_rules! type_alias_expr {
     pub type Cast = crate::common::rawexpr::Cast<$exprty>;
     pub type ArraySubscript = crate::common::rawexpr::ArraySubscript<$exprty>;
     pub type CompoundLiteral = crate::common::rawexpr::CompoundLiteral;
+
+    pub mod fmtrawexpr {
+      use super::*;
+      use ::std::fmt::Display;
+      impl Display for RawExpr {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+          match self {
+            RawExpr::Constant(c) => <Constant as Display>::fmt(c, f),
+            RawExpr::Unary(u) => <Unary as Display>::fmt(u, f),
+            RawExpr::Binary(b) => <Binary as Display>::fmt(b, f),
+            RawExpr::Assignment(a) => <Assignment as Display>::fmt(a, f),
+            RawExpr::Ternary(t) => <Ternary as Display>::fmt(t, f),
+            RawExpr::Call(call) => <Call as Display>::fmt(call, f),
+            RawExpr::Empty => ::std::write!(f, "<noop>"),
+            $(
+              RawExpr::$extra(inner) => <$extra as Display>::fmt(inner, f),
+            )*
+            _ => ::std::todo!(),
+          }
+        }
+      }
+    }
   };
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Constant {
   Char(i8),
   Short(i16),
@@ -64,10 +86,6 @@ pub struct Binary<ExprTy> {
   pub operator: Operator,
   pub left: Box<ExprTy>,
   pub right: Box<ExprTy>,
-}
-#[derive(Debug)]
-pub struct Variable<VarTy> {
-  pub name: VarTy,
 }
 #[derive(Debug)]
 pub struct Assignment<ExprTy> {
@@ -110,13 +128,6 @@ pub struct ArraySubscript<ExprTy> {
 pub struct CompoundLiteral {
   pub target_type: QualifiedType,
   // pub initializer: Initializer,
-}
-
-impl Constant {
-  pub fn from_str(str: &String) -> Self {
-    let int32 = str.clone().parse::<i32>().unwrap();
-    Self::Int(int32)
-  }
 }
 
 impl<ExprTy> Unary<ExprTy> {
@@ -168,31 +179,12 @@ impl<ExprTy> Call<ExprTy> {
   }
 }
 mod fmt {
-  use super::{Assignment, Binary, Call, Constant, RawExpr, Ternary, Unary, Variable};
+  use super::{Assignment, Binary, Call, Constant, Ternary, Unary};
   use ::std::fmt::Display;
 
   impl<ExprTy: Display> Display for Assignment<ExprTy> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       write!(f, "({} {} =)", self.left, self.right)
-    }
-  }
-
-  impl<ExprTy: Display, VarTy, TypeTy> Display for RawExpr<ExprTy, VarTy, TypeTy>
-  where
-    Variable<VarTy>: Display,
-  {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      match self {
-        RawExpr::Constant(c) => <Constant as Display>::fmt(c, f),
-        RawExpr::Unary(u) => <Unary<ExprTy> as Display>::fmt(u, f),
-        RawExpr::Binary(b) => <Binary<ExprTy> as Display>::fmt(b, f),
-        RawExpr::Assignment(a) => <Assignment<ExprTy> as Display>::fmt(a, f),
-        RawExpr::Variable(v) => <Variable<VarTy> as Display>::fmt(v, f),
-        RawExpr::Ternary(t) => <Ternary<ExprTy> as Display>::fmt(t, f),
-        RawExpr::Call(call) => <Call<ExprTy> as Display>::fmt(call, f),
-        RawExpr::Empty => write!(f, "<noop>"),
-        _ => todo!(),
-      }
     }
   }
 
@@ -244,6 +236,162 @@ mod fmt {
         "({} ? {} : {})",
         self.condition, self.then_branch, self.else_branch
       )
+    }
+  }
+}
+
+impl Constant {
+  // literal suffixes
+  pub const INTEGER_SUFFIXES: &'static [&'static str] = &[
+    "u", "U", // unsigned
+    "l", "L", // long
+    "ll", "LL", // long long
+    "ul", "uL", "Ul", "UL", "lu", "lU", "Lu", "LU", // unsigned long
+    "ull", "uLL", "Ull", "ULL", "llu", "llU", "LLu", "LLU", // unsigned long long
+    "uz", "uZ", "Uz", "UZ", "zu", "zU", "Zu", "ZU", // size_t
+    "z", "Z", // size_t's signed version
+    // unsupported
+    "wb", "WB", // _BitInt
+    "uwb", "uWB", "Uwb", "UWB", // unsigned _BitInt
+  ];
+  pub const FLOATING_SUFFIXES: &'static [&'static str] = &[
+    "f", "F", // float
+    "l", "L", // long double
+    // unsupported
+    "df", "DF", // _Decimal32
+    "dd", "DD", // _Decimal64
+    "dl", "DL", // _Decimal128
+  ];
+  /// parse a numeric literal with optional suffix, if fails, return an error message and the default value of the Constant
+  pub fn parse(num: &str, suffix: Option<&str>, is_floating: bool) -> (Self, Option<String>) {
+    match (suffix, is_floating) {
+      (None, false) => {
+        // default to int
+        match num.parse::<i32>() {
+          Ok(i) => (Constant::Int(i), None),
+          Err(e) => (
+            Constant::Int(0),
+            Some(format!("Failed to parse integer literal {}: {}", num, e)),
+          ),
+        }
+      }
+      (None, true) => {
+        // default to double
+        match num.parse::<f64>() {
+          Ok(f) => (Constant::Double(f), None),
+          Err(e) => (
+            Constant::Double(0.0),
+            Some(format!("Failed to parse floating literal {}: {}", num, e)),
+          ),
+        }
+      }
+      (Some(suf), false) => {
+        // integer with suffix
+        match suf {
+          "u" | "U" => match num.parse::<u32>() {
+            Ok(u) => (Constant::UInt(u), None),
+            Err(e) => (
+              Constant::UInt(0),
+              Some(format!(
+                "Failed to parse unsigned integer literal {}: {}",
+                num, e
+              )),
+            ),
+          },
+          "l" | "L" => match num.parse::<i64>() {
+            Ok(i) => (Constant::LongLong(i), None),
+            Err(e) => (
+              Constant::LongLong(0),
+              Some(format!(
+                "Failed to parse long long integer literal {}: {}",
+                num, e
+              )),
+            ),
+          },
+          "ll" | "LL" => match num.parse::<i64>() {
+            Ok(i) => (Constant::LongLong(i), None),
+            Err(e) => (
+              Constant::LongLong(0),
+              Some(format!(
+                "Failed to parse long long integer literal {}: {}",
+                num, e
+              )),
+            ),
+          },
+          "ul" | "uL" | "Ul" | "UL" | "lu" | "lU" | "Lu" | "LU" => match num.parse::<u64>() {
+            Ok(u) => (Constant::ULongLong(u), None),
+            Err(e) => (
+              Constant::ULongLong(0),
+              Some(format!(
+                "Failed to parse unsigned long long integer literal {}: {}",
+                num, e
+              )),
+            ),
+          },
+          "ull" | "uLL" | "Ull" | "ULL" | "llu" | "llU" | "LLu" | "LLU" => {
+            match num.parse::<u64>() {
+              Ok(u) => (Constant::ULongLong(u), None),
+              Err(e) => (
+                Constant::ULongLong(0),
+                Some(format!(
+                  "Failed to parse unsigned long long integer literal {}: {}",
+                  num, e
+                )),
+              ),
+            }
+          }
+          "z" | "Z" => match num.parse::<isize>() {
+            Ok(i) => (Constant::LongLong(i as i64), None),
+            Err(e) => (
+              Constant::LongLong(0),
+              Some(format!(
+                "Failed to parse size_t integer literal {}: {}",
+                num, e
+              )),
+            ),
+          },
+          "uz" | "uZ" | "Uz" | "UZ" | "zu" | "zU" | "Zu" | "ZU" => match num.parse::<usize>() {
+            Ok(u) => (Constant::ULongLong(u as u64), None),
+            Err(e) => (
+              Constant::ULongLong(0),
+              Some(format!(
+                "Failed to parse unsigned size_t integer literal {}: {}",
+                num, e
+              )),
+            ),
+          },
+          _ => (
+            Constant::Int(0),
+            Some(format!("unsupported integer literal suffix: {}", suf)),
+          ),
+        }
+      }
+      (Some(suf), true) => {
+        // floating with suffix
+        match suf {
+          "f" | "F" => match num.parse::<f32>() {
+            Ok(f) => (Constant::Float(f), None),
+            Err(e) => (
+              Constant::Float(0.0),
+              Some(format!("Failed to parse float literal {}: {}", num, e)),
+            ),
+          },
+          "l" | "L" => match num.parse::<f64>() {
+            Ok(f) => (Constant::Double(f), None),
+            Err(e) => (
+              Constant::Double(0.0),
+              Some(format!(
+                "Failed to parse long double literal {}: {}",
+                num, e
+              )),
+            ),
+          },
+          _ => (
+            Constant::Double(0.0),
+            Some(format!("unsupported floating literal suffix: {}", suf)),
+          ),
+        }
+      }
     }
   }
 }

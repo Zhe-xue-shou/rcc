@@ -790,7 +790,7 @@ impl Parser {
     // rust forces me to clone, but here it's guranteed not UB. :(
     ;
     match literal {
-      Literal::Number(num_str) => Expression::Constant(Constant::from_str(&num_str)),
+      Literal::Number(num) => Expression::Constant(num.clone()),
       Literal::String(str) => Expression::Constant(Constant::String(str.to_string())),
       Literal::Operator(op) => {
         if op.unary() {
@@ -888,36 +888,5 @@ impl Parser {
       break;
     }
     current
-    // let mut lookahead = self.peek(0).clone();
-    // while matches!(lookahead, Literal::Operator(ref op) if op.binary() && op.precedence() >= lmin_precedence)
-    // {
-    //   let op = match lookahead {
-    //     Literal::Operator(ref op) => op.clone(),
-    //     _ => unreachable!(),
-    //   };
-    //   self.get(); // operator
-    //   let right = self.next_expression(if op.is_right_associative() {
-    //     op.precedence()
-    //   } else {
-    //     op.precedence() + 1
-    //   });
-    //   current = Expression::Binary(Binary::from_operator(op, current, right).unwrap());
-    //   lookahead = self.peek(0).clone();
-    // }
-    // // tenary
-    // if lookahead == Literal::Operator(Operator::Question) {
-    //   self.must_get_op::<{ Operator::Question }>();
-
-    //   let true_expr = self.next_expression(0);
-    //   if self.peek(0) != &Literal::Operator(Operator::Colon) {
-    //     self.add_error("Expect ':' in tenary expression".to_string());
-    //     panic!()
-    //   } else {
-    //     self.must_get_op::<{ Operator::Colon }>();
-    //     let false_expr = self.next_expression(0);
-    //     current = Expression::Ternary(Ternary::new(current, true_expr, false_expr));
-    //   }
-    // }
-    // current
   }
 }

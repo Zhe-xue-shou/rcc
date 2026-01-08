@@ -439,6 +439,31 @@ impl Analyzer {
       [Ts::Long, Ts::Double, Ts::Complex] => Type::Primitive(Primitive::LongDouble),
       [Ts::Bool] => Type::Primitive(Primitive::Bool),
 
+      // treat complex integers as error
+      [Ts::Char, Ts::Complex]
+      | [Ts::Signed, Ts::Char, Ts::Complex]
+      | [Ts::Unsigned, Ts::Char, Ts::Complex]
+      | [Ts::Short, Ts::Complex]
+      | [Ts::Short, Ts::Int, Ts::Complex]
+      | [Ts::Signed, Ts::Short, Ts::Complex]
+      | [Ts::Signed, Ts::Short, Ts::Int, Ts::Complex]
+      | [Ts::Unsigned, Ts::Short, Ts::Complex]
+      | [Ts::Unsigned, Ts::Short, Ts::Int, Ts::Complex]
+      | [Ts::Int, Ts::Complex]
+      | [Ts::Signed, Ts::Complex]
+      | [Ts::Signed, Ts::Int, Ts::Complex]
+      | [Ts::Unsigned, Ts::Complex]
+      | [Ts::Unsigned, Ts::Int, Ts::Complex]
+      | [Ts::Long, Ts::Complex]
+      | [Ts::Long, Ts::Int, Ts::Complex]
+      | [Ts::Signed, Ts::Long, Ts::Complex]
+      | [Ts::Signed, Ts::Long, Ts::Int, Ts::Complex]
+      | [Ts::Unsigned, Ts::Long, Ts::Complex]
+      | [Ts::Unsigned, Ts::Long, Ts::Int, Ts::Complex] => {
+        breakpoint!();
+        panic!("Complex integer types are not supported");
+      }
+
       // skip _BitInt, _Decimal32, _Decimal64, _Decimal128 here
       _ => todo!("union, struct, enum, typedef, typeof, etc."),
     };

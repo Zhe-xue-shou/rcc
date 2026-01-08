@@ -6,7 +6,7 @@ use crate::{
   type_alias_expr,
 };
 
-type_alias_expr! {Expression,SymbolRef, QualifiedType}
+type_alias_expr! {Expression, QualifiedType, Variable, ImplicitCast}
 #[derive(Debug, Clone, Copy, Display, PartialEq)]
 pub enum ValueCategory {
   #[strum(serialize = "lvalue")]
@@ -80,13 +80,23 @@ impl ::core::default::Default for Expression {
     }
   }
 }
+#[derive(Debug)]
+pub struct Variable {
+  pub name: SymbolRef,
+}
 impl Variable {
   pub fn new(name: SymbolRef) -> Self {
     Self { name }
   }
 }
+#[derive(Debug)]
+pub struct ImplicitCast {
+  pub target_type: QualifiedType,
+  pub expr: Box<Expression>,
+}
 mod fmt {
-  use super::Variable;
+
+  use super::{ImplicitCast, Variable};
   use ::std::fmt::Display;
 
   use super::Expression;
@@ -100,6 +110,11 @@ mod fmt {
   impl Display for Variable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       write!(f, "{}", self.name.borrow())
+    }
+  }
+  impl Display for ImplicitCast {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      write!(f, "({}){}", self.target_type, self.expr)
     }
   }
 }

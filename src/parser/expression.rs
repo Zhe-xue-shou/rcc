@@ -19,7 +19,7 @@ pub enum Expression {
   ArraySubscript(ArraySubscript),   // arr[i]
   CompoundLiteral(CompoundLiteral), // (struct Point){.x=1, .y=2}
 }
-type_alias_expr! {Expression, String, UnprocessedType}
+type_alias_expr! {Expression, UnprocessedType, Variable}
 impl Variable {
   pub fn new(name: String) -> Self {
     Self { name }
@@ -37,6 +37,10 @@ impl UnprocessedType {
       declarator,
     }
   }
+}
+#[derive(Debug)]
+pub struct Variable {
+  pub name: String,
 }
 mod fmt {
   use super::{Assignment, Binary, Call, Constant, Expression, Ternary, Unary, Variable};

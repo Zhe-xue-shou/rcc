@@ -1,4 +1,4 @@
-use crate::common::types::{
+use super::{
   Array, ArraySize, Enum, FunctionProto, Pointer, QualifiedType, Qualifiers, Record, Type, Union,
 };
 use ::std::fmt::Display;
@@ -73,16 +73,20 @@ impl Display for Pointer {
 }
 impl Display for Enum {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    todo!()
+    write!(f, "<enum {}>", self.name.as_deref().unwrap_or("<unnamed>"))
   }
 }
 impl Display for Record {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    todo!()
+    write!(
+      f,
+      "<struct {}>",
+      self.name.as_deref().unwrap_or("<unnamed>")
+    )
   }
 }
 impl Display for Union {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    todo!()
+    write!(f, "<union {}>", self.name.as_deref().unwrap_or("<unnamed>"))
   }
 }

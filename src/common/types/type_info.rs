@@ -1,4 +1,4 @@
-use crate::common::types::{
+use super::{
   Array, ArraySize, Enum, FunctionProto, Pointer, Primitive, QualifiedType, Record, Type, TypeInfo,
   Union,
 };
@@ -132,7 +132,7 @@ impl TypeInfo for FunctionProto {
 impl TypeInfo for Enum {
   #[inline]
   fn size(&self) -> usize {
-    Primitive::Int.size() // rough, enums are usually represented as integers
+    self.underlying_type.size()
   }
   #[inline]
   fn is_scalar(&self) -> bool {

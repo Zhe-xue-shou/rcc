@@ -1,11 +1,9 @@
 #![allow(unused)]
-use crate::{
-  breakpoint,
-  common::types::{
-    Array, ArraySize, Compatibility, Enum, FunctionProto, Pointer, Primitive, QualifiedType,
-    Record, Type, Union,
-  },
+use super::{
+  Array, ArraySize, Compatibility, Enum, FunctionProto, Pointer, Primitive, QualifiedType, Record,
+  Type, Union,
 };
+use crate::breakpoint;
 
 impl Compatibility for ArraySize {
   fn compatible(lhs: &Self, rhs: &Self) -> bool {

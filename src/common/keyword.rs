@@ -1,5 +1,5 @@
-use std::marker::ConstParamTy;
-use strum_macros::{Display, EnumString};
+use ::std::marker::ConstParamTy;
+use ::strum_macros::{Display, EnumString};
 
 #[derive(Debug, Clone, Display, EnumString, PartialEq, Eq, ConstParamTy)]
 pub enum Keyword {

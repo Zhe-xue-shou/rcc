@@ -3,7 +3,7 @@ use crate::{
   common::{
     environment::UnitScope,
     keyword::Keyword,
-    operator::Operator,
+    operator::{Category, Operator},
     rawdecl::FunctionSpecifier,
     storage::Storage,
     token::{Literal, Token},
@@ -738,7 +738,6 @@ impl Parser {
 
   fn next_emptystmt(&mut self) -> Statement {
     self.must_get_op::<{ Operator::Semicolon }>();
-    // self.add_warning("Redundant ';'".to_string());
     Statement::Empty()
   }
 
@@ -870,7 +869,7 @@ impl Parser {
         if op.binary() && op.precedence() >= lmin_precedence {
           let op = op.clone();
           self.get(); // operator
-          let right = self.next_expression(if op.assignment() {
+          let right = self.next_expression(if op.category() == Category::Assignment {
             op.precedence()
           } else {
             op.precedence() + 1

@@ -15,7 +15,6 @@ macro_rules! type_alias_expr {
       Constant(Constant),
       Unary(Unary),
       Binary(Binary),
-      Assignment(Assignment),
       Call(Call),
       MemberAccess(MemberAccess),
       Ternary(Ternary),
@@ -31,7 +30,6 @@ macro_rules! type_alias_expr {
     pub type Constant = crate::common::rawexpr::Constant;
     pub type Unary = crate::common::rawexpr::Unary<$exprty>;
     pub type Binary = crate::common::rawexpr::Binary<$exprty>;
-    pub type Assignment = crate::common::rawexpr::Assignment<$exprty>;
     pub type Call = crate::common::rawexpr::Call<$exprty>;
     pub type MemberAccess = crate::common::rawexpr::MemberAccess<$exprty>;
     pub type Ternary = crate::common::rawexpr::Ternary<$exprty>;
@@ -49,7 +47,6 @@ macro_rules! type_alias_expr {
             RawExpr::Constant(c) => <Constant as Display>::fmt(c, f),
             RawExpr::Unary(u) => <Unary as Display>::fmt(u, f),
             RawExpr::Binary(b) => <Binary as Display>::fmt(b, f),
-            RawExpr::Assignment(a) => <Assignment as Display>::fmt(a, f),
             RawExpr::Ternary(t) => <Ternary as Display>::fmt(t, f),
             RawExpr::Call(call) => <Call as Display>::fmt(call, f),
             RawExpr::Empty => ::std::write!(f, "<noop>"),
@@ -90,15 +87,6 @@ pub struct Binary<ExprTy> {
   pub left: Box<ExprTy>,
   pub right: Box<ExprTy>,
 }
-/// assignment-expression:
-///    - conditional-expression
-///    - unary-expression assignment-operator assignment-expression
-#[derive(Debug)]
-pub struct Assignment<ExprTy> {
-  pub operator: Operator,
-  pub left: Box<ExprTy>,
-  pub right: Box<ExprTy>,
-}
 #[derive(Debug)]
 pub struct Call<ExprTy> {
   pub callee: Box<ExprTy>,
@@ -112,8 +100,8 @@ pub struct MemberAccess<ExprTy> {
 #[derive(Debug)]
 pub struct Ternary<ExprTy> {
   pub condition: Box<ExprTy>,
-  pub then_branch: Box<ExprTy>,
-  pub else_branch: Box<ExprTy>,
+  pub then_expr: Box<ExprTy>,
+  pub else_expr: Box<ExprTy>,
 }
 #[derive(Debug)]
 pub enum SizeOf<ExprTy, TypeTy> {
@@ -168,27 +156,12 @@ impl<ExprTy> Binary<ExprTy> {
   }
 }
 impl<ExprTy> Ternary<ExprTy> {
-  pub fn new(condition: ExprTy, then_branch: ExprTy, else_branch: ExprTy) -> Self {
+  pub fn new(condition: ExprTy, then_expr: ExprTy, else_expr: ExprTy) -> Self {
     Self {
       condition: Box::new(condition),
-      then_branch: Box::new(then_branch),
-      else_branch: Box::new(else_branch),
+      then_expr: Box::new(then_expr),
+      else_expr: Box::new(else_expr),
     }
-  }
-}
-impl<ExprTy> Assignment<ExprTy> {
-  pub fn from_operator(operator: Operator, left: ExprTy, right: ExprTy) -> Option<Self> {
-    match operator.assignment() {
-      true => Some(Self {
-        operator,
-        left: Box::new(left),
-        right: Box::new(right),
-      }),
-      false => None,
-    }
-  }
-  pub fn new(operator: Operator, left: ExprTy, right: ExprTy) -> Self {
-    Self::from_operator(operator, left, right).unwrap()
   }
 }
 
@@ -201,14 +174,8 @@ impl<ExprTy> Call<ExprTy> {
   }
 }
 mod fmt {
-  use super::{Assignment, Binary, Call, Constant, Ternary, Unary};
+  use super::{Binary, Call, Constant, Ternary, Unary};
   use ::std::fmt::Display;
-
-  impl<ExprTy: Display> Display for Assignment<ExprTy> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      write!(f, "({} {} {})", self.left, self.right, self.operator)
-    }
-  }
 
   impl<ExprTy: Display> Display for Call<ExprTy> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -256,7 +223,7 @@ mod fmt {
       write!(
         f,
         "({} ? {} : {})",
-        self.condition, self.then_branch, self.else_branch
+        self.condition, self.then_expr, self.else_expr
       )
     }
   }

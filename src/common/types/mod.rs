@@ -1,4 +1,4 @@
-use strum_macros::{Display, EnumString, IntoStaticStr};
+use ::strum_macros::{Display, EnumString, IntoStaticStr};
 
 pub mod compatible;
 pub mod fmt;
@@ -159,6 +159,7 @@ pub struct Enum {
 }
 
 /// rules about the `metadata`. used for declaration and definition.
+#[allow(unused)]
 pub trait Compatibility {
   fn compatible(lhs: &Self, rhs: &Self) -> bool;
   #[inline]
@@ -187,6 +188,7 @@ pub trait Compatibility {
     Self::composite_unchecked(self, other)
   }
 }
+#[allow(unused)]
 pub trait TypeInfo {
   fn size(&self) -> usize;
   fn is_scalar(&self) -> bool;

@@ -22,6 +22,9 @@ impl QualifiedType {
       unqualified_type,
     }
   }
+  pub fn void() -> Self {
+    Self::new_unqualified(Type::void())
+  }
 }
 impl Pointer {
   pub fn new(pointee: Box<QualifiedType>) -> Self {
@@ -120,7 +123,6 @@ macro_rules! interconvert {
   };
 
   ($inner:ident, $outer:ident, $variant:ident) => {
-    // From Inner to Outer (Safe/Infallible)
     impl From<$inner> for $outer {
       fn from(value: $inner) -> Self {
         $outer::$variant(value)
@@ -138,6 +140,7 @@ macro_rules! interconvert {
     }
   };
 }
+use crate::breakpoint;
 use paste::paste;
 
 macro_rules! make_trio_for {
@@ -158,6 +161,17 @@ macro_rules! make_trio_for {
                 match self {
                     Self::$variant(v) => Some(v),
                     _ => None,
+                }
+            }
+
+            #[inline]
+            pub fn [<as_ $variant:lower _unchecked>](&self) -> &$inner {
+                match self {
+                    Self::$variant(v) => v,
+                    _ => {
+                        breakpoint!();
+                        unreachable!()
+                    }
                 }
             }
 
@@ -201,6 +215,21 @@ impl Type {
   }
   pub fn is_void(&self) -> bool {
     matches!(self, Type::Primitive(Primitive::Void))
+  }
+  pub fn is_integer(&self) -> bool {
+    match self {
+      Type::Primitive(p) => p.is_integer(),
+      _ => false,
+    }
+  }
+  pub fn is_arithmetic(&self) -> bool {
+    match self {
+      Type::Primitive(p) => p.is_arithmetic(),
+      _ => false,
+    }
+  }
+  pub fn void() -> Self {
+    Type::Primitive(Primitive::Void)
   }
 }
 impl QualifiedType {

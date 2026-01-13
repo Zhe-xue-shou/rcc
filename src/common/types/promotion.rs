@@ -1,9 +1,7 @@
 //! applied during unary operations, including (implicit) unary inside binary operations
 
-use crate::{
-  breakpoint,
-  common::types::{CastType, Primitive, Promotion, QualifiedType, Type},
-};
+use super::{CastType, Primitive, Promotion, QualifiedType, Type};
+use crate::breakpoint;
 
 impl Primitive {
   pub fn is_integer(&self) -> bool {

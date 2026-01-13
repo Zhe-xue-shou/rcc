@@ -1,4 +1,4 @@
-use strum_macros::{Display, EnumString};
+use ::strum_macros::{Display, EnumString};
 #[derive(Debug, Clone, Display, EnumString, PartialEq, Eq, ::std::marker::ConstParamTy)]
 pub enum Operator {
   // one-character operators
@@ -202,34 +202,75 @@ impl Operator {
       _ => unreachable!(),
     }
   }
-  pub fn assignment(&self) -> bool {
-    matches!(
-      self,
-      Operator::Assign
-        | Operator::PlusAssign
-        | Operator::MinusAssign
-        | Operator::StarAssign
-        | Operator::SlashAssign
-        | Operator::PercentAssign
-        | Operator::AmpersandAssign
-        | Operator::PipeAssign
-        | Operator::CaretAssign
-        | Operator::LeftShiftAssign
-        | Operator::RightShiftAssign
-    )
-  }
-  pub fn relational(&self) -> bool {
-    matches!(
-      self,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Category {
+  Logical,
+  Bitwise,
+  BitShift,
+  Arithmetic,
+  Relational,
+  Assignment,
+  Comma,
+}
+impl Operator {
+  #[rustfmt::skip]
+  pub fn category(&self) -> Category {
+    match self {
+      Operator::And 
+      | Operator::Or 
+      | Operator::Not => Category::Logical,
+
+      Operator::LeftShift
+      | Operator::RightShift => Category::BitShift,
+
+      Operator::Tilde
+      | Operator::Ampersand
+      | Operator::Pipe
+      | Operator::Caret => Category::Bitwise,
+
+      Operator::Plus 
+      | Operator::Minus 
+      | Operator::Star 
+      | Operator::Slash 
+      | Operator::Percent => Category::Arithmetic,
+
       Operator::Less
-        | Operator::LessEqual
-        | Operator::Greater
-        | Operator::GreaterEqual
-        | Operator::EqualEqual
-        | Operator::NotEqual
-    )
+      | Operator::LessEqual
+      | Operator::Greater
+      | Operator::GreaterEqual
+      | Operator::EqualEqual
+      | Operator::NotEqual => Category::Relational,
+
+      Operator::Assign
+      | Operator::PlusAssign
+      | Operator::MinusAssign
+      | Operator::StarAssign
+      | Operator::SlashAssign
+      | Operator::PercentAssign
+      | Operator::AmpersandAssign
+      | Operator::PipeAssign
+      | Operator::CaretAssign
+      | Operator::LeftShiftAssign
+      | Operator::RightShiftAssign => Category::Assignment,
+
+      Operator::Comma => Category::Comma,
+      _ => panic!(),
+    }
   }
-  pub fn logical(&self) -> bool {
-    matches!(self, Operator::And | Operator::Or | Operator::Not)
+  pub fn assignment(&self) -> bool {
+    matches!(self,
+      Operator::Assign
+      | Operator::PlusAssign
+      | Operator::MinusAssign
+      | Operator::StarAssign
+      | Operator::SlashAssign
+      | Operator::PercentAssign
+      | Operator::AmpersandAssign
+      | Operator::PipeAssign
+      | Operator::CaretAssign
+      | Operator::LeftShiftAssign
+      | Operator::RightShiftAssign
+    )
   }
 }

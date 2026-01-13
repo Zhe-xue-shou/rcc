@@ -9,7 +9,6 @@ pub enum Expression {
   Constant(Constant),
   Unary(Unary),
   Binary(Binary),
-  Assignment(Assignment),
   Variable(Variable),
   Call(Call),
   MemberAccess(MemberAccess),
@@ -43,7 +42,7 @@ pub struct Variable {
   pub name: String,
 }
 mod fmt {
-  use super::{Assignment, Binary, Call, Constant, Expression, Ternary, Unary, Variable};
+  use super::{Binary, Call, Constant, Expression, Ternary, Unary, Variable};
   use ::std::fmt::Display;
 
   impl Display for Expression {
@@ -52,7 +51,6 @@ mod fmt {
         Expression::Constant(c) => <Constant as Display>::fmt(c, f),
         Expression::Unary(u) => <Unary as Display>::fmt(u, f),
         Expression::Binary(b) => <Binary as Display>::fmt(b, f),
-        Expression::Assignment(a) => <Assignment as Display>::fmt(a, f),
         Expression::Variable(v) => <Variable as Display>::fmt(v, f),
         Expression::Ternary(t) => <Ternary as Display>::fmt(t, f),
         Expression::Call(call) => <Call as Display>::fmt(call, f),

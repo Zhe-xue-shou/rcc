@@ -4,11 +4,11 @@ use crate::{
   common::{
     environment::{Environment, Symbol, VarDeclKind},
     error::Error,
-    operator::Operator,
+    operator::{Category, Operator},
     rawdecl::FunctionSpecifier,
     storage::Storage,
     types::{
-      Array, ArraySize, Compatibility, FunctionProto, Pointer, Primitive, QualifiedType,
+      Array, ArraySize, CastType, Compatibility, FunctionProto, Pointer, Primitive, QualifiedType,
       Qualifiers, Type, TypeInfo,
     },
   },
@@ -107,17 +107,15 @@ impl Analyzer {
       },
     ));
 
-    if self.current_function.is_some() {
-      return err_or_debugbreak!(); // error: nested function definition is not allowed, this should be handled in parser
-    }
-
-    if body.is_some() {
-      self.current_function = Some(symbol.clone());
-    }
-
     let body = body
       .map(|b| {
-        self.analyze_compound_with(b, |analyzer| {
+        if self.current_function.is_some() {
+          return err_or_debugbreak!(); // error: nested function definition is not allowed, this should be handled in parser
+        }
+
+        self.current_function = Some(symbol.clone());
+
+        let result = self.analyze_compound_with(b, |analyzer| {
           // Declare parameters in the function scope
           for parameter in &parameters {
             if let Some(param_symbol) = &parameter.symbol {
@@ -127,7 +125,11 @@ impl Analyzer {
                 .declare(param_symbol.borrow().name.clone(), param_symbol.clone());
             }
           }
-        })
+        });
+
+        self.current_function = None;
+
+        return result;
       })
       .transpose()?;
 
@@ -135,8 +137,6 @@ impl Analyzer {
       .environment
       .symbols
       .declare(symbol.borrow().name.clone(), symbol.clone());
-
-    self.current_function = None;
 
     Ok(ad::Function::new(
       symbol,
@@ -348,13 +348,13 @@ impl Analyzer {
       .iter()
       .map(|param| match &param.symbol {
         Some(sym) => sym.borrow().qualified_type.clone(),
-        None => QualifiedType::new(Qualifiers::empty(), Type::Primitive(Primitive::Int)), // default to int
+        None => QualifiedType::new_unqualified(Type::Primitive(Primitive::Int)), // default to int
       })
       .collect::<Vec<QualifiedType>>();
-    let functionproto = FunctionProto::new(Box::new(return_type), parameter_types, is_variadic);
+    let functionproto = FunctionProto::new(return_type.into(), parameter_types, is_variadic);
 
     Ok((
-      QualifiedType::new(Qualifiers::empty(), Type::FunctionProto(functionproto)),
+      QualifiedType::new_unqualified(Type::FunctionProto(functionproto)),
       parameters,
     ))
   }
@@ -486,13 +486,12 @@ impl Analyzer {
       pe::Expression::Constant(constant) => self.analyze_constant(constant),
       pe::Expression::Unary(unary) => self.analyze_unary(unary),
       pe::Expression::Binary(binary) => self.analyze_binary(binary),
-      pe::Expression::Assignment(assignment) => self.analyze_assignment(assignment),
       pe::Expression::Variable(variable) => self.analyze_variable(variable),
       pe::Expression::Call(call) => self.analyze_call(call),
-      pe::Expression::MemberAccess(_) => todo!(),
       pe::Expression::Ternary(ternary) => self.analyze_ternary(ternary),
       pe::Expression::SizeOf(sizeof) => self.analyze_sizeof(sizeof),
       pe::Expression::CStyleCast(cast) => self.analyze_cast(cast),
+      pe::Expression::MemberAccess(_) => todo!(),
       pe::Expression::ArraySubscript(_) => todo!(),
       pe::Expression::CompoundLiteral(_) => todo!(),
     }
@@ -504,7 +503,7 @@ impl Analyzer {
         let size = analyzed_expr.qualified_type().unqualified_type.size();
         Ok(ae::Expression::new_rvalue(
           ae::RawExpr::Constant(ae::Constant::ULongLong(size as u64)),
-          QualifiedType::new(Qualifiers::empty(), Type::Primitive(Primitive::ULongLong)),
+          QualifiedType::new_unqualified(Type::Primitive(Primitive::ULongLong)),
         ))
       }
       pe::SizeOf::Type(unprocessed_type) => {
@@ -518,7 +517,7 @@ impl Analyzer {
         };
         Ok(ae::Expression::new_rvalue(
           ae::RawExpr::Constant(ae::Constant::ULongLong(qualified_type.size() as u64)),
-          QualifiedType::new(Qualifiers::empty(), Type::Primitive(Primitive::ULongLong)),
+          QualifiedType::new_unqualified(Type::Primitive(Primitive::ULongLong)),
         ))
       }
     }
@@ -577,7 +576,7 @@ impl Analyzer {
     };
     Ok(ae::Expression::new(
       ae::RawExpr::Constant(constant),
-      QualifiedType::new(Qualifiers::empty(), unqualified_type),
+      QualifiedType::new_unqualified(unqualified_type),
       value_category,
     ))
   }
@@ -586,8 +585,8 @@ impl Analyzer {
       operator,
       expression: pe_expr,
     } = unary;
+    // TODO: type conversions based on operator
     let expression = self.analyze_expression(*pe_expr)?;
-    // TODO: type promotion of the unary and the expr_type
     let qualified_type = expression.qualified_type().clone();
     Ok(ae::Expression::new_rvalue(
       ae::RawExpr::Unary(ae::Unary::new(operator, expression)),
@@ -602,62 +601,200 @@ impl Analyzer {
     } = binary;
     let left = self.analyze_expression(*pe_left)?;
     let right = self.analyze_expression(*pe_right)?;
-    // ditto, todo
-    // if the operator is logical, the result type is bool, otherwise it's the promoted type of the operands
-    let qualified_type = match operator {
-      Operator::And | Operator::Or => {
-        QualifiedType::new(Qualifiers::empty(), Type::Primitive(Primitive::Bool))
-      }
-      _ => left.qualified_type().clone(), // todo: proper type promotion
-    };
-    Ok(ae::Expression::new_rvalue(
-      ae::RawExpr::Binary(ae::Binary::new(operator, left, right)),
-      qualified_type,
-    ))
+    match operator.category() {
+      Category::Assignment => self.analyze_assignment(operator, left, right),
+      Category::Logical => self.analyze_logical(operator, left, right),
+      Category::Relational => self.analyze_relational(operator, left, right),
+      Category::Arithmetic => self.analyze_arithmetic(operator, left, right),
+      Category::Bitwise => self.analyze_bitwise(operator, left, right),
+      Category::BitShift => self.analyze_bitshift(operator, left, right),
+      Category::Comma => self.analyze_comma(operator, left, right),
+    }
   }
   fn analyze_ternary(&mut self, ternary: pe::Ternary) -> ExprRes {
     let pe::Ternary {
       condition: pe_condition,
-      then_branch: pe_then_expr,
-      else_branch: pe_else_expr,
+      then_expr: pe_then_expr,
+      else_expr: pe_else_expr,
     } = ternary;
     let condition = self.analyze_expression(*pe_condition)?;
     let then_expr = self.analyze_expression(*pe_then_expr)?;
     let else_expr = self.analyze_expression(*pe_else_expr)?;
 
-    if !then_expr
-      .qualified_type()
-      .compatible_with(&else_expr.qualified_type())
-    {
-      err_or_debugbreak!()
-    } else {
-      let qualified_type =
-        QualifiedType::composite_unchecked(then_expr.qualified_type(), else_expr.qualified_type());
-      Ok(ae::Expression::new_rvalue(
-        ae::RawExpr::Ternary(ae::Ternary::new(condition, then_expr, else_expr)),
-        qualified_type,
-      ))
+    match (then_expr.unqualified_type(), else_expr.unqualified_type()) {
+      (Type::Primitive(Primitive::Void), Type::Primitive(Primitive::Void)) => {
+        Ok(ae::Expression::new_rvalue(
+          ae::RawExpr::Ternary(ae::Ternary::new(condition, then_expr, else_expr)),
+          QualifiedType::void(),
+        ))
+      }
+      (Type::Primitive(Primitive::Void), _) => Ok(ae::Expression::new_rvalue(
+        ae::RawExpr::Ternary(ae::Ternary::new(
+          condition,
+          then_expr,
+          ae::Expression::void_conversion(else_expr),
+        )),
+        QualifiedType::void(),
+      )),
+      (_, Type::Primitive(Primitive::Void)) => Ok(ae::Expression::new_rvalue(
+        ae::RawExpr::Ternary(ae::Ternary::new(
+          condition,
+          ae::Expression::void_conversion(then_expr),
+          else_expr,
+        )),
+        QualifiedType::void(),
+      )),
+      // both arithmetic -> usual arithmetic conversion
+      (left_type, right_type) if left_type.is_arithmetic() && right_type.is_arithmetic() => {
+        let (then_converted, else_converted, result_type) =
+          ae::Expression::usual_arithmetic_conversion(then_expr, else_expr)?;
+        Ok(ae::Expression::new_rvalue(
+          ae::RawExpr::Ternary(ae::Ternary::new(condition, then_converted, else_converted)),
+          result_type,
+        ))
+      }
+      // both pointer to compatible type -> composite type
+      (Type::Pointer(left_ptr), Type::Pointer(right_ptr)) => {
+        let left_pointee = &left_ptr.pointee;
+        let right_pointee = &right_ptr.pointee;
+        if QualifiedType::compatible(left_pointee, right_pointee) {
+          let qualified_type = QualifiedType::composite_unchecked(left_pointee, right_pointee);
+          let result_type =
+            QualifiedType::new_unqualified(Type::Pointer(Pointer::new(Box::new(qualified_type))));
+          Ok(ae::Expression::new_rvalue(
+            ae::RawExpr::Ternary(ae::Ternary::new(condition, then_expr, else_expr)),
+            result_type,
+          ))
+        } else {
+          err_or_debugbreak!() // error: incompatible pointer types in ternary expression
+        }
+      }
+      _ => todo!(),
     }
   }
-  fn analyze_assignment(&mut self, assignment: pe::Assignment) -> ExprRes {
-    let pe::Assignment {
-      operator: pe_operator,
-      left: pe_left,
-      right: pe_right,
-    } = assignment;
-    let left = self.analyze_expression(*pe_left)?;
-    let right = self.analyze_expression(*pe_right)?;
+  fn analyze_assignment(
+    &mut self,
+    operator: Operator,
+    left: ae::Expression,
+    right: ae::Expression,
+  ) -> ExprRes {
+    assert!(
+      operator == Operator::Assign,
+      "compound assignment not implemented"
+    );
     if !left.is_modifiable_lvalue() {
       return err_or_debugbreak!(); // expression is not assignable
     }
-    assert!(
-      matches!(pe_operator, Operator::Assign),
-      "only simple assignment is supported for now"
-    );
-    let assigned_expr = ae::Expression::assignment_conversion(right, &left.qualified_type())?;
+    let assigned_expr = right
+      .lvalue_conversion()
+      .decay()
+      .assignment_conversion(&left.qualified_type())?;
     let expr_type = left.qualified_type().clone();
     Ok(ae::Expression::new_rvalue(
-      ae::RawExpr::Assignment(ae::Assignment::new(pe_operator, left, assigned_expr)),
+      ae::RawExpr::Binary(ae::Binary::new(operator, left, assigned_expr)),
+      expr_type,
+    ))
+  }
+  fn analyze_logical(
+    &mut self,
+    operator: Operator,
+    left: ae::Expression,
+    right: ae::Expression,
+  ) -> ExprRes {
+    let left = left.lvalue_conversion().decay();
+    let right = right.lvalue_conversion().decay();
+
+    let lhs = left.conditional_conversion()?;
+    let rhs = right.conditional_conversion()?;
+    Ok(ae::Expression::new_rvalue(
+      ae::RawExpr::Binary(ae::Binary::new(operator, lhs, rhs)),
+      QualifiedType::new_unqualified(Type::Primitive(Primitive::Bool)),
+    ))
+  }
+  fn analyze_relational(
+    &mut self,
+    operator: Operator,
+    left: ae::Expression,
+    right: ae::Expression,
+  ) -> ExprRes {
+    let left = left.lvalue_conversion().decay();
+    let right = right.lvalue_conversion().decay();
+
+    // Path A
+    if left.unqualified_type().is_arithmetic() && right.unqualified_type().is_arithmetic() {
+      let (lhs, rhs, _common_type) = ae::Expression::usual_arithmetic_conversion(left, right)?;
+
+      return Ok(ae::Expression::new_rvalue(
+        ae::RawExpr::Binary(ae::Binary::new(operator, lhs, rhs)),
+        QualifiedType::new_unqualified(Primitive::Bool.into()),
+      ));
+    }
+    todo!()
+  }
+  fn analyze_arithmetic(
+    &mut self,
+    operator: Operator,
+    left: ae::Expression,
+    right: ae::Expression,
+  ) -> ExprRes {
+    let left = left.lvalue_conversion().decay();
+    let right = right.lvalue_conversion().decay();
+
+    let (lhs, rhs, result_type) = ae::Expression::usual_arithmetic_conversion(left, right)?;
+    Ok(ae::Expression::new_rvalue(
+      ae::RawExpr::Binary(ae::Binary::new(operator, lhs, rhs)),
+      result_type,
+    ))
+  }
+  fn analyze_bitwise(
+    &mut self,
+    operator: Operator,
+    left: ae::Expression,
+    right: ae::Expression,
+  ) -> ExprRes {
+    let left = left.lvalue_conversion().decay();
+    let right = right.lvalue_conversion().decay();
+
+    if !left.unqualified_type().is_integer() || !right.unqualified_type().is_integer() {
+      return err_or_debugbreak!(); // error: bitwise operator requires integer operands
+    }
+
+    let (lhs, rhs, result_type) = ae::Expression::usual_arithmetic_conversion(left, right)?;
+
+    Ok(ae::Expression::new_rvalue(
+      ae::RawExpr::Binary(ae::Binary::new(operator, lhs, rhs)),
+      result_type,
+    ))
+  }
+  fn analyze_bitshift(
+    &mut self,
+    operator: Operator,
+    left: ae::Expression,
+    right: ae::Expression,
+  ) -> ExprRes {
+    let lhs = left.lvalue_conversion().decay().promote();
+    let rhs = right.lvalue_conversion().decay().promote();
+
+    if !lhs.unqualified_type().is_integer() || !rhs.unqualified_type().is_integer() {
+      return err_or_debugbreak!(); // error: bitshift operator requires integer operands
+    }
+
+    let expr_type = lhs.qualified_type().clone();
+    Ok(ae::Expression::new_rvalue(
+      ae::RawExpr::Binary(ae::Binary::new(operator, lhs, rhs)),
+      expr_type,
+    ))
+  }
+  fn analyze_comma(
+    &mut self,
+    operator: Operator,
+    left: ae::Expression,
+    right: ae::Expression,
+  ) -> ExprRes {
+    // the result is the right expression, and the left is void converted, that's it. done.
+    let expr_type = right.qualified_type().clone();
+    Ok(ae::Expression::new_rvalue(
+      ae::RawExpr::Binary(ae::Binary::new(operator, left.void_conversion(), right)),
       expr_type,
     ))
   }
@@ -665,7 +802,7 @@ impl Analyzer {
 impl Analyzer {
   fn analyze_statement(&mut self, statement: ps::Statement) -> StmtRes<astmt::Statement> {
     match statement {
-      ps::Statement::Expression(expression) => self.analyze_expressionstmt(expression),
+      ps::Statement::Expression(expression) => self.analyze_exprstmt(expression),
       ps::Statement::Compound(compound_stmt) => Ok(astmt::Statement::Compound(
         self.analyze_compound(compound_stmt)?,
       )),
@@ -722,7 +859,7 @@ impl Analyzer {
 
     result
   }
-  fn analyze_expressionstmt(&mut self, expr_stmt: pe::Expression) -> StmtRes<astmt::Statement> {
+  fn analyze_exprstmt(&mut self, expr_stmt: pe::Expression) -> StmtRes<astmt::Statement> {
     // todo: unused expression result warning
     Ok(astmt::Statement::Expression(
       self.analyze_expression(expr_stmt)?,
@@ -763,7 +900,13 @@ impl Analyzer {
         return err_or_debugbreak!(); // error: returning a value from a void function
       }
       (Some(_), _) => {
-        let a = ae::Expression::assignment_conversion(analyzed_expr.unwrap(), &return_type)?;
+        let a = unsafe {
+          // this has value for absolutely sure
+          analyzed_expr.unwrap_unchecked()
+        }
+        .lvalue_conversion()
+        .decay()
+        .assignment_conversion(&return_type)?;
         Ok(astmt::Return::new(Some(a)))
       }
     }
@@ -838,13 +981,6 @@ impl Analyzer {
     ))
   }
   fn analyze_switch(&mut self, switch: ps::Switch) -> StmtRes<astmt::Switch> {
-    // let ps::Switch {
-    //   cases,
-    //   condition,
-    //   default,
-    // } = switch;
-    // let analyzed_condition = self.analyze_expression(condition)?;
-
     todo!()
   }
 }

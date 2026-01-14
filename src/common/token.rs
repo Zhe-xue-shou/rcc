@@ -1,8 +1,6 @@
-use crate::common::keyword::Keyword;
-use crate::common::operator::Operator;
-use crate::common::rawexpr::Constant;
-use ::std::fmt::Debug;
-use ::std::{path::PathBuf, rc::Rc};
+use ::std::{fmt::Debug, path::PathBuf, rc::Rc};
+
+use crate::common::{keyword::Keyword, operator::Operator, rawexpr::Constant};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Literal {
@@ -33,30 +31,35 @@ impl Token {
       location,
     }
   }
+
   pub fn number(number: Constant, location: SourceLocation) -> Self {
     Self {
       literal: Literal::Number(number),
       location,
     }
   }
+
   pub fn identifier(identifier: String, location: SourceLocation) -> Self {
     Self {
       literal: Literal::Identifier(identifier),
       location,
     }
   }
+
   pub fn keyword(keyword: Keyword, location: SourceLocation) -> Self {
     Self {
       literal: Literal::Keyword(keyword),
       location,
     }
   }
+
   pub fn operator(operator: Operator, location: SourceLocation) -> Self {
     Self {
       literal: Literal::Operator(operator),
       location,
     }
   }
+
   pub fn to_owned_string(&self) -> String {
     match &self.literal {
       Literal::Identifier(str) | Literal::String(str) => str.clone(),
@@ -72,12 +75,14 @@ impl Literal {
       _ => false,
     }
   }
+
   pub fn is_storage_class(&self) -> bool {
     match self {
       Literal::Keyword(kw) => kw.is_storage_class(),
       _ => false,
     }
   }
+
   pub fn is_function_specifier(&self) -> bool {
     match self {
       Literal::Keyword(kw) => kw.is_function_specifier(),
@@ -93,15 +98,22 @@ impl Keyword {
       Keyword::Const | Keyword::Volatile | Keyword::Restrict | Keyword::Atomic
     )
   }
+
   pub fn is_storage_class(&self) -> bool {
     matches!(
       self,
-      Keyword::Auto | Keyword::Register | Keyword::Static | Keyword::Extern | Keyword::Typedef
+      Keyword::Auto
+        | Keyword::Register
+        | Keyword::Static
+        | Keyword::Extern
+        | Keyword::Typedef
     )
   }
+
   pub fn is_function_specifier(&self) -> bool {
     matches!(self, Keyword::Inline | Keyword::Noreturn)
   }
+
   /// this isn't exhaustive, need to check typedefs in parser
   pub fn is_type_specifier(&self) -> bool {
     matches!(
@@ -123,8 +135,9 @@ impl Keyword {
   }
 }
 mod fmt {
-  use super::{Literal, Token};
   use ::std::fmt::Display;
+
+  use super::{Literal, Token};
 
   impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -1,7 +1,7 @@
 use crate::{
   common::{
-    keyword::Keyword, rawdecl::FunctionSpecifier, storage::Storage, token::Literal,
-    types::Qualifiers,
+    keyword::Keyword, rawdecl::FunctionSpecifier, storage::Storage,
+    token::Literal, types::Qualifiers,
   },
   parser::{expression::Expression, statement::Compound},
 };
@@ -135,6 +135,7 @@ impl TypeSpecifier {
 }
 impl TryFrom<&Keyword> for FunctionSpecifier {
   type Error = ();
+
   fn try_from(kw: &Keyword) -> Result<Self, Self::Error> {
     match kw {
       Keyword::Inline => Ok(FunctionSpecifier::Inline),
@@ -146,6 +147,7 @@ impl TryFrom<&Keyword> for FunctionSpecifier {
 
 impl TryFrom<&Literal> for FunctionSpecifier {
   type Error = ();
+
   fn try_from(literal: &Literal) -> Result<Self, Self::Error> {
     match literal {
       Literal::Keyword(kw) => FunctionSpecifier::try_from(kw),
@@ -156,6 +158,7 @@ impl TryFrom<&Literal> for FunctionSpecifier {
 
 impl TryFrom<&Keyword> for TypeSpecifier {
   type Error = ();
+
   fn try_from(kw: &Keyword) -> Result<Self, Self::Error> {
     match kw {
       Keyword::Void => Ok(TypeSpecifier::Void),
@@ -174,6 +177,7 @@ impl TryFrom<&Keyword> for TypeSpecifier {
 }
 impl TryFrom<&Literal> for TypeSpecifier {
   type Error = ();
+
   fn try_from(literal: &Literal) -> Result<Self, Self::Error> {
     match literal {
       Literal::Keyword(kw) => TypeSpecifier::try_from(kw),
@@ -268,7 +272,11 @@ impl EnumSpecifier {
   }
 }
 impl Function {
-  pub fn new(declspecs: DeclSpecs, declarator: Declarator, body: Option<Compound>) -> Self {
+  pub fn new(
+    declspecs: DeclSpecs,
+    declarator: Declarator,
+    body: Option<Compound>,
+  ) -> Self {
     Self {
       declspecs,
       declarator,
@@ -337,6 +345,7 @@ impl VarDef {
       initializer,
     }
   }
+
   pub fn is_typedef(&self) -> bool {
     let maybe = matches!(self.declspecs.storage_class, Some(Storage::Typedef));
     if maybe {
@@ -347,17 +356,19 @@ impl VarDef {
     }
     maybe
   }
+
   pub fn is_vardef(&self) -> bool {
     !self.is_typedef()
   }
 }
 mod fmt {
 
-  use super::{
-    DeclSpecs, Declaration, EnumSpecifier, Function, FunctionSignature, Modifier, Program, Struct,
-    TypeSpecifier, VarDef,
-  };
   use ::std::fmt::Display;
+
+  use super::{
+    DeclSpecs, Declaration, EnumSpecifier, Function, FunctionSignature,
+    Modifier, Program, Struct, TypeSpecifier, VarDef,
+  };
 
   impl Display for Declaration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -431,11 +442,10 @@ mod fmt {
               )
             }
           )
-        }
+        },
         Modifier::Array(_) => todo!(),
-        Modifier::Function(function_signature) => {
-          <FunctionSignature as Display>::fmt(function_signature, f)
-        }
+        Modifier::Function(function_signature) =>
+          <FunctionSignature as Display>::fmt(function_signature, f),
       }
     }
   }

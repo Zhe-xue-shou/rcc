@@ -1,5 +1,6 @@
-use crate::common::{error::Error, keyword::Keyword, token::Literal};
 use strum_macros::Display;
+
+use crate::common::{error::Error, keyword::Keyword, token::Literal};
 
 /// storage-class-specifier
 #[derive(Debug, Display, PartialEq, Eq, Clone)]
@@ -67,7 +68,7 @@ impl Storage {
     match (lhs, rhs) {
       (lhs, rhs) if lhs == rhs => Ok(lhs.clone()),
       (Storage::Constexpr, _) | (_, Storage::Constexpr) => Err(()), // unimplemented
-      (Storage::Typedef, _) | (_, Storage::Typedef) => Err(()),     // unmergeable
+      (Storage::Typedef, _) | (_, Storage::Typedef) => Err(()), // unmergeable
       (Storage::Extern, other) | (other, Storage::Extern) => Ok(other.clone()), // extern is compatible with any other storage class
       _ => Err(()),
     }

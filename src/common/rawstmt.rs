@@ -20,7 +20,8 @@ pub enum RawStmt<StmtTy, DeclTy, ExprTy> {
 #[macro_export(local_inner_macros)]
 macro_rules! type_alias_stmt {
   ($stmtty:ident,$declty:ident,$exprty:ident) => {
-    pub type RawStmt = crate::common::rawstmt::RawStmt<$stmtty, $declty, $exprty>;
+    pub type RawStmt =
+      crate::common::rawstmt::RawStmt<$stmtty, $declty, $exprty>;
     pub type Return = crate::common::rawstmt::Return<$exprty>;
     pub type If = crate::common::rawstmt::If<$stmtty, $exprty>;
     pub type While = crate::common::rawstmt::While<$stmtty, $exprty>;
@@ -185,6 +186,7 @@ impl<StmtTy, ExprTy> While<StmtTy, ExprTy> {
       label,
     }
   }
+
   pub fn get_label(&self) -> &str {
     &self.label
   }
@@ -198,6 +200,7 @@ impl<StmtTy, ExprTy> DoWhile<StmtTy, ExprTy> {
       label,
     }
   }
+
   pub fn get_label(&self) -> &str {
     &self.label
   }
@@ -219,6 +222,7 @@ impl<StmtTy, ExprTy> For<StmtTy, ExprTy> {
       label,
     }
   }
+
   pub fn get_label(&self) -> &str {
     &self.label
   }
@@ -234,6 +238,7 @@ impl SingleLabel {
   pub fn new(name: String) -> Self {
     Self { name }
   }
+
   pub fn get_label(&self) -> &str {
     &self.name
   }
@@ -243,14 +248,16 @@ impl<StmtTy, DeclTy, ExprTy> RawStmt<StmtTy, DeclTy, ExprTy> {
   pub fn new_loop_dummy_identifier(str: &'static str) -> String {
     static LOOP_LABEL_COUNTER: std::sync::atomic::AtomicUsize =
       std::sync::atomic::AtomicUsize::new(0);
-    let id = LOOP_LABEL_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let id =
+      LOOP_LABEL_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     format!("{}_{}", str, id)
   }
 }
 
 mod fmt {
-  use super::*;
   use std::fmt::Display;
+
+  use super::*;
 
   impl<StmtTy: Display, DeclTy: Display, ExprTy: Display> Display
     for RawStmt<StmtTy, DeclTy, ExprTy>

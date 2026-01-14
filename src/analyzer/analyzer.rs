@@ -1,5 +1,10 @@
+#[cfg(test)]
+use ::pretty_assertions::assert_eq;
+
 use crate::{
-  analyzer::{Analyzer, declaration as ad, expression as ae, statement as astmt},
+  analyzer::{
+    Analyzer, declaration as ad, expression as ae, statement as astmt,
+  },
   breakpoint,
   common::{
     environment::{Environment, Symbol, VarDeclKind},
@@ -8,15 +13,12 @@ use crate::{
     rawdecl::FunctionSpecifier,
     storage::Storage,
     types::{
-      Array, ArraySize, Compatibility, FunctionProto, Pointer, Primitive, QualifiedType, Type,
-      TypeInfo,
+      Array, ArraySize, Compatibility, FunctionProto, Pointer, Primitive,
+      QualifiedType, Type, TypeInfo,
     },
   },
   parser::{declaration as pd, expression as pe, statement as ps},
 };
-
-#[cfg(test)]
-use ::pretty_assertions::assert_eq;
 
 type TypeRes = Result<Type, Error>;
 type ExprRes = Result<ae::Expression, Error>;
@@ -38,12 +40,15 @@ impl Analyzer {
       ..Analyzer::default()
     }
   }
+
   pub fn add_error(&mut self, error: String) {
     self.errors.push(error);
   }
+
   pub fn add_warning(&mut self, warning: String) {
     self.warnings.push(warning);
   }
+
   pub fn analyze(&mut self) -> DeclRes<ad::TranslationUnit> {
     self.environment.enter();
     let mut declarations = Vec::new();
@@ -61,9 +66,11 @@ impl Analyzer {
       false => err_or_debugbreak!(),
     }
   }
+
   pub fn errors(&self) -> &[String] {
     &self.errors
   }
+
   pub fn warnings(&self) -> &[String] {
     &self.warnings
   }
@@ -81,7 +88,7 @@ impl Analyzer {
             qualifiers,
             Type::Pointer(Pointer::new(Box::new(qualified_type))),
           );
-        }
+        },
         pd::Modifier::Array(array_mod) => {
           let size = match array_mod.bound {
             pd::ArrayBound::Constant(n) => ArraySize::Constant(n),
@@ -95,15 +102,16 @@ impl Analyzer {
             }
             .into(),
           );
-        }
+        },
         pd::Modifier::Function(_) => {
           breakpoint!();
           unreachable!()
-        }
+        },
       }
     }
     qualified_type
   }
+
   fn apply_modifiers_for_functiondecl(
     return_type: QualifiedType,
     modifiers: Vec<pd::Modifier>,
@@ -121,7 +129,7 @@ impl Analyzer {
       _ => {
         breakpoint!();
         panic!("function declarator should have function modifier")
-      }
+      },
     };
     // we need to build function type
     let parameters = Self::parse_parameters(function_signature.parameters)?;
@@ -133,14 +141,18 @@ impl Analyzer {
         None => QualifiedType::new_unqualified(Primitive::Int.into()), // default to int
       })
       .collect::<Vec<QualifiedType>>();
-    let functionproto = FunctionProto::new(return_type.into(), parameter_types, is_variadic);
+    let functionproto =
+      FunctionProto::new(return_type.into(), parameter_types, is_variadic);
 
     Ok((
       QualifiedType::new_unqualified(functionproto.into()),
       parameters,
     ))
   }
-  fn parse_parameters(parameters: Vec<pd::Parameter>) -> DeclRes<Vec<ad::Parameter>> {
+
+  fn parse_parameters(
+    parameters: Vec<pd::Parameter>,
+  ) -> DeclRes<Vec<ad::Parameter>> {
     let mut analyzed_parameters = Vec::new();
     for parameter in parameters {
       let pd::Parameter {
@@ -152,7 +164,8 @@ impl Analyzer {
         return err_or_debugbreak!(); // error: parameter cannot have storage class
       }
       let pd::Declarator { modifiers, name } = declarator;
-      let qualified_type = Self::apply_modifiers_for_varty(qualified_type, modifiers);
+      let qualified_type =
+        Self::apply_modifiers_for_varty(qualified_type, modifiers);
       let symbol = name.map(|name| {
         Symbol::new_ref(Symbol::new(
           qualified_type,
@@ -165,6 +178,7 @@ impl Analyzer {
     }
     Ok(analyzed_parameters)
   }
+
   fn parse_declspecs(
     declspecs: pd::DeclSpecs,
   ) -> Result<(FunctionSpecifier, Option<Storage>, QualifiedType), Error> {
@@ -176,6 +190,7 @@ impl Analyzer {
 
     Ok((function_specifier, storage_class, qualified_type))
   }
+
   fn get_type(mut type_specifiers: Vec<pd::TypeSpecifier>) -> TypeRes {
     assert!(!type_specifiers.is_empty());
     // todo, convert typedefs into real types
@@ -197,28 +212,29 @@ impl Analyzer {
       | [Ts::Short, Ts::Int]
       | [Ts::Signed, Ts::Short]
       | [Ts::Signed, Ts::Short, Ts::Int] => Type::Primitive(Primitive::Short),
-      [Ts::Unsigned, Ts::Short] | [Ts::Unsigned, Ts::Short, Ts::Int] => {
-        Type::Primitive(Primitive::UShort)
-      }
+      [Ts::Unsigned, Ts::Short] | [Ts::Unsigned, Ts::Short, Ts::Int] =>
+        Type::Primitive(Primitive::UShort),
 
-      [Ts::Int] | [Ts::Signed] | [Ts::Signed, Ts::Int] => Type::Primitive(Primitive::Int),
-      [Ts::Unsigned] | [Ts::Unsigned, Ts::Int] => Type::Primitive(Primitive::UInt),
+      [Ts::Int] | [Ts::Signed] | [Ts::Signed, Ts::Int] =>
+        Type::Primitive(Primitive::Int),
+      [Ts::Unsigned] | [Ts::Unsigned, Ts::Int] =>
+        Type::Primitive(Primitive::UInt),
 
       [Ts::Long]
       | [Ts::Long, Ts::Int]
       | [Ts::Signed, Ts::Long]
       | [Ts::Signed, Ts::Long, Ts::Int] => Type::Primitive(Primitive::Long),
-      [Ts::Unsigned, Ts::Long] | [Ts::Unsigned, Ts::Long, Ts::Int] => {
-        Type::Primitive(Primitive::ULong)
-      }
+      [Ts::Unsigned, Ts::Long] | [Ts::Unsigned, Ts::Long, Ts::Int] =>
+        Type::Primitive(Primitive::ULong),
 
       [Ts::Long, Ts::Long]
       | [Ts::Long, Ts::Long, Ts::Int]
       | [Ts::Signed, Ts::Long, Ts::Long]
-      | [Ts::Signed, Ts::Long, Ts::Long, Ts::Int] => Type::Primitive(Primitive::LongLong),
-      [Ts::Unsigned, Ts::Long, Ts::Long] | [Ts::Unsigned, Ts::Long, Ts::Long, Ts::Int] => {
-        Primitive::ULongLong.into()
-      }
+      | [Ts::Signed, Ts::Long, Ts::Long, Ts::Int] =>
+        Type::Primitive(Primitive::LongLong),
+      [Ts::Unsigned, Ts::Long, Ts::Long]
+      | [Ts::Unsigned, Ts::Long, Ts::Long, Ts::Int] =>
+        Primitive::ULongLong.into(),
 
       [Ts::Float] => Type::Primitive(Primitive::Float),
       [Ts::Double] => Type::Primitive(Primitive::Double),
@@ -226,7 +242,8 @@ impl Analyzer {
 
       [Ts::Float, Ts::Complex] => Type::Primitive(Primitive::ComplexFloat),
       [Ts::Double, Ts::Complex] => Type::Primitive(Primitive::ComplexDouble),
-      [Ts::Long, Ts::Double, Ts::Complex] => Type::Primitive(Primitive::ComplexLongDouble),
+      [Ts::Long, Ts::Double, Ts::Complex] =>
+        Type::Primitive(Primitive::ComplexLongDouble),
 
       // treat complex integers as error
       [Ts::Char, Ts::Complex]
@@ -251,7 +268,7 @@ impl Analyzer {
       | [Ts::Unsigned, Ts::Long, Ts::Int, Ts::Complex] => {
         breakpoint!();
         panic!("Complex integer types are not supported");
-      }
+      },
 
       // skip _BitInt, _Decimal32, _Decimal64, _Decimal128 here
       _ => todo!("union, struct, enum, typedef, typeof, etc."),
@@ -261,25 +278,33 @@ impl Analyzer {
 }
 
 impl Analyzer {
-  pub fn declarations(&mut self, declaration: pd::Declaration) -> DeclRes<ad::Declaration> {
+  pub fn declarations(
+    &mut self,
+    declaration: pd::Declaration,
+  ) -> DeclRes<ad::Declaration> {
     match declaration {
       pd::Declaration::Function(function) => {
         let func = self.functiondecl(function)?;
         Ok(ad::Declaration::Function(func))
-      }
+      },
       pd::Declaration::Variable(vardef) => {
         let var = self.vardef(vardef)?;
         Ok(ad::Declaration::Variable(var))
-      }
+      },
     }
   }
-  pub fn functiondecl(&mut self, function: pd::Function) -> DeclRes<ad::Function> {
+
+  pub fn functiondecl(
+    &mut self,
+    function: pd::Function,
+  ) -> DeclRes<ad::Function> {
     let pd::Function {
       body,
       declarator,
       declspecs,
     } = function;
-    let (function_specifier, storage, return_type) = Self::parse_declspecs(declspecs)?;
+    let (function_specifier, storage, return_type) =
+      Self::parse_declspecs(declspecs)?;
     let storage = match storage {
       Some(s) => s,
       None => Storage::Extern,
@@ -308,13 +333,12 @@ impl Analyzer {
         self.current_function = Some(symbol.clone());
 
         let result = self.compound_with(b, |analyzer| {
-          // Declare parameters in the function scope
           for parameter in &parameters {
             if let Some(param_symbol) = &parameter.symbol {
-              analyzer
-                .environment
-                .symbols
-                .declare(param_symbol.borrow().name.clone(), param_symbol.clone());
+              analyzer.environment.symbols.declare(
+                param_symbol.borrow().name.clone(),
+                param_symbol.clone(),
+              );
             }
           }
         });
@@ -337,35 +361,38 @@ impl Analyzer {
       body,
     ))
   }
+
   pub fn vardef(&mut self, vardef: pd::VarDef) -> DeclRes<ad::VarDef> {
     let pd::VarDef {
       declarator,
       declspecs,
       initializer,
     } = vardef;
-    let (function_specifier, storage, qualified_type) = Self::parse_declspecs(declspecs)?;
+    let (function_specifier, storage, qualified_type) =
+      Self::parse_declspecs(declspecs)?;
     if !function_specifier.is_empty() {
       return err_or_debugbreak!(); // var cannot have inline and noreturn
     }
     let pd::Declarator { modifiers, name } = declarator;
     let name = name.ok_or(())?;
-    let qualified_type = Self::apply_modifiers_for_varty(qualified_type, modifiers);
+    let qualified_type =
+      Self::apply_modifiers_for_varty(qualified_type, modifiers);
     let initializer = match initializer {
       Some(init) => match init {
-        pd::Initializer::Expression(expression) => {
-          Some(ad::Initializer::Scalar(self.expression(*expression)?))
-        }
+        pd::Initializer::Expression(expression) =>
+          Some(ad::Initializer::Scalar(self.expression(*expression)?)),
         pd::Initializer::List(_) => {
           breakpoint!();
           todo!()
-        }
+        },
       },
       None => None,
     };
     // todo: check initializer type compatibility
 
     let vardef = match self.environment.is_global() {
-      true => self.global_vardef(storage, qualified_type, name.clone(), initializer),
+      true =>
+        self.global_vardef(storage, qualified_type, name.clone(), initializer),
       false => self.local_vardef(
         storage.unwrap_or(Storage::Automatic),
         qualified_type,
@@ -393,22 +420,27 @@ impl Analyzer {
       type VDK = VarDeclKind;
       match (&prev_declkind, &new_declkind) {
         (VDK::Definition, VDK::Definition) => err_or_debugbreak!(), // error: redefinition
-        (VDK::Definition, VDK::Declaration) | (VDK::Definition, VDK::Tentative) => {
+        (VDK::Definition, VDK::Declaration)
+        | (VDK::Definition, VDK::Tentative) => {
           // valid and nothing to do
           Ok(vardef)
-        }
-        (VDK::Declaration, VDK::Definition) | (VDK::Tentative, VDK::Definition) => {
+        },
+        (VDK::Declaration, VDK::Definition)
+        | (VDK::Tentative, VDK::Definition) => {
           {
             let mut prev = prev_symbol_ref.borrow_mut();
             let new_symbol = vardef.symbol.borrow();
             prev.declkind = VDK::Definition;
-            prev.storage_class = Storage::try_merge(&prev.storage_class, &new_symbol.storage_class)
-              .unwrap_or_else(|error| {
-                // self.error add: conflicting storage class
-                // use prev storage class
-                _ = error;
-                prev.storage_class.clone()
-              });
+            prev.storage_class = Storage::try_merge(
+              &prev.storage_class,
+              &new_symbol.storage_class,
+            )
+            .unwrap_or_else(|error| {
+              // self.error add: conflicting storage class
+              // use prev storage class
+              _ = error;
+              prev.storage_class.clone()
+            });
             prev.qualified_type = QualifiedType::composite_unchecked(
               &vardef.symbol.borrow().qualified_type,
               &prev_symbol_ref.borrow().qualified_type,
@@ -418,14 +450,14 @@ impl Analyzer {
           }
 
           Ok(vardef)
-        }
+        },
         (VDK::Declaration, VDK::Declaration)
         | (VDK::Tentative, VDK::Tentative)
         | (VDK::Declaration, VDK::Tentative)
         | (VDK::Tentative, VDK::Declaration) => {
           // only merge storage class if needed, todo
           Ok(vardef)
-        }
+        },
       }
     } else {
       self
@@ -435,6 +467,7 @@ impl Analyzer {
       Ok(vardef)
     }
   }
+
   fn global_vardef(
     &mut self,
     storage: Option<Storage>,
@@ -446,24 +479,25 @@ impl Analyzer {
       (None, None) => {
         let symbol = Symbol::tentative(qualified_type, Storage::Extern, name);
         ad::VarDef::new(symbol, None)
-      }
+      },
       (None, Some(initializer)) => {
         let symbol = Symbol::def(qualified_type, Storage::Extern, name);
         ad::VarDef::new(symbol, Some(initializer))
-      }
+      },
       (Some(storage), None) => {
         let symbol = Symbol::decl(qualified_type, storage, name);
         ad::VarDef::new(symbol, None)
-      }
+      },
       (Some(storage), Some(initializer)) => {
         if storage == Storage::Extern {
           return err_or_debugbreak!(); // warning, extern vardef should not have initializer
         }
         let symbol = Symbol::def(qualified_type, storage, name);
         ad::VarDef::new(symbol, Some(initializer))
-      }
+      },
     })
   }
+
   fn local_vardef(
     &mut self,
     storage: Storage,
@@ -496,6 +530,7 @@ impl Analyzer {
       pe::Expression::CompoundLiteral(_) => todo!(),
     }
   }
+
   fn sizeof(&mut self, sizeof: pe::SizeOf) -> ExprRes {
     match sizeof {
       pe::SizeOf::Expression(expression) => {
@@ -505,7 +540,7 @@ impl Analyzer {
           ae::RawExpr::Constant(ae::Constant::ULongLong(size as u64)),
           QualifiedType::new_unqualified(Primitive::ULongLong.into()),
         ))
-      }
+      },
       pe::SizeOf::Type(unprocessed_type) => {
         let pe::UnprocessedType {
           declspecs,
@@ -516,12 +551,15 @@ impl Analyzer {
           Self::apply_modifiers_for_varty(base_type, declarator.modifiers)
         };
         Ok(ae::Expression::new_rvalue(
-          ae::RawExpr::Constant(ae::Constant::ULongLong(qualified_type.size() as u64)),
+          ae::RawExpr::Constant(ae::Constant::ULongLong(
+            qualified_type.size() as u64
+          )),
           QualifiedType::new_unqualified(Primitive::ULongLong.into()),
         ))
-      }
+      },
     }
   }
+
   fn call(&mut self, call: pe::Call) -> ExprRes {
     let pe::Call { arguments, callee } = call;
     let analyzed_callee = self.expression(*callee)?;
@@ -553,9 +591,11 @@ impl Analyzer {
       expr_type,
     ))
   }
+
   fn cast(&mut self, cast: pe::CStyleCast) -> ExprRes {
     todo!()
   }
+
   fn variable(&mut self, variable: pe::Variable) -> ExprRes {
     let symbol = self.environment.find(&variable.name).ok_or(())?;
     if symbol.borrow().is_typedef() {
@@ -567,6 +607,7 @@ impl Analyzer {
       ))
     }
   }
+
   fn constant(&mut self, constant: pe::Constant) -> ExprRes {
     let unqualified_type = constant.unqualified_type();
     let value_category = if constant.is_char_array() {
@@ -580,19 +621,26 @@ impl Analyzer {
       value_category,
     ))
   }
+
   fn unary(&mut self, unary: pe::Unary) -> ExprRes {
     let pe::Unary {
       operator,
       expression: pe_expr,
     } = unary;
     // TODO: type conversions based on operator
-    let expression = self.expression(*pe_expr)?;
-    let qualified_type = expression.qualified_type().clone();
-    Ok(ae::Expression::new_rvalue(
-      ae::Unary::new(operator, expression).into(),
-      qualified_type,
-    ))
+    let operand = self.expression(*pe_expr)?;
+    match operator {
+      Operator::Ampersand => self.addressof(operator, operand),
+      Operator::Star => self.indirect(operator, operand),
+      Operator::Not => self.logical_not(operator, operand),
+      Operator::Tilde => self.tilde(operator, operand),
+      Operator::Plus | Operator::Minus =>
+        self.unary_arithmetic(operator, operand),
+      Operator::PlusPlus | Operator::MinusMinus => todo!(),
+      _ => unreachable!("operator is not unary: {:#?}", operator),
+    }
   }
+
   fn binary(&mut self, binary: pe::Binary) -> ExprRes {
     let pe::Binary {
       left: pe_left,
@@ -611,6 +659,7 @@ impl Analyzer {
       Category::Comma => self.comma(operator, left, right),
     }
   }
+
   fn ternary(&mut self, ternary: pe::Ternary) -> ExprRes {
     let pe::Ternary {
       condition: pe_condition,
@@ -622,12 +671,11 @@ impl Analyzer {
     let else_expr = self.expression(*pe_else_expr)?;
 
     match (then_expr.unqualified_type(), else_expr.unqualified_type()) {
-      (Type::Primitive(Primitive::Void), Type::Primitive(Primitive::Void)) => {
+      (Type::Primitive(Primitive::Void), Type::Primitive(Primitive::Void)) =>
         Ok(ae::Expression::new_rvalue(
           ae::Ternary::new(condition, then_expr, else_expr).into(),
           QualifiedType::void(),
-        ))
-      }
+        )),
       (Type::Primitive(Primitive::Void), _) => Ok(ae::Expression::new_rvalue(
         ae::Ternary::new(
           condition,
@@ -647,22 +695,26 @@ impl Analyzer {
         QualifiedType::void(),
       )),
       // both arithmetic -> usual arithmetic conversion
-      (left_type, right_type) if left_type.is_arithmetic() && right_type.is_arithmetic() => {
+      (left_type, right_type)
+        if left_type.is_arithmetic() && right_type.is_arithmetic() =>
+      {
         let (then_converted, else_converted, result_type) =
           ae::Expression::usual_arithmetic_conversion(then_expr, else_expr)?;
         Ok(ae::Expression::new_rvalue(
           ae::Ternary::new(condition, then_converted, else_converted).into(),
           result_type,
         ))
-      }
+      },
       // both pointer to compatible type -> composite type
       (Type::Pointer(left_ptr), Type::Pointer(right_ptr)) => {
         let left_pointee = &left_ptr.pointee;
         let right_pointee = &right_ptr.pointee;
         if QualifiedType::compatible(left_pointee, right_pointee) {
-          let qualified_type = QualifiedType::composite_unchecked(left_pointee, right_pointee);
-          let result_type =
-            QualifiedType::new_unqualified(Pointer::new(Box::new(qualified_type)).into());
+          let qualified_type =
+            QualifiedType::composite_unchecked(left_pointee, right_pointee);
+          let result_type = QualifiedType::new_unqualified(
+            Pointer::new(Box::new(qualified_type)).into(),
+          );
           Ok(ae::Expression::new_rvalue(
             ae::Ternary::new(condition, then_expr, else_expr).into(),
             result_type,
@@ -670,10 +722,118 @@ impl Analyzer {
         } else {
           err_or_debugbreak!() // error: incompatible pointer types in ternary expression
         }
-      }
+      },
       _ => todo!(),
     }
   }
+}
+impl Analyzer {
+  /// unary arithmetic operators: `+`, `-`
+  fn unary_arithmetic(
+    &mut self,
+    operator: Operator,
+    operand: ae::Expression,
+  ) -> ExprRes {
+    assert!(matches!(operator, Operator::Plus | Operator::Minus));
+    let operand = operand.lvalue_conversion().decay();
+
+    if !operand.unqualified_type().is_arithmetic() {
+      err_or_debugbreak!() // error: operand of unary arithmetic operator must be arithmetic type
+    } else {
+      Ok(operand.usual_arithmetic_conversion_unary()?)
+    }
+  }
+
+  /// bitwise NOT operator `~`
+  ///
+  /// 6.5.4.3.4: The result of the ~ operator is the bitwise complement of its (promoted) operand.
+  ///     The integer promotions are performed on the operand, and the result has the promoted type.
+  fn tilde(&mut self, operator: Operator, operand: ae::Expression) -> ExprRes {
+    assert_eq!(operator, Operator::Tilde);
+    let operand = operand.lvalue_conversion().decay();
+
+    if !operand.unqualified_type().is_integer() {
+      err_or_debugbreak!() // error: operand of bitwise NOT operator must be an integer
+    } else {
+      Ok(operand.usual_arithmetic_conversion_unary()?)
+    }
+  }
+
+  /// logical NOT operator `!`
+  fn logical_not(
+    &mut self,
+    operator: Operator,
+    operand: ae::Expression,
+  ) -> ExprRes {
+    assert_eq!(operator, Operator::Not);
+    let operand = operand.lvalue_conversion().decay();
+
+    let converted_operand = operand.conditional_conversion()?;
+    Ok(ae::Expression::new_rvalue(
+      ae::Unary::new(operator, converted_operand).into(),
+      QualifiedType::new_unqualified(Primitive::Bool.into()),
+    ))
+  }
+
+  /// address-of operator `&`
+  ///
+  /// no `lvalue_conversion`, no `decay`
+  /// 6.5.4.2.3: The unary & operator yields the address of its operand.
+  /// If the operand has type "type"(in my Type system it's represented as `QualifiedType`)
+  fn addressof(
+    &mut self,
+    operator: Operator,
+    operand: ae::Expression,
+  ) -> ExprRes {
+    assert_eq!(operator, Operator::Ampersand);
+    if !operand.is_lvalue() {
+      err_or_debugbreak!() // error: operand of address-of operator must be an lvalue
+    } else {
+      let pointer_type =
+        Pointer::new(operand.qualified_type().clone().into()).into();
+      Ok(ae::Expression::new_rvalue(
+        ae::Unary::new(operator, operand).into(),
+        QualifiedType::new_unqualified(pointer_type),
+      ))
+    }
+  }
+
+  /// indirection operator `*`
+  ///
+  /// 6.5.4.2.4: The unary * operator denotes indirection.
+  /// the pointee needs to `lvalue_conversion` and `decay`, but the result itself does not need to
+  fn indirect(
+    &mut self,
+    operator: Operator,
+    operand: ae::Expression,
+  ) -> ExprRes {
+    assert_eq!(operator, Operator::Star);
+
+    let operand = operand.lvalue_conversion().decay();
+
+    if !operand.unqualified_type().is_pointer() {
+      return err_or_debugbreak!(); // error: operand of indirection operator must be a pointer
+    }
+
+    let pointee_type =
+      &operand.unqualified_type().as_pointer_unchecked().pointee;
+    if pointee_type.unqualified_type == Type::Primitive(Primitive::Void) {
+      err_or_debugbreak!() // error: cannot dereference void pointer
+    } else {
+      // If the operand points to a function, the result is a function designator; -- which means the we don't need to perform decay here
+      // if it points to an object, the result is an lvalue designating the object.
+      // If the operand has type "pointer to type", the result has type "type".
+      // If an invalid value has been assigned to the pointer, the behavior is undefined.
+      let expr_type = pointee_type.as_ref().clone();
+      Ok(ae::Expression::new_lvalue(
+        ae::Unary::new(operator, operand).into(),
+        expr_type,
+      ))
+    }
+  }
+}
+impl Analyzer {
+  /// assignment operator `=`
   fn assignment(
     &mut self,
     operator: Operator,
@@ -697,6 +857,12 @@ impl Analyzer {
       expr_type,
     ))
   }
+
+  /// logical operators: `&&`, `||`
+  ///
+  /// 1. lvalue conversion
+  /// 2. decay
+  /// 3. conditional conversion
   fn logical(
     &mut self,
     operator: Operator,
@@ -713,6 +879,10 @@ impl Analyzer {
       QualifiedType::new_unqualified(Primitive::Bool.into()),
     ))
   }
+
+  /// relational operators: `<`, `>`, `<=`, `>=`, `==`, `!=`
+  ///
+  /// same as `logical`, but with arithmetic conversions if both operands are arithmetic types
   fn relational(
     &mut self,
     operator: Operator,
@@ -723,8 +893,11 @@ impl Analyzer {
     let right = right.lvalue_conversion().decay();
 
     // Path A
-    if left.unqualified_type().is_arithmetic() && right.unqualified_type().is_arithmetic() {
-      let (lhs, rhs, _common_type) = ae::Expression::usual_arithmetic_conversion(left, right)?;
+    if left.unqualified_type().is_arithmetic()
+      && right.unqualified_type().is_arithmetic()
+    {
+      let (lhs, rhs, _common_type) =
+        ae::Expression::usual_arithmetic_conversion(left, right)?;
 
       return Ok(ae::Expression::new_rvalue(
         ae::Binary::new(operator, lhs, rhs).into(),
@@ -733,6 +906,13 @@ impl Analyzer {
     }
     todo!()
   }
+
+  /// usual arithmetic conversion: `+`, `-`, `*`, `/`, `%`
+  ///
+  /// 1. lvalue conversion, with the exception of arrays and functionproto\(handled inside the `lvalue_conversion`\)
+  /// 2. array and function decay
+  /// 3. promotions\(inside `usual_arithmetic_conversion`\)
+  /// 4. finally, the usual arithmetic conversion itself
   fn arithmetic(
     &mut self,
     operator: Operator,
@@ -742,12 +922,17 @@ impl Analyzer {
     let left = left.lvalue_conversion().decay();
     let right = right.lvalue_conversion().decay();
 
-    let (lhs, rhs, result_type) = ae::Expression::usual_arithmetic_conversion(left, right)?;
+    let (lhs, rhs, result_type) =
+      ae::Expression::usual_arithmetic_conversion(left, right)?;
     Ok(ae::Expression::new_rvalue(
       ae::Binary::new(operator, lhs, rhs).into(),
       result_type,
     ))
   }
+
+  /// bitwise operators: `&`, `|`, `^`
+  ///
+  /// mostly same as arithmetic, but only for integer types
   fn bitwise(
     &mut self,
     operator: Operator,
@@ -757,17 +942,24 @@ impl Analyzer {
     let left = left.lvalue_conversion().decay();
     let right = right.lvalue_conversion().decay();
 
-    if !left.unqualified_type().is_integer() || !right.unqualified_type().is_integer() {
+    if !left.unqualified_type().is_integer()
+      || !right.unqualified_type().is_integer()
+    {
       return err_or_debugbreak!(); // error: bitwise operator requires integer operands
     }
 
-    let (lhs, rhs, result_type) = ae::Expression::usual_arithmetic_conversion(left, right)?;
+    let (lhs, rhs, result_type) =
+      ae::Expression::usual_arithmetic_conversion(left, right)?;
 
     Ok(ae::Expression::new_rvalue(
       ae::Binary::new(operator, lhs, rhs).into(),
       result_type,
     ))
   }
+
+  /// bitshift operators: `<<`, `>>`
+  ///
+  /// lvalue conversion, decay, promote, both operands must be integer types, but no usual arithmetic conversion
   fn bitshift(
     &mut self,
     operator: Operator,
@@ -777,7 +969,9 @@ impl Analyzer {
     let lhs = left.lvalue_conversion().decay().promote();
     let rhs = right.lvalue_conversion().decay().promote();
 
-    if !lhs.unqualified_type().is_integer() || !rhs.unqualified_type().is_integer() {
+    if !lhs.unqualified_type().is_integer()
+      || !rhs.unqualified_type().is_integer()
+    {
       return err_or_debugbreak!(); // error: bitshift operator requires integer operands
     }
 
@@ -787,7 +981,16 @@ impl Analyzer {
       expr_type,
     ))
   }
-  fn comma(&mut self, operator: Operator, left: ae::Expression, right: ae::Expression) -> ExprRes {
+
+  /// comma operator `,`
+  ///
+  /// left is void converted, result is right expression
+  fn comma(
+    &mut self,
+    operator: Operator,
+    left: ae::Expression,
+    right: ae::Expression,
+  ) -> ExprRes {
     // the result is the right expression, and the left is void converted, that's it. done.
     let expr_type = right.qualified_type().clone();
     Ok(ae::Expression::new_rvalue(
@@ -797,38 +1000,53 @@ impl Analyzer {
   }
 }
 impl Analyzer {
-  fn statement(&mut self, statement: ps::Statement) -> StmtRes<astmt::Statement> {
+  fn statement(
+    &mut self,
+    statement: ps::Statement,
+  ) -> StmtRes<astmt::Statement> {
     match statement {
       ps::Statement::Expression(expression) => self.exprstmt(expression),
-      ps::Statement::Compound(compound_stmt) => {
-        Ok(astmt::Statement::Compound(self.compound(compound_stmt)?))
-      }
+      ps::Statement::Compound(compound_stmt) =>
+        Ok(astmt::Statement::Compound(self.compound(compound_stmt)?)),
       ps::Statement::Empty() => Ok(astmt::Statement::Empty()),
-      ps::Statement::Return(return_stmt) => {
-        Ok(astmt::Statement::Return(self.returnstmt(return_stmt)?))
-      }
-      ps::Statement::Declaration(declaration) => Ok(astmt::Statement::Declaration(
-        self.declarations(declaration)?,
-      )),
-      ps::Statement::If(if_stmt) => Ok(astmt::Statement::If(self.ifstmt(if_stmt)?)),
-      ps::Statement::While(while_stmt) => Ok(astmt::Statement::While(self.whilestmt(while_stmt)?)),
-      ps::Statement::DoWhile(do_while) => {
-        Ok(astmt::Statement::DoWhile(self.dowhilestmt(do_while)?))
-      }
-      ps::Statement::For(for_stmt) => Ok(astmt::Statement::For(self.forstmt(for_stmt)?)),
+      ps::Statement::Return(return_stmt) =>
+        Ok(astmt::Statement::Return(self.returnstmt(return_stmt)?)),
+      ps::Statement::Declaration(declaration) => Ok(
+        astmt::Statement::Declaration(self.declarations(declaration)?),
+      ),
+      ps::Statement::If(if_stmt) =>
+        Ok(astmt::Statement::If(self.ifstmt(if_stmt)?)),
+      ps::Statement::While(while_stmt) =>
+        Ok(astmt::Statement::While(self.whilestmt(while_stmt)?)),
+      ps::Statement::DoWhile(do_while) =>
+        Ok(astmt::Statement::DoWhile(self.dowhilestmt(do_while)?)),
+      ps::Statement::For(for_stmt) =>
+        Ok(astmt::Statement::For(self.forstmt(for_stmt)?)),
       ps::Statement::Label(_) => {
-        todo!("requires adding field into analyzer struct to indicarte which function we're in")
-      }
-      ps::Statement::Switch(switch) => Ok(astmt::Statement::Switch(self.switchstmt(switch)?)),
+        todo!(
+          "requires adding field into analyzer struct to indicarte which function we're in"
+        )
+      },
+      ps::Statement::Switch(switch) =>
+        Ok(astmt::Statement::Switch(self.switchstmt(switch)?)),
       ps::Statement::Goto(_) => todo!(),
-      ps::Statement::Break(_) => todo!("ditto, but requires the compound stack"),
+      ps::Statement::Break(_) => {
+        todo!("ditto, but requires the compound stack")
+      },
       ps::Statement::Continue(_) => todo!("ditto"),
     }
   }
+
   fn compound(&mut self, compound: ps::Compound) -> StmtRes<astmt::Compound> {
-    self.compound_with(compound, |_| {})
+    const IDENTITY: fn(&mut Analyzer) = |_| {};
+    self.compound_with(compound, IDENTITY)
   }
-  fn compound_with<Fn>(&mut self, compound: ps::Compound, callback: Fn) -> StmtRes<astmt::Compound>
+
+  fn compound_with<Fn>(
+    &mut self,
+    compound: ps::Compound,
+    callback: Fn,
+  ) -> StmtRes<astmt::Compound>
   where
     Fn: FnOnce(&mut Self),
   {
@@ -850,10 +1068,15 @@ impl Analyzer {
 
     result
   }
-  fn exprstmt(&mut self, expr_stmt: pe::Expression) -> StmtRes<astmt::Statement> {
+
+  fn exprstmt(
+    &mut self,
+    expr_stmt: pe::Expression,
+  ) -> StmtRes<astmt::Statement> {
     // todo: unused expression result warning
     Ok(astmt::Statement::Expression(self.expression(expr_stmt)?))
   }
+
   fn returnstmt(&mut self, return_stmt: ps::Return) -> StmtRes<astmt::Return> {
     let ps::Return { expression } = return_stmt;
     let analyzed_expr = match expression {
@@ -876,16 +1099,16 @@ impl Analyzer {
       _ => {
         breakpoint!();
         panic!("current function's type is not function proto")
-      }
+      },
     };
     match (&analyzed_expr, &return_type.unqualified_type) {
       (None, Type::Primitive(Primitive::Void)) => Ok(astmt::Return::new(None)),
       (None, _) => {
         err_or_debugbreak!() // error: non-void function must return a value
-      }
+      },
       (Some(_), Type::Primitive(Primitive::Void)) => {
         err_or_debugbreak!() // error: returning a value from a void function
-      }
+      },
       (Some(_), _) => {
         let a = unsafe {
           // this has value for absolutely sure
@@ -895,9 +1118,10 @@ impl Analyzer {
         .decay()
         .assignment_conversion(&return_type)?;
         Ok(astmt::Return::new(Some(a)))
-      }
+      },
     }
   }
+
   fn ifstmt(&mut self, if_stmt: ps::If) -> StmtRes<astmt::If> {
     let ps::If {
       condition,
@@ -916,6 +1140,7 @@ impl Analyzer {
       analyzed_else_branch,
     ))
   }
+
   fn whilestmt(&mut self, while_stmt: ps::While) -> StmtRes<astmt::While> {
     let ps::While {
       condition,
@@ -926,6 +1151,7 @@ impl Analyzer {
     let analyzed_body = Box::new(self.statement(*body)?);
     Ok(astmt::While::new(analyzed_condition, analyzed_body, label))
   }
+
   fn dowhilestmt(&mut self, do_while: ps::DoWhile) -> StmtRes<astmt::DoWhile> {
     let ps::DoWhile {
       body,
@@ -940,6 +1166,7 @@ impl Analyzer {
       label,
     ))
   }
+
   fn forstmt(&mut self, for_stmt: ps::For) -> StmtRes<astmt::For> {
     let ps::For {
       initializer,
@@ -952,8 +1179,10 @@ impl Analyzer {
       .map(|init| self.statement(*init))
       .transpose()?
       .map(Box::new);
-    let analyzed_condition = condition.map(|cond| self.expression(cond)).transpose()?;
-    let analyzed_increment = increment.map(|inc| self.expression(inc)).transpose()?;
+    let analyzed_condition =
+      condition.map(|cond| self.expression(cond)).transpose()?;
+    let analyzed_increment =
+      increment.map(|inc| self.expression(inc)).transpose()?;
     let analyzed_body = Box::new(self.statement(*body)?);
     Ok(astmt::For::new(
       analyzed_initializer,
@@ -963,6 +1192,7 @@ impl Analyzer {
       label,
     ))
   }
+
   fn switchstmt(&mut self, switch: ps::Switch) -> StmtRes<astmt::Switch> {
     todo!()
   }

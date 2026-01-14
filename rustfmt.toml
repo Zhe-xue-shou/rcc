@@ -1,1 +1,10 @@
 tab_spaces = 2
+max_width = 80
+condense_wildcard_suffixes = true
+unstable_features = true
+reorder_imports = true
+group_imports = "StdExternalCrate"
+reorder_impl_items = true
+imports_granularity = "Crate"
+match_arm_blocks = false
+match_block_trailing_comma = true

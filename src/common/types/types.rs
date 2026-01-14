@@ -1,13 +1,15 @@
+use ::once_cell::sync::Lazy;
+use ::std::str::FromStr;
+
 use crate::common::{
   error::Error,
   rawdecl::FunctionSpecifier,
   types::{
-    Array, ArraySize, Compatibility, Enum, EnumConstant, FunctionProto, Pointer, Primitive,
-    QualifiedType, Qualifiers, Record, Type, TypeInfo, Union,
+    Array, ArraySize, Compatibility, Enum, EnumConstant, FunctionProto,
+    Pointer, Primitive, QualifiedType, Qualifiers, Record, Type, TypeInfo,
+    Union,
   },
 };
-use ::once_cell::sync::Lazy;
-use ::std::str::FromStr;
 
 impl QualifiedType {
   pub fn new(qualifiers: Qualifiers, unqualified_type: Type) -> Self {
@@ -16,17 +18,24 @@ impl QualifiedType {
       unqualified_type,
     }
   }
+
   pub fn new_unqualified(unqualified_type: Type) -> Self {
     Self {
       qualifiers: Qualifiers::empty(),
       unqualified_type,
     }
   }
+
   pub fn void() -> Self {
     Self::new_unqualified(Type::void())
   }
+
   pub fn bool() -> Self {
     Self::new_unqualified(Type::bool())
+  }
+
+  pub fn int() -> Self {
+    Self::new_unqualified(Type::int())
   }
 }
 impl Pointer {
@@ -39,22 +48,13 @@ impl Primitive {
   pub fn new(str: String) -> Self {
     Self::maybe_new(str).unwrap()
   }
+
   pub fn maybe_new(str: String) -> Option<Self> {
     Primitive::from_str(&str).ok()
   }
 }
 
 impl FunctionProto {
-  const MAIN_PROTO_EMPTY: Lazy<FunctionProto> = Lazy::new(|| {
-    FunctionProto::new(
-      Box::new(QualifiedType::new(
-        Qualifiers::empty(),
-        Type::Primitive(Primitive::Int),
-      )),
-      vec![],
-      false,
-    )
-  });
   const MAIN_PROTO_ARGS: Lazy<FunctionProto> = Lazy::new(|| {
     FunctionProto::new(
       Box::new(QualifiedType::new(
@@ -71,6 +71,17 @@ impl FunctionProto {
       false,
     )
   });
+  const MAIN_PROTO_EMPTY: Lazy<FunctionProto> = Lazy::new(|| {
+    FunctionProto::new(
+      Box::new(QualifiedType::new(
+        Qualifiers::empty(),
+        Type::Primitive(Primitive::Int),
+      )),
+      vec![],
+      false,
+    )
+  });
+
   pub fn new(
     return_type: Box<QualifiedType>,
     parameter_types: Vec<QualifiedType>,
@@ -82,7 +93,11 @@ impl FunctionProto {
       is_variadic,
     }
   }
-  pub fn main_proto_validate(&self, function_specifier: FunctionSpecifier) -> Result<(), Error> {
+
+  pub fn main_proto_validate(
+    &self,
+    function_specifier: FunctionSpecifier,
+  ) -> Result<(), Error> {
     if self.is_variadic {
       Err(())
     } else if function_specifier.contains(FunctionSpecifier::Inline) {
@@ -115,13 +130,15 @@ impl Enum {
       underlying_type,
     }
   }
+
   pub fn into_underlying_type(self) -> Primitive {
     self.underlying_type
   }
 }
 
-use crate::breakpoint;
 use paste::paste;
+
+use crate::breakpoint;
 
 macro_rules! make_trio_for {
   ($variant:ident) => {
@@ -195,32 +212,43 @@ impl Type {
       }
     }
   }
+
   pub fn is_void(&self) -> bool {
     matches!(self, Type::Primitive(Primitive::Void))
   }
+
   pub fn is_integer(&self) -> bool {
     match self {
       Type::Primitive(p) => p.is_integer(),
       _ => false,
     }
   }
+
   pub fn is_arithmetic(&self) -> bool {
     match self {
       Type::Primitive(p) => p.is_arithmetic(),
       _ => false,
     }
   }
+
   pub fn void() -> Self {
     Type::Primitive(Primitive::Void)
   }
+
   pub fn bool() -> Self {
     Type::Primitive(Primitive::Bool)
+  }
+
+  pub fn int() -> Self {
+    Type::Primitive(Primitive::Int)
   }
 }
 impl QualifiedType {
   pub fn is_modifiable(&self) -> bool {
-    self.unqualified_type.is_modifiable() && !self.qualifiers.contains(Qualifiers::Const)
+    self.unqualified_type.is_modifiable()
+      && !self.qualifiers.contains(Qualifiers::Const)
   }
+
   pub fn is_void(&self) -> bool {
     self.unqualified_type.is_void()
   }

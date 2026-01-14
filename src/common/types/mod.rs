@@ -209,9 +209,9 @@ pub enum CastType {
   FunctionToPointerDecay, // void f() -> void(*)()
   NullptrToPointer,       // nullptr -> ptr
 
-  IntegralCast,       // int -> long, unsigned -> int - bit widening/narrowing
+  IntegralCast, // int -> long, unsigned -> int - bit widening/narrowing
   IntegralToFloating, // int -> float
-  IntegralToBoolean,  // int -> bool (val != 0)
+  IntegralToBoolean, // int -> bool (val != 0)
 
   FloatingCast,       // float -> double
   FloatingToIntegral, // float -> int
@@ -220,9 +220,10 @@ pub enum CastType {
   IntegralToPointer, // int -> ptr (addr 0 is null)
   PointerToIntegral,
   PointerToBoolean, // ptr -> bool (ptr != 0)
-  BitCast,          // pesudo cast; no actual conversion, just reinterpret the bits
+  BitCast, // pesudo cast; no actual conversion, just reinterpret the bits
 
   // ^^^ those exist in Clang's frontend too
   // vvv custom casts
-  NullptrToBoolean, // nullptr -> bool
+  NullptrToIntegral, // nullptr -> int
+  NullptrToBoolean,  // nullptr -> bool
 }

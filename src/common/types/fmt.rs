@@ -1,7 +1,9 @@
-use super::{
-  Array, ArraySize, Enum, FunctionProto, Pointer, QualifiedType, Qualifiers, Record, Type, Union,
-};
 use ::std::fmt::Display;
+
+use super::{
+  Array, ArraySize, Enum, FunctionProto, Pointer, QualifiedType, Qualifiers,
+  Record, Type, Union,
+};
 
 impl Display for Qualifiers {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

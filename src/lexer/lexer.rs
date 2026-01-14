@@ -1,17 +1,20 @@
-use crate::common::keyword::Keyword;
-use crate::common::operator::Operator;
-use crate::common::rawexpr::Constant;
-use crate::common::token::{SourceLocation, Token};
-use ::std::path::PathBuf;
-use ::std::rc::Rc;
-use ::std::str::FromStr;
+use ::std::{path::PathBuf, rc::Rc, str::FromStr};
 
-use crate::lexer::Lexer;
+use crate::{
+  common::{
+    keyword::Keyword,
+    operator::Operator,
+    rawexpr::Constant,
+    token::{SourceLocation, Token},
+  },
+  lexer::Lexer,
+};
 
 impl Lexer {
   pub fn new(source: String, filepath: PathBuf) -> Self {
     let chars: Vec<char> = source.chars().collect();
-    let byte_positions: Vec<usize> = source.char_indices().map(|(pos, _)| pos).collect();
+    let byte_positions: Vec<usize> =
+      source.char_indices().map(|(pos, _)| pos).collect();
 
     Self {
       source,
@@ -24,6 +27,7 @@ impl Lexer {
       filepath: Rc::new(filepath),
     }
   }
+
   pub fn errors(&self) -> &[String] {
     &self.errors
   }
@@ -119,7 +123,8 @@ impl Lexer {
       ' ' | '\t' | '\r' | '\n' => None,
 
       // identifiers and keywords
-      c if Self::is_ident_start(c) => Some(self.lex_identifier(start, start_loc)),
+      c if Self::is_ident_start(c) =>
+        Some(self.lex_identifier(start, start_loc)),
 
       // numbers
       '0'..='9' => Some(self.lex_number(start, start_loc, false)),
@@ -128,29 +133,32 @@ impl Lexer {
       '"' => Some(self.lex_string(start_loc)),
 
       // dot (operator/floating point)
-      '.' => {
+      '.' =>
         if self.peek(0).is_ascii_hexdigit() {
           Some(self.lex_number(start, start_loc, true))
         } else {
-          self.lex_compound_op(start_loc, Operator::Dot, &[("...", Operator::Ellipsis)])
-        }
-      }
+          self.lex_compound_op(
+            start_loc,
+            Operator::Dot,
+            &[("...", Operator::Ellipsis)],
+          )
+        },
 
       // comments/division
       '/' => match self.peek(0) {
         '/' => {
           self.skip_line_comment();
           None
-        }
+        },
         '*' => {
           self.advance();
           self.skip_block_comment();
           None
-        }
+        },
         '=' => {
           self.advance();
           Some(Token::operator(Operator::SlashAssign, start_loc))
-        }
+        },
         _ => Some(Token::operator(Operator::Slash, start_loc)),
       },
 
@@ -169,14 +177,26 @@ impl Lexer {
           ("->", Operator::Arrow),
         ],
       ),
-      '*' => self.lex_compound_op(start_loc, Operator::Star, &[("*=", Operator::StarAssign)]),
+      '*' => self.lex_compound_op(
+        start_loc,
+        Operator::Star,
+        &[("*=", Operator::StarAssign)],
+      ),
       '%' => self.lex_compound_op(
         start_loc,
         Operator::Percent,
         &[("%=", Operator::PercentAssign)],
       ),
-      '=' => self.lex_compound_op(start_loc, Operator::Assign, &[("==", Operator::EqualEqual)]),
-      '!' => self.lex_compound_op(start_loc, Operator::Not, &[("!=", Operator::NotEqual)]),
+      '=' => self.lex_compound_op(
+        start_loc,
+        Operator::Assign,
+        &[("==", Operator::EqualEqual)],
+      ),
+      '!' => self.lex_compound_op(
+        start_loc,
+        Operator::Not,
+        &[("!=", Operator::NotEqual)],
+      ),
       '<' => self.lex_compound_op(
         start_loc,
         Operator::Less,
@@ -205,8 +225,16 @@ impl Lexer {
         Operator::Pipe,
         &[("||", Operator::Or), ("|=", Operator::PipeAssign)],
       ),
-      '^' => self.lex_compound_op(start_loc, Operator::Caret, &[("^=", Operator::CaretAssign)]),
-      ':' => self.lex_compound_op(start_loc, Operator::Colon, &[("::", Operator::DoubleColon)]),
+      '^' => self.lex_compound_op(
+        start_loc,
+        Operator::Caret,
+        &[("^=", Operator::CaretAssign)],
+      ),
+      ':' => self.lex_compound_op(
+        start_loc,
+        Operator::Colon,
+        &[("::", Operator::DoubleColon)],
+      ),
       '[' => self.lex_compound_op(
         start_loc,
         Operator::LeftBracket,
@@ -218,7 +246,11 @@ impl Lexer {
         &[("]]", Operator::DoubleRightBracket)],
       ),
 
-      '#' => self.lex_compound_op(start_loc, Operator::Hash, &[("##", Operator::HashHash)]),
+      '#' => self.lex_compound_op(
+        start_loc,
+        Operator::Hash,
+        &[("##", Operator::HashHash)],
+      ),
 
       // single-character operators
       ',' => Some(Token::operator(Operator::Comma, start_loc)),
@@ -237,7 +269,7 @@ impl Lexer {
           ch, start_loc.line, start_loc.column
         ));
         None
-      }
+      },
     }
   }
 
@@ -249,7 +281,11 @@ impl Lexer {
     c.is_alphanumeric() || c == '_'
   }
 
-  fn lex_identifier(&mut self, start: usize, start_loc: SourceLocation) -> Token {
+  fn lex_identifier(
+    &mut self,
+    start: usize,
+    start_loc: SourceLocation,
+  ) -> Token {
     while matches!(self.peek(0), c if Self::is_ident_continue(c)) {
       self.advance();
     }
@@ -261,6 +297,7 @@ impl Lexer {
       Err(_) => Token::identifier(text.to_string(), start_loc),
     }
   }
+
   fn lex_number(
     &mut self,
     start: usize,
@@ -272,19 +309,19 @@ impl Lexer {
         ('0', 'x' | 'X') => {
           self.advance();
           16
-        }
+        },
         ('0', 'b' | 'B') => {
           self.advance();
           2
-        }
+        },
         ('0', 'd' | 'D') => {
           self.advance();
           10
-        }
+        },
         ('0', '0'..'7') => {
           self.advance();
           8
-        }
+        },
         _ => 10,
       }
     } else {
@@ -299,7 +336,10 @@ impl Lexer {
     let mut is_floating = false;
 
     // decimal point for base-10 numbers
-    if base == 10 && matches!(self.peek(0), '.') && self.peek(1).is_ascii_digit() {
+    if base == 10
+      && matches!(self.peek(0), '.')
+      && self.peek(1).is_ascii_digit()
+    {
       self.advance(); // consume '.'
       is_floating = true;
       while self.peek(0).is_ascii_digit() {
@@ -338,7 +378,9 @@ impl Lexer {
       }
 
       if !self.peek(0).is_ascii_digit() {
-        self.add_error("Expected digits after hexadecimal exponent marker".to_string());
+        self.add_error(
+          "Expected digits after hexadecimal exponent marker".to_string(),
+        );
       } else {
         while self.peek(0).is_ascii_digit() {
           self.advance();
@@ -355,7 +397,7 @@ impl Lexer {
       }
       let s = self.slice_str(head, self.cursor);
       match is_floating {
-        true => {
+        true =>
           if Constant::FLOATING_SUFFIXES.contains(&s) {
             Some(s)
           } else {
@@ -364,16 +406,17 @@ impl Lexer {
               s
             ));
             None
-          }
-        }
-        false => {
+          },
+        false =>
           if Constant::INTEGER_SUFFIXES.contains(&s) {
             Some(s)
           } else {
-            self.add_error(format!("Invalid integer literal suffix '{}', ignoring", s));
+            self.add_error(format!(
+              "Invalid integer literal suffix '{}', ignoring",
+              s
+            ));
             None
-          }
-        }
+          },
       }
     } else {
       None

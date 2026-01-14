@@ -152,13 +152,18 @@ impl<ExprTy> Unary<ExprTy> {
       false => None,
     }
   }
+
   pub fn new(operator: Operator, expression: ExprTy) -> Self {
     Self::from_operator(operator, expression).unwrap()
   }
 }
 
 impl<ExprTy> Binary<ExprTy> {
-  pub fn from_operator(operator: Operator, left: ExprTy, right: ExprTy) -> Option<Self> {
+  pub fn from_operator(
+    operator: Operator,
+    left: ExprTy,
+    right: ExprTy,
+  ) -> Option<Self> {
     match operator.binary() {
       true => Some(Self {
         operator,
@@ -168,6 +173,7 @@ impl<ExprTy> Binary<ExprTy> {
       false => None,
     }
   }
+
   pub fn new(operator: Operator, left: ExprTy, right: ExprTy) -> Self {
     Self::from_operator(operator, left, right).unwrap()
   }
@@ -191,8 +197,9 @@ impl<ExprTy> Call<ExprTy> {
   }
 }
 mod fmt {
-  use super::{Binary, Call, Constant, Ternary, Unary};
   use ::std::fmt::Display;
+
+  use super::{Binary, Call, Constant, Ternary, Unary};
 
   impl<ExprTy: Display> Display for Call<ExprTy> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -247,19 +254,6 @@ mod fmt {
 }
 
 impl Constant {
-  // literal suffixes
-  pub const INTEGER_SUFFIXES: &'static [&'static str] = &[
-    "u", "U", // unsigned
-    "l", "L", // long
-    "ll", "LL", // long long
-    "ul", "uL", "Ul", "UL", "lu", "lU", "Lu", "LU", // unsigned long
-    "ull", "uLL", "Ull", "ULL", "llu", "llU", "LLu", "LLU", // unsigned long long
-    "uz", "uZ", "Uz", "UZ", "zu", "zU", "Zu", "ZU", // size_t
-    "z", "Z", // size_t's signed version
-    // unsupported
-    "wb", "WB", // _BitInt
-    "uwb", "uWB", "Uwb", "UWB", // unsigned _BitInt
-  ];
   pub const FLOATING_SUFFIXES: &'static [&'static str] = &[
     "f", "F", // float
     "l", "L", // long double
@@ -268,8 +262,27 @@ impl Constant {
     "dd", "DD", // _Decimal64
     "dl", "DL", // _Decimal128
   ];
+  // literal suffixes
+  pub const INTEGER_SUFFIXES: &'static [&'static str] = &[
+    "u", "U", // unsigned
+    "l", "L", // long
+    "ll", "LL", // long long
+    "ul", "uL", "Ul", "UL", "lu", "lU", "Lu", "LU", // unsigned long
+    "ull", "uLL", "Ull", "ULL", "llu", "llU", "LLu",
+    "LLU", // unsigned long long
+    "uz", "uZ", "Uz", "UZ", "zu", "zU", "Zu", "ZU", // size_t
+    "z", "Z", // size_t's signed version
+    // unsupported
+    "wb", "WB", // _BitInt
+    "uwb", "uWB", "Uwb", "UWB", // unsigned _BitInt
+  ];
+
   /// parse a numeric literal with optional suffix, if fails, return an error message and the default value of the Constant
-  pub fn parse(num: &str, suffix: Option<&str>, is_floating: bool) -> (Self, Option<String>) {
+  pub fn parse(
+    num: &str,
+    suffix: Option<&str>,
+    is_floating: bool,
+  ) -> (Self, Option<String>) {
     match (suffix, is_floating) {
       (None, false) => {
         // default to int
@@ -280,7 +293,7 @@ impl Constant {
             Some(format!("Failed to parse integer literal {}: {}", num, e)),
           ),
         }
-      }
+      },
       (None, true) => {
         // default to double
         match num.parse::<f64>() {
@@ -290,7 +303,7 @@ impl Constant {
             Some(format!("Failed to parse floating literal {}: {}", num, e)),
           ),
         }
-      }
+      },
       (Some(suf), false) => {
         // integer with suffix
         match suf {
@@ -324,17 +337,7 @@ impl Constant {
               )),
             ),
           },
-          "ul" | "uL" | "Ul" | "UL" | "lu" | "lU" | "Lu" | "LU" => match num.parse::<u64>() {
-            Ok(u) => (Constant::ULongLong(u), None),
-            Err(e) => (
-              Constant::ULongLong(0),
-              Some(format!(
-                "Failed to parse unsigned long long integer literal {}: {}",
-                num, e
-              )),
-            ),
-          },
-          "ull" | "uLL" | "Ull" | "ULL" | "llu" | "llU" | "LLu" | "LLU" => {
+          "ul" | "uL" | "Ul" | "UL" | "lu" | "lU" | "Lu" | "LU" => {
             match num.parse::<u64>() {
               Ok(u) => (Constant::ULongLong(u), None),
               Err(e) => (
@@ -345,7 +348,18 @@ impl Constant {
                 )),
               ),
             }
-          }
+          },
+          "ull" | "uLL" | "Ull" | "ULL" | "llu" | "llU" | "LLu" | "LLU" =>
+            match num.parse::<u64>() {
+              Ok(u) => (Constant::ULongLong(u), None),
+              Err(e) => (
+                Constant::ULongLong(0),
+                Some(format!(
+                  "Failed to parse unsigned long long integer literal {}: {}",
+                  num, e
+                )),
+              ),
+            },
           "z" | "Z" => match num.parse::<isize>() {
             Ok(i) => (Constant::LongLong(i as i64), None),
             Err(e) => (
@@ -356,22 +370,24 @@ impl Constant {
               )),
             ),
           },
-          "uz" | "uZ" | "Uz" | "UZ" | "zu" | "zU" | "Zu" | "ZU" => match num.parse::<usize>() {
-            Ok(u) => (Constant::ULongLong(u as u64), None),
-            Err(e) => (
-              Constant::ULongLong(0),
-              Some(format!(
-                "Failed to parse unsigned size_t integer literal {}: {}",
-                num, e
-              )),
-            ),
+          "uz" | "uZ" | "Uz" | "UZ" | "zu" | "zU" | "Zu" | "ZU" => {
+            match num.parse::<usize>() {
+              Ok(u) => (Constant::ULongLong(u as u64), None),
+              Err(e) => (
+                Constant::ULongLong(0),
+                Some(format!(
+                  "Failed to parse unsigned size_t integer literal {}: {}",
+                  num, e
+                )),
+              ),
+            }
           },
           _ => (
             Constant::Int(0),
             Some(format!("unsupported integer literal suffix: {}", suf)),
           ),
         }
-      }
+      },
       (Some(suf), true) => {
         // floating with suffix
         match suf {
@@ -397,9 +413,10 @@ impl Constant {
             Some(format!("unsupported floating literal suffix: {}", suf)),
           ),
         }
-      }
+      },
     }
   }
+
   pub fn unqualified_type(&self) -> Type {
     use crate::common::types::{Array, ArraySize, Primitive, Qualifiers};
 
@@ -428,6 +445,7 @@ impl Constant {
       )),
     }
   }
+
   pub fn is_char_array(&self) -> bool {
     matches!(self, Self::String(_))
   }

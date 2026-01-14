@@ -1,9 +1,12 @@
 use ::std::cell::Ref;
 
-use crate::common::types::{QualifiedType, Type};
 use crate::{
   analyzer::{expression::Expression, statement::Compound},
-  common::{environment::SymbolRef, rawdecl::FunctionSpecifier},
+  common::{
+    environment::SymbolRef,
+    rawdecl::FunctionSpecifier,
+    types::{QualifiedType, Type},
+  },
 };
 
 #[derive(Debug)]
@@ -67,17 +70,21 @@ impl Function {
       body,
     }
   }
+
   #[inline]
   pub fn is_declaration(&self) -> bool {
     !self.is_definition()
   }
+
   #[inline]
   pub fn is_definition(&self) -> bool {
     self.body.is_some()
   }
+
   pub fn proto(&self) -> Ref<'_, QualifiedType> {
     Ref::map(self.symbol.borrow(), |sym| &sym.qualified_type)
   }
+
   pub fn proto_unqual(&self) -> Ref<'_, Type> {
     Ref::map(self.symbol.borrow(), |sym| {
       &sym.qualified_type.unqualified_type
@@ -101,9 +108,12 @@ impl Parameter {
 
 mod fmt {
 
-  use super::{Declaration, Function, Initializer, Parameter, TranslationUnit, VarDef};
-  use crate::common::types::Type;
   use ::std::fmt::Display;
+
+  use super::{
+    Declaration, Function, Initializer, Parameter, TranslationUnit, VarDef,
+  };
+  use crate::common::types::Type;
 
   impl Display for TranslationUnit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -139,11 +149,11 @@ mod fmt {
             write!(f, "{}", param)?;
           }
           write!(f, ")")?;
-        }
+        },
         _ => {
           // Fallback for non-function types (shouldn't happen)
           write!(f, "{} {}", sym.qualified_type, sym.name)?;
-        }
+        },
       }
 
       if let Some(body) = &self.body {

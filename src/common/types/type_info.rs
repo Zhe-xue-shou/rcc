@@ -1,6 +1,6 @@
 use super::{
-  Array, ArraySize, Enum, FunctionProto, Pointer, Primitive, QualifiedType, Record, Type, TypeInfo,
-  Union,
+  Array, ArraySize, Enum, FunctionProto, Pointer, Primitive, QualifiedType,
+  Record, Type, TypeInfo, Union,
 };
 
 impl TypeInfo for QualifiedType {
@@ -8,6 +8,7 @@ impl TypeInfo for QualifiedType {
   fn size(&self) -> usize {
     self.unqualified_type.size()
   }
+
   #[inline]
   fn is_scalar(&self) -> bool {
     self.unqualified_type.is_scalar()
@@ -30,6 +31,7 @@ macro_rules! dispatch_down {
 }
 impl TypeInfo for Type {
   dispatch_down!(size, usize);
+
   dispatch_down!(is_scalar, bool);
 }
 impl TypeInfo for Primitive {
@@ -85,6 +87,7 @@ impl TypeInfo for Record {
       .map(|f| f.field_type.unqualified_type.size())
       .sum() // rough, padding and alignment not considered -- incomplete type has no members anyway so this handles it too
   }
+
   #[inline]
   fn is_scalar(&self) -> bool {
     false
@@ -100,6 +103,7 @@ impl TypeInfo for Union {
       .max()
       .unwrap_or(0) // ditto
   }
+
   #[inline]
   fn is_scalar(&self) -> bool {
     false
@@ -110,6 +114,7 @@ impl TypeInfo for Pointer {
   fn size(&self) -> usize {
     Primitive::ULongLong.size() // x86_64 LLP64 Windows
   }
+
   #[inline]
   fn is_scalar(&self) -> bool {
     true
@@ -121,6 +126,7 @@ impl TypeInfo for FunctionProto {
   fn size(&self) -> usize {
     0 // function types have no size
   }
+
   #[inline]
   fn is_scalar(&self) -> bool {
     false
@@ -131,6 +137,7 @@ impl TypeInfo for Enum {
   fn size(&self) -> usize {
     self.underlying_type.size()
   }
+
   #[inline]
   fn is_scalar(&self) -> bool {
     true

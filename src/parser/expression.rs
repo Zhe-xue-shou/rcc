@@ -42,8 +42,9 @@ pub struct Variable {
   pub name: String,
 }
 mod fmt {
-  use super::{Binary, Call, Constant, Expression, Ternary, Unary, Variable};
   use ::std::fmt::Display;
+
+  use super::{Binary, Call, Constant, Expression, Ternary, Unary, Variable};
 
   impl Display for Expression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

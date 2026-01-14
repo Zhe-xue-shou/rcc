@@ -26,13 +26,18 @@ pub struct Expression {
   pub(super) value_category: ValueCategory,
 }
 impl Expression {
-  pub fn new(raw_expr: RawExpr, expr_type: QualifiedType, value_category: ValueCategory) -> Self {
+  pub fn new(
+    raw_expr: RawExpr,
+    expr_type: QualifiedType,
+    value_category: ValueCategory,
+  ) -> Self {
     Self {
       raw_expr,
       expr_type,
       value_category,
     }
   }
+
   pub fn new_rvalue(raw_expr: RawExpr, expr_type: QualifiedType) -> Self {
     Self {
       raw_expr,
@@ -40,6 +45,7 @@ impl Expression {
       value_category: ValueCategory::RValue,
     }
   }
+
   pub fn new_lvalue(raw_expr: RawExpr, expr_type: QualifiedType) -> Self {
     Self {
       raw_expr,
@@ -47,43 +53,53 @@ impl Expression {
       value_category: ValueCategory::LValue,
     }
   }
+
   pub fn unqualified_type(&self) -> &Type {
     &self.expr_type.unqualified_type
   }
+
   pub fn qualifiers(&self) -> &Qualifiers {
     &self.expr_type.qualifiers
   }
+
   pub fn qualified_type(&self) -> &QualifiedType {
     &self.expr_type
   }
+
   pub fn raw_expr(&self) -> &RawExpr {
     &self.raw_expr
   }
+
   pub fn value_category(&self) -> ValueCategory {
     self.value_category
   }
 }
 impl Primitive {
   #[must_use]
-  pub fn common_type(lhs: Self, rhs: Self) -> (Self, CastType, CastType) {
+  pub fn common_type(lhs: &Self, rhs: &Self) -> (Self, CastType, CastType) {
     // If both operands have the same type, then no further conversion is needed.
     // first: _Decimal types ignored
     // also, complex types ignored
     if lhs == rhs {
-      return (lhs, CastType::Noop, CastType::Noop);
+      return (lhs.clone(), CastType::Noop, CastType::Noop);
     }
-    if matches!(lhs, Self::Void | Self::Nullptr) || matches!(rhs, Self::Void | Self::Nullptr) {
+    if matches!(lhs, Self::Void | Self::Nullptr)
+      || matches!(rhs, Self::Void | Self::Nullptr)
+    {
       panic!("Invalid types for common type: {:?}, {:?}", lhs, rhs);
     }
     // otherwise, if either operand is of some floating type, the other operand is converted to it.
     // Otherwise, if any of the two types is an enumeration, it is converted to its underlying type. - handled upstream
     match (lhs.is_floating_point(), rhs.is_floating_point()) {
-      (true, false) => (lhs, CastType::Noop, CastType::IntegralToFloating),
-      (false, true) => (rhs, CastType::IntegralToFloating, CastType::Noop),
-      (true, true) => Self::common_floating_rank(lhs, rhs),
-      (false, false) => Self::common_integer_rank(lhs, rhs),
+      (true, false) =>
+        (lhs.clone(), CastType::Noop, CastType::IntegralToFloating),
+      (false, true) =>
+        (rhs.clone(), CastType::IntegralToFloating, CastType::Noop),
+      (true, true) => Self::common_floating_rank(lhs.clone(), rhs.clone()),
+      (false, false) => Self::common_integer_rank(lhs.clone(), rhs.clone()),
     }
   }
+
   #[must_use]
   fn common_floating_rank(lhs: Self, rhs: Self) -> (Self, CastType, CastType) {
     assert!(lhs.is_floating_point() && rhs.is_floating_point());
@@ -93,6 +109,7 @@ impl Primitive {
       (rhs, CastType::FloatingCast, CastType::Noop)
     }
   }
+
   #[must_use]
   fn common_integer_rank(lhs: Self, rhs: Self) -> (Self, CastType, CastType) {
     assert!(lhs.is_integer() && rhs.is_integer());
@@ -141,6 +158,7 @@ impl Expression {
   pub fn is_lvalue(&self) -> bool {
     matches!(self.value_category, ValueCategory::LValue)
   }
+
   /// 6.3.2.1:  A modifiable lvalue is an lvalue that does not have array type, does not have an incomplete
   ///           type, does not have a const-qualified type, and if it is a structure or union, does not have any
   ///           member (including, recursively, any member or element of all contained aggregates or unions) with
@@ -148,16 +166,21 @@ impl Expression {
   pub fn is_modifiable_lvalue(&self) -> bool {
     self.is_lvalue() && self.qualified_type().is_modifiable()
   }
+
   pub fn to_rvalue(self) -> Self {
     Self {
       value_category: ValueCategory::RValue,
       ..self
     }
   }
+
   pub fn default_int() -> Self {
     Self {
       raw_expr: RawExpr::Constant(Constant::Int(0)),
-      expr_type: QualifiedType::new(Qualifiers::empty(), Type::Primitive(Primitive::Int)),
+      expr_type: QualifiedType::new(
+        Qualifiers::empty(),
+        Type::Primitive(Primitive::Int),
+      ),
       value_category: ValueCategory::RValue,
     }
   }
@@ -167,7 +190,10 @@ impl ::core::default::Default for Expression {
   fn default() -> Self {
     Self {
       raw_expr: RawExpr::Empty,
-      expr_type: QualifiedType::new(Qualifiers::empty(), Type::Primitive(Primitive::Void)),
+      expr_type: QualifiedType::new(
+        Qualifiers::empty(),
+        Type::Primitive(Primitive::Void),
+      ),
       value_category: ValueCategory::RValue,
     }
   }
@@ -201,7 +227,11 @@ pub struct Assignment {
   pub right: Box<Expression>,
 }
 impl Assignment {
-  pub fn from_operator(operator: Operator, left: Expression, right: Expression) -> Option<Self> {
+  pub fn from_operator(
+    operator: Operator,
+    left: Expression,
+    right: Expression,
+  ) -> Option<Self> {
     match operator.category() {
       Category::Assignment => Some(Self {
         operator,
@@ -211,16 +241,16 @@ impl Assignment {
       _ => None,
     }
   }
+
   pub fn new(operator: Operator, left: Expression, right: Expression) -> Self {
     Self::from_operator(operator, left, right).unwrap()
   }
 }
 mod fmt {
 
-  use super::{Assignment, ImplicitCast, Variable};
   use ::std::fmt::Display;
 
-  use super::Expression;
+  use super::{Assignment, Expression, ImplicitCast, Variable};
 
   impl Display for Assignment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -262,9 +292,10 @@ mod test {
       QualifiedType::new_unqualified(Type::from(Primitive::Float)),
       ValueCategory::RValue,
     );
-    let promoted_expr = Expression::usual_arithmetic_conversion(int_expr, float_expr)
-      .unwrap()
-      .2;
+    let promoted_expr =
+      Expression::usual_arithmetic_conversion(int_expr, float_expr)
+        .unwrap()
+        .2;
     // type shall be
     println!("Promoted expression: {:#?}", promoted_expr);
   }

@@ -7,6 +7,7 @@ impl Primitive {
   pub fn is_integer(&self) -> bool {
     self.is_signed_integer() || self.is_unsigned()
   }
+
   pub fn is_signed_integer(&self) -> bool {
     matches!(
       self,
@@ -18,12 +19,15 @@ impl Primitive {
         | Primitive::LongLong
     )
   }
+
   pub fn is_arithmetic(&self) -> bool {
     self.is_integer() || self.is_floating_point()
   }
+
   pub fn is_signed(&self) -> bool {
     self.is_signed_integer() || self.is_floating_point()
   }
+
   pub fn is_unsigned(&self) -> bool {
     matches!(
       self,
@@ -35,6 +39,7 @@ impl Primitive {
         | Primitive::ULongLong
     )
   }
+
   pub fn integer_rank(&self) -> u8 {
     // bitmask has no use here, just a unique value for each rank
     match self {
@@ -47,15 +52,17 @@ impl Primitive {
       _ => {
         breakpoint!();
         panic!("Not an integer type");
-      }
+      },
     }
   }
+
   pub fn is_floating_point(&self) -> bool {
     matches!(
       self,
       Primitive::Float | Primitive::Double | Primitive::LongDouble
     ) || self.is_complex()
   }
+
   pub fn floating_rank(&self) -> u8 {
     match self {
       Primitive::Float | Primitive::ComplexFloat => 0x01,
@@ -64,21 +71,27 @@ impl Primitive {
       _ => {
         breakpoint!();
         panic!("Not a floating point type");
-      }
+      },
     }
   }
+
   pub fn is_complex(&self) -> bool {
     matches!(
       self,
-      Primitive::ComplexFloat | Primitive::ComplexDouble | Primitive::ComplexLongDouble
+      Primitive::ComplexFloat
+        | Primitive::ComplexDouble
+        | Primitive::ComplexLongDouble
     )
   }
+
   pub fn is_void(&self) -> bool {
     matches!(self, Primitive::Void)
   }
+
   pub fn is_nullptr(&self) -> bool {
     matches!(self, Primitive::Nullptr)
   }
+
   #[must_use]
   pub fn integer_promotion(self) -> (Primitive, CastType) {
     assert!(self.is_integer(), "Type {:?} is not an integer type", self);
@@ -89,6 +102,7 @@ impl Primitive {
       (self, CastType::Noop)
     }
   }
+
   #[must_use]
   pub fn floating_promotion(self) -> (Primitive, CastType) {
     assert!(
@@ -102,6 +116,7 @@ impl Primitive {
       (self, CastType::Noop)
     }
   }
+
   #[must_use]
   pub fn into_unsigned(self) -> Primitive {
     match self {
@@ -115,7 +130,7 @@ impl Primitive {
       _ => {
         breakpoint!();
         panic!("Type {:?} is not a signed integer type", self);
-      }
+      },
     }
   }
 }
@@ -128,6 +143,7 @@ impl Type {
       _ => false,
     }
   }
+
   pub fn is_signed(&self) -> bool {
     match self {
       Type::Primitive(p) => p.is_signed(),
@@ -155,7 +171,7 @@ impl Promotion for Type {
       Self::Primitive(p) => {
         let (promoted, cast_type) = p.promote();
         (Self::Primitive(promoted), cast_type)
-      }
+      },
       _ => (self, CastType::Noop),
     }
   }

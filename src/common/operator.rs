@@ -1,5 +1,7 @@
 use ::strum_macros::{Display, EnumString};
-#[derive(Debug, Clone, Display, EnumString, PartialEq, Eq, ::std::marker::ConstParamTy)]
+#[derive(
+  Debug, Clone, Display, EnumString, PartialEq, Eq, ::std::marker::ConstParamTy,
+)]
 pub enum Operator {
   // one-character operators
   #[strum(serialize = "+")]
@@ -126,17 +128,22 @@ impl Operator {
   pub fn unary(&self) -> bool {
     matches!(
       self,
+      // arithmetic
       Operator::Plus
         | Operator::Minus
-        | Operator::Star
+      // logical
         | Operator::Not
+      // bitwise
         | Operator::Tilde
+      // dereference and address-of
+        | Operator::Star
         | Operator::Ampersand
-        // vvv not sure
+      // increment and decrement
         | Operator::PlusPlus
         | Operator::MinusMinus
     )
   }
+
   pub fn binary(&self) -> bool {
     matches!(
       self,
@@ -162,6 +169,7 @@ impl Operator {
         | Operator::Comma
     ) || self.assignment()
   }
+
   // left-.
   pub fn precedence(&self) -> u8 {
     debug_assert!(self.binary(), "precedence called on non-binary operator");
@@ -214,25 +222,21 @@ pub enum Category {
   Comma,
 }
 impl Operator {
-  #[rustfmt::skip]
   pub fn category(&self) -> Category {
     match self {
-      Operator::And 
-      | Operator::Or 
-      | Operator::Not => Category::Logical,
+      Operator::And | Operator::Or | Operator::Not => Category::Logical,
 
-      Operator::LeftShift
-      | Operator::RightShift => Category::BitShift,
+      Operator::LeftShift | Operator::RightShift => Category::BitShift,
 
       Operator::Tilde
       | Operator::Ampersand
       | Operator::Pipe
       | Operator::Caret => Category::Bitwise,
 
-      Operator::Plus 
-      | Operator::Minus 
-      | Operator::Star 
-      | Operator::Slash 
+      Operator::Plus
+      | Operator::Minus
+      | Operator::Star
+      | Operator::Slash
       | Operator::Percent => Category::Arithmetic,
 
       Operator::Less
@@ -258,19 +262,21 @@ impl Operator {
       _ => panic!(),
     }
   }
+
   pub fn assignment(&self) -> bool {
-    matches!(self,
+    matches!(
+      self,
       Operator::Assign
-      | Operator::PlusAssign
-      | Operator::MinusAssign
-      | Operator::StarAssign
-      | Operator::SlashAssign
-      | Operator::PercentAssign
-      | Operator::AmpersandAssign
-      | Operator::PipeAssign
-      | Operator::CaretAssign
-      | Operator::LeftShiftAssign
-      | Operator::RightShiftAssign
+        | Operator::PlusAssign
+        | Operator::MinusAssign
+        | Operator::StarAssign
+        | Operator::SlashAssign
+        | Operator::PercentAssign
+        | Operator::AmpersandAssign
+        | Operator::PipeAssign
+        | Operator::CaretAssign
+        | Operator::LeftShiftAssign
+        | Operator::RightShiftAssign
     )
   }
 }

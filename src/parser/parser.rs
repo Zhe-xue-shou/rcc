@@ -1,3 +1,6 @@
+#[cfg(test)]
+use pretty_assertions::assert_eq;
+
 use crate::{
   breakpoint,
   common::{
@@ -12,20 +15,20 @@ use crate::{
   parser::{
     Parser,
     declaration::{
-      DeclSpecs, Declaration, Declarator, DeclaratorType, Function, FunctionSignature, Initializer,
-      Modifier, Parameter, Program, TypeSpecifier, VarDef,
+      DeclSpecs, Declaration, Declarator, DeclaratorType, Function,
+      FunctionSignature, Initializer, Modifier, Parameter, Program,
+      TypeSpecifier, VarDef,
     },
     expression::{
-      Binary, Call, Constant, Expression, SizeOf, Ternary, Unary, UnprocessedType, Variable,
+      Binary, Call, Constant, Expression, SizeOf, Ternary, Unary,
+      UnprocessedType, Variable,
     },
     statement::{
-      Break, Case, Compound, Continue, Default, DoWhile, For, Goto, If, Label, Return, Statement,
-      Switch, While,
+      Break, Case, Compound, Continue, Default, DoWhile, For, Goto, If, Label,
+      Return, Statement, Switch, While,
     },
   },
 };
-#[cfg(test)]
-use pretty_assertions::assert_eq;
 impl ::core::default::Default for Parser {
   fn default() -> Self {
     Self {
@@ -50,6 +53,7 @@ impl Parser {
       ..Parser::default()
     }
   }
+
   pub fn parse(&mut self) -> Program {
     let mut program = Program::new();
     self.typedefs.push_scope(); // global scope
@@ -61,9 +65,11 @@ impl Parser {
 
     program
   }
+
   fn is_at_end(&self) -> bool {
     self.tokens.len() <= self.cursor + 1
   }
+
   fn peek(&self, offset: usize) -> &Literal {
     if self.is_at_end() {
       &self.tokens[self.cursor].literal
@@ -71,9 +77,11 @@ impl Parser {
       &self.tokens[self.cursor + offset].literal
     }
   }
+
   fn must_get_key<const KEY: Keyword>(&mut self) -> usize {
     let index = self.get();
-    if matches!(&self.tokens[index].literal, Literal::Keyword(kw) if kw != &KEY) {
+    if matches!(&self.tokens[index].literal, Literal::Keyword(kw) if kw != &KEY)
+    {
       breakpoint!(
         "check your code! expected: {:?}, found: {:?}",
         KEY,
@@ -83,10 +91,12 @@ impl Parser {
     }
     index
   }
+
   /// consume and return the index of the token if it's OP; else, panic.
   fn must_get_op<const OP: Operator>(&mut self) -> usize {
     let index = self.get();
-    if matches!(&self.tokens[index].literal, Literal::Operator(op) if *op != OP) {
+    if matches!(&self.tokens[index].literal, Literal::Operator(op) if *op != OP)
+    {
       breakpoint!(
         "check your code! expected: {:?}, found: {:?}",
         OP,
@@ -96,15 +106,18 @@ impl Parser {
     }
     index
   }
+
   fn get(&mut self) -> usize {
     self.get_with_offset(1)
   }
+
   fn get_with_offset(&mut self, offset: usize) -> usize {
     assert!(self.cursor < self.tokens.len());
     let index = self.cursor;
     self.cursor += offset;
     index
   }
+
   /// if the next token is OP, consume it; else, report an error - but does not consume it.
   fn recoverable_get<const OP: Operator>(&mut self) {
     if *self.peek(0) != Literal::Operator(OP) {
@@ -113,6 +126,7 @@ impl Parser {
       self.must_get_op::<OP>();
     }
   }
+
   fn silent_get_if<const OP: Operator>(&mut self) {
     if *self.peek(0) == Literal::Operator(OP) {
       self.must_get_op::<OP>();
@@ -135,9 +149,11 @@ impl Parser {
   pub fn errors(&self) -> &[String] {
     &self.errors
   }
+
   pub fn warnings(&self) -> &[String] {
     &self.warnings
   }
+
   fn add_error(&mut self, message: String) {
     let token = &self.tokens[self.cursor];
     self.errors.push(format!(
@@ -148,6 +164,7 @@ impl Parser {
       message
     ));
   }
+
   fn add_warning(&mut self, message: String) {
     let token = &self.tokens[self.cursor];
     self.warnings.push(format!(
@@ -178,22 +195,23 @@ impl Parser {
       Literal::Keyword(Keyword::Union) => todo!(),
       Literal::Keyword(Keyword::Enum) => todo!(),
       Literal::Keyword(keyword) => TypeSpecifier::try_from(keyword).ok(),
-      Literal::Identifier(ident) => {
+      Literal::Identifier(ident) =>
         if self.typedefs.contains(ident) {
           Some(TypeSpecifier::Typedef(ident.to_string()))
         } else {
           None
-        }
-      }
+        },
       _ => None,
     }
   }
+
   fn parse_function_specifier(&mut self) -> Option<FunctionSpecifier> {
     match self.peek(0) {
       Literal::Keyword(kw) => FunctionSpecifier::try_from(kw).ok(),
       _ => None,
     }
   }
+
   fn parse_declspecs(&mut self) -> DeclSpecs {
     let mut declspecs = DeclSpecs::default();
 
@@ -215,16 +233,16 @@ impl Parser {
               "Redundant storage class specifier '{}'.",
               storage_class
             ));
-          }
+          },
           Some(ref existing_storage) => {
             self.add_error(format!(
               "Cannot combine '{}' with '{}'.",
               storage_class, existing_storage
             ));
-          }
+          },
           None => {
             declspecs.storage_class = Some(storage_class);
-          }
+          },
         }
         self.get(); // get the storage class
       // 1. it's a keyword type specifier
@@ -245,13 +263,18 @@ impl Parser {
     }
 
     if declspecs.type_specifiers.is_empty() {
-      self.add_error("Expect type specifier in declaration, default to int".to_string());
+      self.add_error(
+        "Expect type specifier in declaration, default to int".to_string(),
+      );
       declspecs.type_specifiers.push(TypeSpecifier::Int);
     }
 
     declspecs
   }
-  fn parse_declarator<const TYPE: DeclaratorType, const AGGRESSIVE: bool>(&mut self) -> Declarator {
+
+  fn parse_declarator<const TYPE: DeclaratorType, const AGGRESSIVE: bool>(
+    &mut self,
+  ) -> Declarator {
     let name = if TYPE != DeclaratorType::Abstract {
       if let Literal::Identifier(_) = self.peek(0) {
         let name_idx = self.get(); // consume the ident
@@ -278,6 +301,7 @@ impl Parser {
     }
     declarator
   }
+
   fn parse_argument_list(&mut self) -> Vec<Expression> {
     self.must_get_op::<{ Operator::LeftParen }>();
     let mut arguments = Vec::new();
@@ -291,7 +315,9 @@ impl Parser {
       }
       self.recoverable_get::<{ Operator::Comma }>();
       if *self.peek(0) == Literal::Operator(Operator::RightParen) {
-        self.add_error("Trailing comma in argument list is not allowed in C.".to_string());
+        self.add_error(
+          "Trailing comma in argument list is not allowed in C.".to_string(),
+        );
         break;
       }
     }
@@ -307,7 +333,9 @@ impl Parser {
       // single void parameter
       self.must_get_key::<{ Keyword::Void }>();
       if *self.peek(0) != Literal::Operator(Operator::RightParen) {
-        self.add_error("Unexpected token after 'void' in parameter list".to_string());
+        self.add_error(
+          "Unexpected token after 'void' in parameter list".to_string(),
+        );
         while *self.peek(0) != Literal::Operator(Operator::RightParen) {
           self.get();
         }
@@ -317,10 +345,12 @@ impl Parser {
       let mut parameters = Vec::new();
       loop {
         let mut declspecs = self.parse_declspecs();
-        let declarator = self.parse_declarator::<{ DeclaratorType::Maybe }, false>();
+        let declarator =
+          self.parse_declarator::<{ DeclaratorType::Maybe }, false>();
         if declspecs.storage_class.is_some() {
           self.add_error(
-            "Storage class specifier is not allowed in parameter declaration".to_string(),
+            "Storage class specifier is not allowed in parameter declaration"
+              .to_string(),
           );
           declspecs.storage_class = None;
         }
@@ -331,26 +361,38 @@ impl Parser {
           Literal::Operator(Operator::Comma) => {
             self.must_get_op::<{ Operator::Comma }>();
             if self.peek(0) == &Literal::Operator(Operator::RightParen) {
-              self.add_error("Trailing comma in parameter list is not allowed in C.".to_string());
+              self.add_error(
+                "Trailing comma in parameter list is not allowed in C."
+                  .to_string(),
+              );
               break;
             }
-          }
+          },
           _ => {
             if self.parse_type_specifier().is_none() {
-              self.add_error("Expect ',', ')', or type specifier in parameter list".to_string());
+              self.add_error(
+                "Expect ',', ')', or type specifier in parameter list"
+                  .to_string(),
+              );
               break;
             }
             // continuing parsing
-          }
+          },
         }
       }
       FunctionSignature::new(parameters, false)
     }
   }
+
   /// common function to parse `(` expr `)`.
-  fn parse_paren_expression<const LMIN_PRECEDENCE: u8>(&mut self) -> Expression {
+  fn parse_paren_expression<const LMIN_PRECEDENCE: u8>(
+    &mut self,
+  ) -> Expression {
     if self.peek(0) != &Literal::Operator(Operator::LeftParen) {
-      self.add_error(format!("Expcet '(' after {}", self.tokens[self.cursor - 1]));
+      self.add_error(format!(
+        "Expcet '(' after {}",
+        self.tokens[self.cursor - 1]
+      ));
       // assume the left paren is missing, continue parsing
     } else {
       self.must_get_op::<{ Operator::LeftParen }>();
@@ -364,6 +406,7 @@ impl Parser {
     }
     expr
   }
+
   fn parse_case_and_default_body(&mut self) -> Vec<Statement> {
     let mut body = Vec::new();
     while self.peek(0) != &Literal::Keyword(Keyword::Case)
@@ -374,6 +417,7 @@ impl Parser {
     }
     body
   }
+
   fn parse_case(&mut self) -> Case {
     self.must_get_key::<{ Keyword::Case }>();
     let expression = if self.peek(0) == &Literal::Operator(Operator::Colon) {
@@ -390,6 +434,7 @@ impl Parser {
     let body = self.parse_case_and_default_body();
     Case::new(expression, body)
   }
+
   fn parse_default(&mut self) -> Default {
     self.must_get_key::<{ Keyword::Default }>();
     self.recoverable_get::<{ Operator::Colon }>();
@@ -399,24 +444,28 @@ impl Parser {
 }
 /// declarations
 impl Parser {
-  fn next_vardef(&mut self, declspecs: DeclSpecs, declarator: Declarator) -> VarDef {
+  fn next_vardef(
+    &mut self,
+    declspecs: DeclSpecs,
+    declarator: Declarator,
+  ) -> VarDef {
     let initializer = match self.peek(0) {
       Literal::Operator(Operator::Semicolon) => {
         self.must_get_op::<{ Operator::Semicolon }>();
         None
-      }
+      },
       Literal::Operator(Operator::Assign) => {
         self.must_get_op::<{ Operator::Assign }>();
         let initializer = self.next_expression(Operator::DEFAULT);
         assert_eq!(*self.peek(0), Literal::Operator(Operator::Semicolon));
         self.must_get_op::<{ Operator::Semicolon }>();
         Some(initializer)
-      }
+      },
       _ => {
         self.add_error("Expect ';' or '=' after variable name".to_string());
         self.get();
         None
-      }
+      },
     };
     VarDef::new(
       declspecs,
@@ -424,10 +473,12 @@ impl Parser {
       initializer.map(|init_expr| Initializer::Expression(Box::new(init_expr))),
     )
   }
+
   fn next_declaration(&mut self) -> Declaration {
     while matches!(
       self.peek(0),
-      Literal::Operator(Operator::Semicolon) | Literal::Operator(Operator::Hash)
+      Literal::Operator(Operator::Semicolon)
+        | Literal::Operator(Operator::Hash)
     ) {
       if *self.peek(0) == Literal::Operator(Operator::Semicolon) {
         // self.add_warning("Redundant ';'".to_string());
@@ -435,7 +486,9 @@ impl Parser {
       } else {
         // skip preprocessor directive
         let line = self.tokens[self.cursor].location.line;
-        while (!self.is_at_end()) && (self.tokens[self.cursor].location.line == line) {
+        while (!self.is_at_end())
+          && (self.tokens[self.cursor].location.line == line)
+        {
           self.get();
         }
       }
@@ -483,17 +536,22 @@ impl Parser {
 }
 /// statements
 impl Parser {
-  fn next_function_body(&mut self, declspecs: DeclSpecs, declarator: Declarator) -> Function {
+  fn next_function_body(
+    &mut self,
+    declspecs: DeclSpecs,
+    declarator: Declarator,
+  ) -> Function {
     let body = match self.tokens[self.cursor].literal {
       Literal::Operator(Operator::LeftBrace) => Some(self.next_block()),
       _ => {
         self.recoverable_get::<{ Operator::Semicolon }>();
         None
-      }
+      },
     };
 
     Function::new(declspecs, declarator, body)
   }
+
   fn next_block(&mut self) -> Compound {
     self.must_get_op::<{ Operator::LeftBrace }>();
     self.typedefs.push_scope();
@@ -506,9 +564,11 @@ impl Parser {
     self.must_get_op::<{ Operator::RightBrace }>();
     block
   }
+
   fn next_return(&mut self) -> Return {
     self.must_get_key::<{ Keyword::Return }>();
-    let expression = if *self.peek(0) == Literal::Operator(Operator::Semicolon) {
+    let expression = if *self.peek(0) == Literal::Operator(Operator::Semicolon)
+    {
       None
     } else {
       Some(self.next_expression(Operator::DEFAULT))
@@ -518,6 +578,7 @@ impl Parser {
     self.must_get_op::<{ Operator::Semicolon }>();
     Return::new(expression)
   }
+
   fn next_if(&mut self) -> If {
     self.must_get_key::<{ Keyword::If }>();
     let condition = self.parse_paren_expression::<{ Operator::DEFAULT }>();
@@ -533,6 +594,7 @@ impl Parser {
     };
     If::new(condition, Box::new(then_branch), else_branch.map(Box::new))
   }
+
   fn next_while(&mut self) -> While {
     self.must_get_key::<{ Keyword::While }>();
     let condition = self.parse_paren_expression::<{ Operator::DEFAULT }>();
@@ -549,6 +611,7 @@ impl Parser {
     self.loop_labels.pop();
     while_stmt
   }
+
   fn next_dowhile(&mut self) -> DoWhile {
     self.must_get_key::<{ Keyword::Do }>();
     self
@@ -568,6 +631,7 @@ impl Parser {
     self.loop_labels.pop();
     dowhile_stmt
   }
+
   fn next_for(&mut self) -> For {
     self.must_get_key::<{ Keyword::For }>();
     if *self.peek(0) != Literal::Operator(Operator::LeftParen) {
@@ -580,38 +644,46 @@ impl Parser {
         Literal::Operator(Operator::Semicolon) => {
           self.must_get_op::<{ Operator::Semicolon }>();
           None
-        }
+        },
         _ => match self.next_statement() {
           Statement::Declaration(Declaration::Variable(vardef)) => {
             if let None = vardef.initializer {
-              self.add_warning("Expect initializer in for loop variable declaration".to_string());
+              self.add_warning(
+                "Expect initializer in for loop variable declaration"
+                  .to_string(),
+              );
             }
             Some(Statement::Declaration(Declaration::Variable(vardef)))
-          }
+          },
           Statement::Expression(expr) => Some(Statement::Expression(expr)),
           _ => {
             self.add_error(
-              "Expect variable declaration or expression in for initializer".to_string(),
+              "Expect variable declaration or expression in for initializer"
+                .to_string(),
             );
             None
-          }
+          },
         },
       };
-      fn parse_optional_expression<const OP: Operator>(parser: &mut Parser) -> Option<Expression> {
+      fn parse_optional_expression<const OP: Operator>(
+        parser: &mut Parser,
+      ) -> Option<Expression> {
         match parser.peek(0) {
           Literal::Operator(op) if op == &OP => {
             parser.must_get_op::<OP>();
             None
-          }
+          },
           _ => {
             let expr = parser.next_expression(Operator::DEFAULT);
             parser.must_get_op::<OP>();
             Some(expr)
-          }
+          },
         }
       }
-      let condition = parse_optional_expression::<{ Operator::Semicolon }>(self);
-      let increment = parse_optional_expression::<{ Operator::RightParen }>(self);
+      let condition =
+        parse_optional_expression::<{ Operator::Semicolon }>(self);
+      let increment =
+        parse_optional_expression::<{ Operator::RightParen }>(self);
       self
         .loop_labels
         .push(Statement::new_loop_dummy_identifier("for"));
@@ -628,6 +700,7 @@ impl Parser {
       for_stmt
     }
   }
+
   fn next_switch(&mut self) -> Switch {
     self.must_get_key::<{ Keyword::Switch }>();
     let condition = self.parse_paren_expression::<{ Operator::EXCOMMA }>();
@@ -642,22 +715,28 @@ impl Parser {
         Literal::Keyword(Keyword::Case) => {
           let case = self.parse_case();
           if default.is_some() {
-            self.add_error("Case label after default label in switch; case ignored".to_string());
+            self.add_error(
+              "Case label after default label in switch; case ignored"
+                .to_string(),
+            );
           } else {
             cases.push(case);
           }
-        }
-        Literal::Keyword(Keyword::Default) => {
+        },
+        Literal::Keyword(Keyword::Default) =>
           if default.is_some() {
-            self.add_error("Multiple default labels in one switch; ignoring latter".to_string());
+            self.add_error(
+              "Multiple default labels in one switch; ignoring latter"
+                .to_string(),
+            );
           } else {
             default = Some(self.parse_default());
-          }
-        }
+          },
         _ => {
-          self.add_error("Expect 'case' or 'default' in switch body".to_string());
+          self
+            .add_error("Expect 'case' or 'default' in switch body".to_string());
           self.get(); // consume the invalid token
-        }
+        },
       }
     }
 
@@ -665,38 +744,42 @@ impl Parser {
     self.loop_labels.pop();
     Switch::new(condition, cases, default)
   }
+
   fn next_statement(&mut self) -> Statement {
     match *self.peek(0) {
       Literal::Keyword(Keyword::If) => Statement::If(self.next_if()),
       Literal::Keyword(Keyword::For) => Statement::For(self.next_for()),
-      Literal::Keyword(Keyword::Return) => Statement::Return(self.next_return()),
+      Literal::Keyword(Keyword::Return) =>
+        Statement::Return(self.next_return()),
       Literal::Keyword(Keyword::While) => Statement::While(self.next_while()),
       Literal::Keyword(Keyword::Do) => Statement::DoWhile(self.next_dowhile()),
       Literal::Keyword(Keyword::Break) => Statement::Break(self.next_break()),
-      Literal::Keyword(Keyword::Continue) => Statement::Continue(self.next_continue()),
-      Literal::Keyword(Keyword::Switch) => Statement::Switch(self.next_switch()),
-      Literal::Operator(Operator::LeftBrace) => Statement::Compound(self.next_block()),
+      Literal::Keyword(Keyword::Continue) =>
+        Statement::Continue(self.next_continue()),
+      Literal::Keyword(Keyword::Switch) =>
+        Statement::Switch(self.next_switch()),
+      Literal::Operator(Operator::LeftBrace) =>
+        Statement::Compound(self.next_block()),
       Literal::Operator(Operator::Semicolon) => self.next_emptystmt(),
       Literal::Keyword(Keyword::Case) => {
         self.add_error("Case label not within switch statement".to_string());
         // attempt to recover
         _ = self.parse_case();
         Statement::Empty()
-      }
+      },
       Literal::Keyword(Keyword::Default) => {
         self.add_error("Default label not within switch statement".to_string());
         // ditto
         _ = self.parse_default();
         Statement::Empty()
-      }
+      },
       Literal::Keyword(Keyword::Goto) => self.next_gotostmt(),
       Literal::Keyword(_) => Statement::Declaration(self.next_declaration()),
-      Literal::Identifier(ref ident) if self.typedefs.contains(ident) => {
-        Statement::Declaration(self.next_declaration())
-      }
-      Literal::Identifier(ref ident) if self.peek(1) == &Literal::Operator(Operator::Colon) => {
-        self.next_labelstmt(ident.to_string())
-      }
+      Literal::Identifier(ref ident) if self.typedefs.contains(ident) =>
+        Statement::Declaration(self.next_declaration()),
+      Literal::Identifier(ref ident)
+        if self.peek(1) == &Literal::Operator(Operator::Colon) =>
+        self.next_labelstmt(ident.to_string()),
 
       _ => Statement::Expression(self.next_exprstmt()),
     }
@@ -706,7 +789,8 @@ impl Parser {
     // 1. label at end of compound statement is not allowed until C23
     // 2. label can only jump to statements within the same function, not to mention cross file.
     if self.typedefs.is_top_level() {
-      self.add_error("Label statement is not allowed in top level.".to_string());
+      self
+        .add_error("Label statement is not allowed in top level.".to_string());
       Statement::Empty()
     } else {
       self.get(); // consume ident
@@ -743,6 +827,7 @@ impl Parser {
     self.recoverable_get::<{ Operator::Semicolon }>();
     expr
   }
+
   fn next_break(&mut self) -> Break {
     self.must_get_key::<{ Keyword::Break }>();
     self.recoverable_get::<{ Operator::Semicolon }>();
@@ -751,7 +836,7 @@ impl Parser {
       None => {
         self.add_error("Break statement not within a loop".to_string());
         Break::new("invalid_loop".to_string())
-      }
+      },
     }
   }
 
@@ -773,7 +858,7 @@ impl Parser {
       None => {
         self.add_error("Continue statement not within a loop".to_string());
         Continue::new("invalid_loop".to_string())
-      }
+      },
     }
   }
 }
@@ -788,8 +873,9 @@ impl Parser {
     ;
     match literal {
       Literal::Number(num) => Expression::Constant(num.clone()),
-      Literal::String(str) => Expression::Constant(Constant::String(str.to_string())),
-      Literal::Operator(op) => {
+      Literal::String(str) =>
+        Expression::Constant(Constant::String(str.to_string())),
+      Literal::Operator(op) =>
         if op.unary() {
           Expression::Unary(Unary::new(
             op.clone(),
@@ -804,11 +890,12 @@ impl Parser {
           }
           expr
         } else {
-          self.add_error(format!("Unexpected operator {op} in factor, assuming int",));
+          self.add_error(format!(
+            "Unexpected operator {op} in factor, assuming int",
+          ));
           self.get();
           Expression::Constant(Constant::Int(0))
-        }
-      }
+        },
       Literal::Identifier(ident) => {
         let ident_expr = Expression::Variable(Variable::new(ident.to_string()));
         if *self.peek(0) == Literal::Operator(Operator::LeftParen) {
@@ -817,7 +904,7 @@ impl Parser {
         } else {
           ident_expr
         }
-      }
+      },
       Literal::Keyword(keyword) => match keyword {
         Keyword::Sizeof => self.next_sizeof(),
         Keyword::Alignof => todo!(),
@@ -829,10 +916,11 @@ impl Parser {
             keyword,
           ));
           Expression::Constant(Constant::Int(0))
-        }
+        },
       },
     }
   }
+
   fn next_sizeof(&mut self) -> Expression {
     self.must_get_key::<{ Keyword::Sizeof }>();
     // maybe type or expression, assume expression for now
@@ -844,21 +932,25 @@ impl Parser {
           // type
           self.must_get_op::<{ Operator::LeftParen }>();
           let declspecs = self.parse_declspecs();
-          let declarator = self.parse_declarator::<{ DeclaratorType::Abstract }, false>();
+          let declarator =
+            self.parse_declarator::<{ DeclaratorType::Abstract }, false>();
           self.recoverable_get::<{ Operator::RightParen }>();
-          Expression::SizeOf(SizeOf::Type(UnprocessedType::new(declspecs, declarator)))
-        }
+          Expression::SizeOf(SizeOf::Type(UnprocessedType::new(
+            declspecs, declarator,
+          )))
+        },
         None => {
           // expression
           let expr = self.parse_paren_expression::<{ Operator::DEFAULT }>();
           Expression::SizeOf(SizeOf::Expression(Box::new(expr)))
-        }
+        },
       }
     } else {
       let expr = self.next_expression(Operator::DEFAULT);
       Expression::SizeOf(SizeOf::Expression(Box::new(expr)))
     }
   }
+
   fn next_expression(&mut self, lmin_precedence: u8) -> Expression {
     let mut current = self.next_factor();
     loop {
@@ -866,19 +958,26 @@ impl Parser {
         if op.binary() && op.precedence() >= lmin_precedence {
           let op = op.clone();
           self.get(); // operator
-          let right = self.next_expression(if op.category() == Category::Assignment {
-            op.precedence()
-          } else {
-            op.precedence() + 1
-          });
-          current = Expression::Binary(Binary::from_operator(op, current, right).unwrap());
+          let right =
+            self.next_expression(if op.category() == Category::Assignment {
+              op.precedence()
+            } else {
+              op.precedence() + 1
+            });
+          current = Expression::Binary(
+            Binary::from_operator(op, current, right).unwrap(),
+          );
           continue;
         } else if op == &Operator::Question {
           self.must_get_op::<{ Operator::Question }>();
           let then_branch = self.next_expression(Operator::DEFAULT);
           self.recoverable_get::<{ Operator::Colon }>();
           let else_branch = self.next_expression(Operator::TERNARY);
-          current = Expression::Ternary(Ternary::new(current, then_branch, else_branch));
+          current = Expression::Ternary(Ternary::new(
+            current,
+            then_branch,
+            else_branch,
+          ));
           continue;
         }
       }

@@ -2,11 +2,8 @@ use ::std::cell::Ref;
 
 use crate::{
   analyzer::{expression::Expression, statement::Compound},
-  common::{
-    environment::SymbolRef,
-    rawdecl::FunctionSpecifier,
-    types::{QualifiedType, Type},
-  },
+  common::environment::SymbolRef,
+  types::{FunctionSpecifier, QualifiedType, Type},
 };
 
 #[derive(Debug)]
@@ -113,7 +110,7 @@ mod fmt {
   use super::{
     Declaration, Function, Initializer, Parameter, TranslationUnit, VarDef,
   };
-  use crate::common::types::Type;
+  use crate::types::Type;
 
   impl Display for TranslationUnit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

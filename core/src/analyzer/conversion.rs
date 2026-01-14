@@ -1,11 +1,8 @@
 use crate::{
   analyzer::expression::{Expression, ImplicitCast},
-  common::{
-    error::Error,
-    types::{
-      CastType, Compatibility, Pointer, Primitive, Promotion, QualifiedType,
-      Type,
-    },
+  common::error::Error,
+  types::{
+    CastType, Compatibility, Pointer, Primitive, Promotion, QualifiedType, Type,
   },
 };
 

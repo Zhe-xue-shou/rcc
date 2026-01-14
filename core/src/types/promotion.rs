@@ -1,7 +1,8 @@
 //! applied during unary operations, including (implicit) unary inside binary operations
 
+use lilac_utils::breakpoint;
+
 use super::{CastType, Primitive, QualifiedType, Type};
-use crate::breakpoint;
 pub trait Promotion {
   #[must_use]
   fn promote(self) -> (Self, CastType)

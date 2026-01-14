@@ -1,9 +1,10 @@
 use ::once_cell::sync::Lazy;
 use ::std::str::FromStr;
 use ::strum_macros::{Display, EnumString, IntoStaticStr};
+use lilac_utils::{interconvert, make_trio_for};
 
-use super::TypeInfo;
-use crate::common::{error::Error, rawdecl::FunctionSpecifier};
+use super::{Compatibility, TypeInfo};
+use crate::common::error::Error;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
@@ -31,6 +32,14 @@ pub enum Type {
     const Atomic = 0x08; // ignore for now
   }
 }
+::bitflags::bitflags! {
+  #[derive(Debug,Clone,Copy,PartialEq,Eq)]
+  pub struct FunctionSpecifier : u8 {
+    const Inline = 0x01;
+    const Noreturn = 0x10;
+  }
+}
+
 // C's built-in types
 #[derive(Debug, Display, IntoStaticStr, EnumString, Clone, PartialEq)]
 pub enum Primitive {
@@ -281,11 +290,6 @@ impl Enum {
     self.underlying_type
   }
 }
-
-use crate::{
-  breakpoint, common::types::compatible::Compatibility, interconvert,
-  make_trio_for,
-};
 
 interconvert!(Primitive, Type);
 interconvert!(Array, Type);

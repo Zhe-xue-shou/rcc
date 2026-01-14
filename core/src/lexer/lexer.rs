@@ -1,10 +1,12 @@
 use ::std::{path::PathBuf, rc::Rc, str::FromStr};
 
-use crate::common::{
-  keyword::Keyword,
-  operator::Operator,
-  rawexpr::Constant,
-  token::{SourceLocation, Token},
+use crate::{
+  common::{
+    keyword::Keyword,
+    operator::Operator,
+    token::{SourceLocation, Token},
+  },
+  types::Constant,
 };
 pub struct Lexer {
   source: String,

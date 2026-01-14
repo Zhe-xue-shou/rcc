@@ -1,0 +1,11 @@
+
+[package]
+name = "lilac-utils"
+version = "0.1.0"
+edition = "2024"
+authors = ["LiAuTraver"]
+license = "MIT OR Apache-2.0"
+
+
+[dependencies]
+paste = "1.0.15"

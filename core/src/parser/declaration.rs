@@ -1,9 +1,7 @@
 use crate::{
-  common::{
-    keyword::Keyword, rawdecl::FunctionSpecifier, storage::Storage,
-    token::Literal, types::Qualifiers,
-  },
+  common::{keyword::Keyword, storage::Storage, token::Literal},
   parser::{expression::Expression, statement::Compound},
+  types::{FunctionSpecifier, Qualifiers},
 };
 
 #[derive(Debug, Default)]

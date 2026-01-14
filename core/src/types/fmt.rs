@@ -1,8 +1,8 @@
 use ::std::fmt::Display;
 
 use super::{
-  Array, ArraySize, Enum, FunctionProto, Pointer, QualifiedType, Qualifiers,
-  Record, Type, Union,
+  Array, ArraySize, Constant, Enum, FunctionProto, Pointer, QualifiedType,
+  Qualifiers, Record, Type, Union,
 };
 
 impl Display for Qualifiers {
@@ -90,5 +90,24 @@ impl Display for Record {
 impl Display for Union {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "<union {}>", self.name.as_deref().unwrap_or("<unnamed>"))
+  }
+}
+
+impl Display for Constant {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Constant::Char(i) => write!(f, "{}", i),
+      Constant::Short(i) => write!(f, "{}", i),
+      Constant::Int(i) => write!(f, "{}", i),
+      Constant::LongLong(i) => write!(f, "{}", i),
+      Constant::UChar(u) => write!(f, "{}", u),
+      Constant::UShort(u) => write!(f, "{}", u),
+      Constant::UInt(u) => write!(f, "{}", u),
+      Constant::ULongLong(u) => write!(f, "{}", u),
+      Constant::Float(fl) => write!(f, "{}", fl),
+      Constant::Double(fl) => write!(f, "{}", fl),
+      Constant::Bool(b) => write!(f, "{}", b),
+      Constant::String(s) => write!(f, "\"{}\"", s),
+    }
   }
 }

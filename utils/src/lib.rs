@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! interconvert {
   ($inner:ident, $outer:ident) => {
-    interconvert!($inner, $outer, $inner);
+    ::lilac_utils::interconvert!($inner, $outer, $inner);
   };
 
   ($inner:ident, $outer:ident, $variant:ident) => {
@@ -50,7 +50,7 @@ macro_rules! make_trio_for {
                 match self {
                     Self::$variant(v) => v,
                     _ => {
-                        breakpoint!();
+                        ::lilac_utils::breakpoint!();
                         unreachable!()
                     }
                 }

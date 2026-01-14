@@ -1,6 +1,9 @@
 use ::std::{fmt::Debug, path::PathBuf, rc::Rc};
 
-use crate::common::{keyword::Keyword, operator::Operator, rawexpr::Constant};
+use crate::{
+  common::{keyword::Keyword, operator::Operator},
+  types::Constant,
+};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Literal {

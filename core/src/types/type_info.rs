@@ -1,4 +1,4 @@
-use crate::common::types::{
+use super::{
   Array, ArraySize, Enum, FunctionProto, Pointer, Primitive, QualifiedType,
   Record, Type, Union,
 };

@@ -6,7 +6,10 @@ use ::std::{
   rc::Rc,
 };
 
-use crate::common::{storage::Storage, types::QualifiedType};
+use crate::{
+  common::storage::Storage,
+  types::{QualifiedType, Type},
+};
 
 /// as someone who came from C++, I'd more prefer to call it shared_ptr rather than Rc/RefCell or whatever. :p
 #[allow(non_camel_case_types)]

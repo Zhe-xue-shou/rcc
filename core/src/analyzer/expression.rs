@@ -4,9 +4,9 @@ use crate::{
   common::{
     environment::SymbolRef,
     operator::{Category, Operator},
-    types::{CastType, Primitive, QualifiedType, Qualifiers, Type, TypeInfo},
   },
   type_alias_expr,
+  types::{CastType, Primitive, QualifiedType, Qualifiers, Type, TypeInfo},
 };
 
 type_alias_expr! {Expression, QualifiedType, Variable, ImplicitCast, Assignment}

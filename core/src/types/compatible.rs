@@ -1,10 +1,40 @@
 #![allow(unused)]
+use lilac_utils::breakpoint;
+
 use super::{
   Array, ArraySize, Enum, FunctionProto, Pointer, Primitive, QualifiedType,
   Record, Type, Union,
 };
-use crate::breakpoint;
-
+/// rules about the `metadata`. used for declaration and definition.
+#[allow(unused)]
+pub trait Compatibility {
+  fn compatible(lhs: &Self, rhs: &Self) -> bool;
+  #[inline]
+  fn compatible_with(&self, other: &Self) -> bool {
+    Self::compatible(self, other)
+  }
+  fn composite(lhs: &Self, rhs: &Self) -> Option<Self>
+  where
+    Self: Sized;
+  #[inline]
+  fn composite_with(&self, other: &Self) -> Option<Self>
+  where
+    Self: Sized,
+  {
+    Self::composite(self, other)
+  }
+  /// used internally to avoid unnecessary compatibility checks
+  fn composite_unchecked(lhs: &Self, rhs: &Self) -> Self
+  where
+    Self: Sized;
+  #[inline]
+  fn composite_unchecked_with(&self, other: &Self) -> Self
+  where
+    Self: Sized,
+  {
+    Self::composite_unchecked(self, other)
+  }
+}
 impl Compatibility for ArraySize {
   fn compatible(lhs: &Self, rhs: &Self) -> bool {
     match (lhs, rhs) {
@@ -353,36 +383,5 @@ impl Compatibility for Union {
     Self: Sized,
   {
     todo!()
-  }
-}
-
-/// rules about the `metadata`. used for declaration and definition.
-#[allow(unused)]
-pub trait Compatibility {
-  fn compatible(lhs: &Self, rhs: &Self) -> bool;
-  #[inline]
-  fn compatible_with(&self, other: &Self) -> bool {
-    Self::compatible(self, other)
-  }
-  fn composite(lhs: &Self, rhs: &Self) -> Option<Self>
-  where
-    Self: Sized;
-  #[inline]
-  fn composite_with(&self, other: &Self) -> Option<Self>
-  where
-    Self: Sized,
-  {
-    Self::composite(self, other)
-  }
-  /// used internally to avoid unnecessary compatibility checks
-  fn composite_unchecked(lhs: &Self, rhs: &Self) -> Self
-  where
-    Self: Sized;
-  #[inline]
-  fn composite_unchecked_with(&self, other: &Self) -> Self
-  where
-    Self: Sized,
-  {
-    Self::composite_unchecked(self, other)
   }
 }

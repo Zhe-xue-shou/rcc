@@ -3,7 +3,7 @@
 #![allow(unreachable_code)]
 #![allow(unused_imports)]
 
-use ::lilac_core::{analyzer::Analyzer, lexer::Lexer, parser::Parser};
+use ::rc_core::{analyzer::Analyzer, lexer::Lexer, parser::Parser};
 use ::std::{env::args, fs::File, io::Read, path::PathBuf, process::exit};
 // use rcns::preprocessor;
 

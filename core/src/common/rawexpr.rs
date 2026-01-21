@@ -56,18 +56,18 @@ macro_rules! type_alias_expr {
     }
     mod cvtrawexpr {
       use super::*;
-      ::lilac_utils::interconvert!(Constant, RawExpr);
-      ::lilac_utils::interconvert!(Unary, RawExpr);
-      ::lilac_utils::interconvert!(Binary, RawExpr);
-      ::lilac_utils::interconvert!(Call, RawExpr);
-      ::lilac_utils::interconvert!(MemberAccess, RawExpr);
-      ::lilac_utils::interconvert!(Ternary, RawExpr);
-      ::lilac_utils::interconvert!(SizeOf, RawExpr);
-      ::lilac_utils::interconvert!(CStyleCast, RawExpr);
-      ::lilac_utils::interconvert!(ArraySubscript, RawExpr);
-      ::lilac_utils::interconvert!(CompoundLiteral, RawExpr);
+      ::rc_utils::interconvert!(Constant, RawExpr);
+      ::rc_utils::interconvert!(Unary, RawExpr);
+      ::rc_utils::interconvert!(Binary, RawExpr);
+      ::rc_utils::interconvert!(Call, RawExpr);
+      ::rc_utils::interconvert!(MemberAccess, RawExpr);
+      ::rc_utils::interconvert!(Ternary, RawExpr);
+      ::rc_utils::interconvert!(SizeOf, RawExpr);
+      ::rc_utils::interconvert!(CStyleCast, RawExpr);
+      ::rc_utils::interconvert!(ArraySubscript, RawExpr);
+      ::rc_utils::interconvert!(CompoundLiteral, RawExpr);
       $(
-        ::lilac_utils::interconvert!($extra, RawExpr);
+        ::rc_utils::interconvert!($extra, RawExpr);
       )*
     }
   };

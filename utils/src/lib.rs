@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! interconvert {
   ($inner:ident, $outer:ident) => {
-    ::lilac_utils::interconvert!($inner, $outer, $inner);
+    ::rc_utils::interconvert!($inner, $outer, $inner);
   };
 
   ($inner:ident, $outer:ident, $variant:ident) => {
@@ -50,7 +50,7 @@ macro_rules! make_trio_for {
                 match self {
                     Self::$variant(v) => v,
                     _ => {
-                        ::lilac_utils::breakpoint!();
+                        ::rc_utils::breakpoint!();
                         unreachable!()
                     }
                 }
@@ -90,3 +90,5 @@ macro_rules! breakpoint {
     _ = stderr().flush();
   }};
 }
+
+pub type SmallString = compact_str::CompactString;

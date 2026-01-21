@@ -1,7 +1,7 @@
 use ::once_cell::sync::Lazy;
 use ::std::str::FromStr;
 use ::strum_macros::{Display, EnumString, IntoStaticStr};
-use lilac_utils::{interconvert, make_trio_for};
+use rc_utils::{interconvert, make_trio_for};
 
 use super::{Compatibility, TypeInfo};
 use crate::common::error::Error;

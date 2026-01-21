@@ -181,7 +181,11 @@ mod fmt {
   impl Display for VarDef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       let sym = self.symbol.borrow();
-      write!(f, "{} {}", sym.qualified_type, sym.name)?;
+      write!(
+        f,
+        "{} {} {}",
+        sym.storage_class, sym.qualified_type, sym.name
+      )?;
       if let Some(initializer) = &self.initializer {
         write!(f, " = {}", initializer)?;
       }

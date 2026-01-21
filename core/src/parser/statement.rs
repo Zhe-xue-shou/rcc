@@ -35,7 +35,7 @@ mod fmt {
   impl Display for Statement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       match self {
-        Statement::Empty() => write!(f, "<empty statement>"),
+        Statement::Empty() => write!(f, "<noop>;"),
         Statement::Return(ret) => write!(f, "{}", ret),
         Statement::Expression(expr) => write!(f, "{};", expr),
         Statement::Declaration(decl) => write!(f, "{}", decl),

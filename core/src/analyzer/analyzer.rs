@@ -1,4 +1,4 @@
-use lilac_utils::breakpoint;
+use rc_utils::breakpoint;
 
 use crate::{
   analyzer::{declaration as ad, expression as ae, statement as astmt},

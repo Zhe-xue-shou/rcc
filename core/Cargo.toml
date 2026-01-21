@@ -1,10 +1,10 @@
 [package]
-name = "lilac-core"
+name = "rc-core"
 version = "0.1.0"
 edition = "2024"
 authors = ["LiAuTraver"]
 license-file = "LICENSE"
-homepage = "https://github.com/LiAuTraver/lilac"
+homepage = "https://github.com/LiAuTraver/rc"
 readme = "README.md"
 
 
@@ -16,4 +16,4 @@ strum = "0.27.2"
 bitflags = "2.10.0"
 paste = "1.0.15"
 
-lilac-utils = { path = "../utils" }
+rc-utils = { path = "../utils" }

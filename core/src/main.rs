@@ -3,7 +3,9 @@
 #![allow(unreachable_code)]
 #![allow(unused_imports)]
 
-use ::rc_core::{analyzer::Analyzer, lexer::Lexer, parser::Parser};
+use ::rc_core::{
+  analyzer::Analyzer, common::SourceManager, lexer::Lexer, parser::Parser,
+};
 use ::std::{env::args, fs::File, io::Read, path::PathBuf, process::exit};
 // use rcns::preprocessor;
 
@@ -20,15 +22,11 @@ fn main() {
       exit(1);
     },
   };
+  let mut sourcemanager = SourceManager::default();
 
-  let file = File::open(filename);
-  let mut s = String::new();
-  _ = file.and_then(|mut f| f.read_to_string(&mut s));
+  let _id = sourcemanager.try_add_file(filename.into());
 
-  let mut lexer = Lexer::new(
-    s,
-    std::path::absolute(filename).unwrap_or(PathBuf::from("<invalid path>")),
-  );
+  let mut lexer = Lexer::new(&sourcemanager.files[0].source);
   let tokens = lexer.lex_all();
   let errors = lexer.errors();
   tokens
@@ -37,7 +35,9 @@ fn main() {
     .for_each(|t| println!("{t:?}"));
   if !errors.is_empty() {
     eprintln!("Lex errors:");
-    errors.iter().for_each(|e| eprintln!("{e}"));
+    errors
+      .iter()
+      .for_each(|e| eprintln!("{}", e.display_with(&sourcemanager)));
     exit(1);
   }
   if kind == "--lex" || kind == "lex" {

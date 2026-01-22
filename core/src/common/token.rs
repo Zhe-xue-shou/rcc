@@ -2,7 +2,7 @@ use ::std::fmt::Debug;
 
 use super::{
   Keyword::{self, *},
-  Operator, SourceLocation,
+  Operator, SourceSpan,
 };
 use crate::types::Constant;
 
@@ -18,39 +18,39 @@ pub enum Literal {
 #[derive(Debug)]
 pub struct Token {
   pub literal: Literal,
-  pub location: SourceLocation,
+  pub location: SourceSpan,
 }
 
 impl Token {
-  pub fn string(literal: String, location: SourceLocation) -> Self {
+  pub fn string(literal: String, location: SourceSpan) -> Self {
     Self {
       literal: Literal::String(literal),
       location,
     }
   }
 
-  pub fn number(number: Constant, location: SourceLocation) -> Self {
+  pub fn number(number: Constant, location: SourceSpan) -> Self {
     Self {
       literal: Literal::Number(number),
       location,
     }
   }
 
-  pub fn identifier(identifier: String, location: SourceLocation) -> Self {
+  pub fn identifier(identifier: String, location: SourceSpan) -> Self {
     Self {
       literal: Literal::Identifier(identifier),
       location,
     }
   }
 
-  pub fn keyword(keyword: Keyword, location: SourceLocation) -> Self {
+  pub fn keyword(keyword: Keyword, location: SourceSpan) -> Self {
     Self {
       literal: Literal::Keyword(keyword),
       location,
     }
   }
 
-  pub fn operator(operator: Operator, location: SourceLocation) -> Self {
+  pub fn operator(operator: Operator, location: SourceSpan) -> Self {
     Self {
       literal: Literal::Operator(operator),
       location,
@@ -197,8 +197,8 @@ mod fmt {
       .and_then(|_| {
         write!(
           f,
-          " at line {}, column {}",
-          self.location.line, self.location.column
+          " at beg {}, end {}",
+          self.location.start, self.location.end
         )
       })
     }

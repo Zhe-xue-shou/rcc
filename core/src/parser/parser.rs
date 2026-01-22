@@ -134,27 +134,29 @@ impl Parser {
   }
 
   fn add_error(&mut self, message: String) {
-    let token = &self.tokens[self.cursor];
-    self.errors.push(format!(
-      "In file {}:{}:{}: {}",
-      "todo",
-      // token.location.file.to_str().unwrap_or("<invalid utf8>"),
-      token.location.line,
-      token.location.column,
-      message
-    ));
+    // let token = &self.tokens[self.cursor];
+    // self.errors.push(format!(
+    //   "In file {}:{}:{}: {}",
+    //   "todo",
+    //   // token.location.file.to_str().unwrap_or("<invalid utf8>"),
+    //   token.location.line,
+    //   token.location.column,
+    //   message
+    // ));
+    todo!()
   }
 
   fn add_warning(&mut self, message: String) {
-    let token = &self.tokens[self.cursor];
-    self.warnings.push(format!(
-      "In file {}:{}:{}: {}",
-      "todo",
-      // token.location.file.to_str().unwrap_or("<invalid utf8>"),
-      token.location.line,
-      token.location.column,
-      message
-    ));
+    // let token = &self.tokens[self.cursor];
+    // self.warnings.push(format!(
+    //   "In file {}:{}:{}: {}",
+    //   "todo",
+    //   // token.location.file.to_str().unwrap_or("<invalid utf8>"),
+    //   token.location.line,
+    //   token.location.column,
+    //   message
+    // ));
+    todo!()
   }
 }
 /// opt checks
@@ -465,13 +467,13 @@ impl Parser {
         // self.add_warning("Redundant ';'".to_string());
         self.must_get_op::<{ Operator::Semicolon }>();
       } else {
-        // skip preprocessor directive
-        let line = self.tokens[self.cursor].location.line;
-        while (!self.is_at_end())
-          && (self.tokens[self.cursor].location.line == line)
-        {
-          self.get();
-        }
+        // // skip preprocessor directive
+        // let line = self.tokens[self.cursor].location.line;
+        // while (!self.is_at_end())
+        //   && (self.tokens[self.cursor].location.line == line)
+        // {
+        //   self.get();
+        // }
       }
     }
 

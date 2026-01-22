@@ -1,115 +1,135 @@
-use ::std::{path::PathBuf, rc::Rc, str::FromStr};
+use ::std::{
+  iter::Peekable,
+  str::{Chars, FromStr},
+};
 
 use crate::{
   common::{
-    Keyword,
+    Coordinate, ErrorData, ErrorV2, Keyword,
     Operator::{self, *},
-    SourceLocation, SourceSpan, Token,
+    SourceSpan, Token,
   },
   // this isn't strictrly correct, i uses the same `Constant` type in lexer and the parser,
   //    yet the lexeer part distinguishes number and string, but the parser part does not
   types::Constant as NumberConstant,
 };
 
-pub struct Lexer {
-  source: String,
-  chars: Vec<char>,
-  byte_positions: Vec<usize>,
-  cursor: usize,
-  line: u32,
-  column: u32,
-  errors: Vec<String>,
-  filepath: Rc<PathBuf>,
+pub struct Lexer<'a> {
+  /// the SourceManager owns the String.
+  source: &'a str,
+
+  /// maybe 1~4 bytes
+  chars: Peekable<Chars<'a>>,
+
+  /// track position manually for Spans
+  byte_cursor: usize,
+
+  /// report line/col errors *during* lexing
+  coords: Coordinate,
+
+  errors: Vec<ErrorV2>,
 }
-
-impl Lexer {
-  pub fn new(source: String, filepath: PathBuf) -> Self {
-    let chars: Vec<char> = source.chars().collect();
-    let byte_positions: Vec<usize> =
-      source.char_indices().map(|(pos, _)| pos).collect();
-
+impl<'a> Lexer<'a> {
+  pub fn new(source: &'a str) -> Self {
     Self {
       source,
-      chars,
-      byte_positions,
-      cursor: 0,
-      line: 1,
-      column: 1,
-      errors: Vec::default(),
-      filepath: Rc::new(filepath),
+      chars: source.chars().peekable(),
+      byte_cursor: 0,
+      coords: Default::default(),
+      errors: Vec::new(),
     }
   }
 
-  pub fn errors(&self) -> &[String] {
+  pub fn errors(&self) -> &[ErrorV2] {
     &self.errors
   }
 
-  fn add_error(&mut self, message: String) {
-    self.errors.push(format!(
-      "In file {}:{}:{}: {}",
-      self.filepath.display(),
-      self.line,
-      self.column,
-      message
-    ));
+  fn add_error(&mut self, error: ErrorV2) {
+    self.errors.push(error);
   }
 
-  fn is_at_end(&self) -> bool {
-    self.cursor >= self.chars.len()
-  }
-
-  fn peek(&self, offset: usize) -> char {
-    self
-      .chars
-      .get(self.cursor + offset)
-      .copied()
-      .unwrap_or('\0')
-  }
-
+  #[inline]
   fn advance_n(&mut self, offset: usize) {
     for _ in 0..offset {
       self.advance();
     }
   }
 
-  fn advance(&mut self) -> Option<char> {
-    if self.is_at_end() {
-      return None;
-    }
-
-    let ch = self.chars[self.cursor];
-    self.cursor += 1;
-
-    if ch == '\n' {
-      self.line += 1;
-      self.column = 1;
-    } else {
-      self.column += 1;
-    }
-
-    Some(ch)
+  /// Returns true if we are at the end
+  fn is_at_end(&mut self) -> bool {
+    self.chars.peek().is_none()
   }
 
-  fn loc(&self) -> SourceLocation {
-    SourceLocation {
-      span: SourceSpan::default(), // placeholder
-      line: self.line,
-      column: self.column,
+  /// look ahead without consuming
+  #[inline]
+  fn peek(&mut self) -> char {
+    // returns '\0' if EOF, copied
+    *self.chars.peek().unwrap_or(&'\0')
+  }
+
+  /// double peek
+  #[inline]
+  fn peek_next(&self) -> char {
+    let mut iter = self.chars.clone();
+    iter.next();
+    iter.next().unwrap_or('\0')
+  }
+
+  #[inline]
+  fn peek_n(&self, n: usize) -> char {
+    let mut iter = self.chars.clone();
+    for _ in 0..n {
+      iter.next();
+    }
+    iter.next().unwrap_or('\0')
+  }
+
+  #[inline]
+  fn recall(&self) -> char {
+    self.chars.clone().rev().next().expect(
+      "should not fail, unless the number appears at the start of the file(?)",
+    )
+  }
+
+  /// consumes the next character and updates position
+  fn advance(&mut self) -> char {
+    match self.chars.next() {
+      Some(c) => {
+        self.byte_cursor += c.len_utf8();
+
+        if c == '\n' {
+          self.coords.line += 1;
+          self.coords.column = 1;
+        } else {
+          self.coords.column += 1;
+        }
+        c
+      },
+      None => '\0',
     }
   }
 
-  fn slice_str(&self, start: usize, end: usize) -> &str {
-    let byte_start = self
-      .byte_positions
-      .get(start)
-      .copied()
-      .unwrap_or(self.source.len());
-    let byte_end = self
-      .byte_positions
-      .get(end)
-      .copied()
-      .unwrap_or(self.source.len());
-    &self.source[byte_start..byte_end]
+  // /// match a specific char
+  // fn advance_if(&mut self, expected: char) -> bool {
+  //   if self.peek() == expected {
+  //     self.advance();
+  //     true
+  //   } else {
+  //     false
+  //   }
+  // }
+
+  fn span(&self, start: usize) -> SourceSpan {
+    debug_assert!(start != self.byte_cursor, "{start}");
+    SourceSpan {
+      file_index: 0,
+      start: start as u32,
+      end: self.byte_cursor as u32,
+    }
+  }
+
+  fn slice(&self, start: usize, end: usize) -> &str {
+    &self.source[start..end]
   }
 
   pub fn lex_all(&mut self) -> Vec<Token> {
@@ -119,40 +139,37 @@ impl Lexer {
         tokens.push(token);
       }
     }
-    tokens.push(Token::operator(EOF, self.loc()));
+    // add 1 to form [a,a+1)
+    tokens.push(Token::operator(EOF, self.span(self.byte_cursor + 1)));
     tokens
   }
 
   fn next_token(&mut self) -> Option<Token> {
-    let start = self.cursor;
-    let start_loc = self.loc();
+    let start = self.byte_cursor;
 
-    let ch = self.advance()?;
-
-    match ch {
-      // whitespace
-      ' ' | '\t' | '\r' | '\n' => None,
+    match self.advance() {
+      // whitespace or EOF
+      ' ' | '\t' | '\r' | '\n' | '\0' => None,
 
       // identifiers and keywords
-      c if Self::is_ident_start(c) =>
-        Some(self.lex_identifier(start, start_loc)),
+      c if Self::is_ident_start(c) => Some(self.lex_identifier(start)),
 
       // numbers
-      '0'..='9' => Some(self.lex_number(start, start_loc, false)),
+      '0'..='9' => Some(self.lex_number(start, false)),
 
       // strings
-      '"' => Some(self.lex_string(start_loc)),
+      '"' => Some(self.lex_string(start)),
 
       // dot (operator/floating point)
       '.' =>
-        if self.peek(0).is_ascii_hexdigit() {
-          Some(self.lex_number(start, start_loc, true))
+        if self.peek().is_ascii_hexdigit() {
+          Some(self.lex_number(start, true))
         } else {
-          self.lex_compound_op(start_loc, Dot, &[("...", Ellipsis)])
+          self.lex_compound_op(start, Dot, &[("...", Ellipsis)])
         },
 
       // comments/division
-      '/' => match self.peek(0) {
+      '/' => match self.peek() {
         '/' => {
           self.skip_line_comment();
           None
@@ -164,28 +181,28 @@ impl Lexer {
         },
         '=' => {
           self.advance();
-          Some(Token::operator(SlashAssign, start_loc))
+          Some(Token::operator(SlashAssign, self.span(start)))
         },
-        _ => Some(Token::operator(Slash, start_loc)),
+        _ => Some(Token::operator(Slash, self.span(start))),
       },
 
       // multi-character operators
       '+' => self.lex_compound_op(
-        start_loc,
+        start,
         Plus,
         &[("++", PlusPlus), ("+=", PlusAssign)],
       ),
       '-' => self.lex_compound_op(
-        start_loc,
+        start,
         Minus,
         &[("--", MinusMinus), ("-=", MinusAssign), ("->", Arrow)],
       ),
-      '*' => self.lex_compound_op(start_loc, Star, &[("*=", StarAssign)]),
-      '%' => self.lex_compound_op(start_loc, Percent, &[("%=", PercentAssign)]),
-      '=' => self.lex_compound_op(start_loc, Assign, &[("==", EqualEqual)]),
-      '!' => self.lex_compound_op(start_loc, Not, &[("!=", NotEqual)]),
+      '*' => self.lex_compound_op(start, Star, &[("*=", StarAssign)]),
+      '%' => self.lex_compound_op(start, Percent, &[("%=", PercentAssign)]),
+      '=' => self.lex_compound_op(start, Assign, &[("==", EqualEqual)]),
+      '!' => self.lex_compound_op(start, Not, &[("!=", NotEqual)]),
       '<' => self.lex_compound_op(
-        start_loc,
+        start,
         Less,
         &[
           ("<<=", LeftShiftAssign),
@@ -194,7 +211,7 @@ impl Lexer {
         ],
       ),
       '>' => self.lex_compound_op(
-        start_loc,
+        start,
         Greater,
         &[
           (">>=", RightShiftAssign),
@@ -203,43 +220,37 @@ impl Lexer {
         ],
       ),
       '&' => self.lex_compound_op(
-        start_loc,
+        start,
         Ampersand,
         &[("&&", And), ("&=", AmpersandAssign)],
       ),
       '|' =>
-        self.lex_compound_op(start_loc, Pipe, &[("||", Or), ("|=", PipeAssign)]),
-      '^' => self.lex_compound_op(start_loc, Caret, &[("^=", CaretAssign)]),
-      ':' => self.lex_compound_op(start_loc, Colon, &[("::", DoubleColon)]),
-      '[' => self.lex_compound_op(
-        start_loc,
-        LeftBracket,
-        &[("[[", DoubleLeftBracket)],
-      ),
-      ']' => self.lex_compound_op(
-        start_loc,
-        RightBracket,
-        &[("]]", DoubleRightBracket)],
-      ),
+        self.lex_compound_op(start, Pipe, &[("||", Or), ("|=", PipeAssign)]),
+      '^' => self.lex_compound_op(start, Caret, &[("^=", CaretAssign)]),
+      ':' => self.lex_compound_op(start, Colon, &[("::", DoubleColon)]),
+      '[' =>
+        self.lex_compound_op(start, LeftBracket, &[("[[", DoubleLeftBracket)]),
+      ']' =>
+        self.lex_compound_op(start, RightBracket, &[("]]", DoubleRightBracket)]),
 
-      '#' => self.lex_compound_op(start_loc, Hash, &[("##", HashHash)]),
+      '#' => self.lex_compound_op(start, Hash, &[("##", HashHash)]),
 
       // single-character operators
-      ',' => Some(Token::operator(Comma, start_loc)),
-      ';' => Some(Token::operator(Semicolon, start_loc)),
-      '(' => Some(Token::operator(LeftParen, start_loc)),
-      ')' => Some(Token::operator(RightParen, start_loc)),
-      '{' => Some(Token::operator(LeftBrace, start_loc)),
-      '}' => Some(Token::operator(RightBrace, start_loc)),
-      '~' => Some(Token::operator(Tilde, start_loc)),
-      '?' => Some(Token::operator(Question, start_loc)),
+      ',' => Some(Token::operator(Comma, self.span(start))),
+      ';' => Some(Token::operator(Semicolon, self.span(start))),
+      '(' => Some(Token::operator(LeftParen, self.span(start))),
+      ')' => Some(Token::operator(RightParen, self.span(start))),
+      '{' => Some(Token::operator(LeftBrace, self.span(start))),
+      '}' => Some(Token::operator(RightBrace, self.span(start))),
+      '~' => Some(Token::operator(Tilde, self.span(start))),
+      '?' => Some(Token::operator(Question, self.span(start))),
       '\\' => todo!("character literals not implemented yet"),
 
       _ => {
-        self.errors.push(format!(
-          "Unknown character '{}' at {}:{}",
-          ch, start_loc.line, start_loc.column
-        ));
+        // self.errors.push(format!(
+        //   "Unknown character '{}' at {}:{}",
+        //   ch, start.line, start.column
+        // ));
         None
       },
     }
@@ -253,31 +264,22 @@ impl Lexer {
     c.is_alphanumeric() || c == '_'
   }
 
-  fn lex_identifier(
-    &mut self,
-    start: usize,
-    start_loc: SourceLocation,
-  ) -> Token {
-    while matches!(self.peek(0), c if Self::is_ident_continue(c)) {
+  fn lex_identifier(&mut self, start: usize) -> Token {
+    while matches!(self.peek(), c if Self::is_ident_continue(c)) {
       self.advance();
     }
 
-    let text = self.slice_str(start, self.cursor);
+    let text = self.slice(start, self.byte_cursor);
 
     match Keyword::from_str(text) {
-      Ok(keyword) => Token::keyword(keyword, start_loc),
-      Err(_) => Token::identifier(text.to_string(), start_loc),
+      Ok(keyword) => Token::keyword(keyword, self.span(start)),
+      Err(_) => Token::identifier(text.to_string(), self.span(start)),
     }
   }
 
-  fn lex_number(
-    &mut self,
-    start: usize,
-    start_loc: SourceLocation,
-    started_with_dot: bool,
-  ) -> Token {
-    let base = if !started_with_dot && self.cursor > 0 {
-      match (self.chars.get(start).unwrap(), self.peek(0)) {
+  fn lex_number(&mut self, start: usize, started_with_dot: bool) -> Token {
+    let base = if !started_with_dot && self.byte_cursor > 0 {
+      match (self.recall(), self.peek()) {
         ('0', 'x' | 'X') => {
           self.advance();
           16
@@ -301,7 +303,7 @@ impl Lexer {
     };
 
     // digits
-    while matches!(self.peek(0), c if Self::is_digit_of_base(c, base)) {
+    while matches!(self.peek(), c if Self::is_digit_of_base(c, base)) {
       self.advance();
     }
 
@@ -309,73 +311,85 @@ impl Lexer {
 
     // decimal point for base-10 numbers
     if base == 10
-      && matches!(self.peek(0), '.')
-      && self.peek(1).is_ascii_digit()
+      && matches!(self.peek(), '.')
+      && self.peek_next().is_ascii_digit()
     {
       self.advance(); // consume '.'
       is_floating = true;
-      while self.peek(0).is_ascii_digit() {
+      while self.peek().is_ascii_digit() {
         self.advance();
       }
     }
 
     // exponent part for base-10 (e.g., 1.5e-10, 3E+5, 2e10)
-    if base == 10 && matches!(self.peek(0), 'e' | 'E') {
+    if base == 10 && matches!(self.peek(), 'e' | 'E') {
       is_floating = true;
       self.advance(); // consume 'e' or 'E'
 
       // optional sign
-      if matches!(self.peek(0), '+' | '-') {
+      if matches!(self.peek(), '+' | '-') {
         self.advance();
       }
 
       // exponent digits, required
-      if !self.peek(0).is_ascii_digit() {
-        self.add_error("Expected digits after exponent marker".to_string());
+      if !self.peek().is_ascii_digit() {
+        // self.add_error("Expected digits after exponent marker".to_string());
+        self.add_error(ErrorV2::new(
+          self.span(start),
+          ErrorData::InvalidNumberFormat(
+            "Expected digits after exponent marker".to_string(),
+          ),
+        ));
       } else {
-        while self.peek(0).is_ascii_digit() {
+        while self.peek().is_ascii_digit() {
           self.advance();
         }
       }
     }
 
     // hexadecimal floating point exponent (e.g., 0x1.5p-3)
-    if base == 16 && matches!(self.peek(0), 'p' | 'P') {
+    if base == 16 && matches!(self.peek(), 'p' | 'P') {
       is_floating = true;
       self.advance(); // consume 'p' or 'P'
 
       // optional sign
-      if matches!(self.peek(0), '+' | '-') {
+      if matches!(self.peek(), '+' | '-') {
         self.advance();
       }
 
-      if !self.peek(0).is_ascii_digit() {
-        self.add_error(
-          "Expected digits after hexadecimal exponent marker".to_string(),
-        );
+      if !self.peek().is_ascii_digit() {
+        self.add_error(ErrorV2::new(
+          self.span(start),
+          ErrorData::InvalidNumberFormat(
+            "Expected digits after hexadecimal exponent marker".to_string(),
+          ),
+        ));
       } else {
-        while self.peek(0).is_ascii_digit() {
+        while self.peek().is_ascii_digit() {
           self.advance();
         }
       }
     }
 
-    let head = self.cursor;
-    let num = self.slice_str(start, head).to_string();
+    let head = self.byte_cursor;
+    let num = self.slice(start, head).to_string();
 
-    let suffix = if matches!(self.peek(0), c if Self::is_ident_start(c)) {
-      while matches!(self.peek(0), c if Self::is_ident_start(c)) {
+    let suffix = if matches!(self.peek(), c if Self::is_ident_start(c)) {
+      while matches!(self.peek(), c if Self::is_ident_start(c)) {
         self.advance();
       }
-      let s = self.slice_str(head, self.cursor);
+      let s = self.slice(head, self.byte_cursor);
       match is_floating {
         true =>
           if NumberConstant::FLOATING_SUFFIXES.contains(&s) {
             Some(s)
           } else {
-            self.add_error(format!(
-              "Invalid floating point literal suffix '{}', ignoring",
-              s
+            self.add_error(ErrorV2::new(
+              self.span(start),
+              ErrorData::InvalidNumberFormat(format!(
+                "Invalid floating point literal suffix '{}', ignoring",
+                s
+              )),
             ));
             None
           },
@@ -383,9 +397,12 @@ impl Lexer {
           if NumberConstant::INTEGER_SUFFIXES.contains(&s) {
             Some(s)
           } else {
-            self.add_error(format!(
-              "Invalid integer literal suffix '{}', ignoring",
-              s
+            self.add_error(ErrorV2::new(
+              self.span(start),
+              ErrorData::InvalidNumberFormat(format!(
+                "Invalid integer literal suffix '{}', ignoring",
+                s
+              )),
             ));
             None
           },
@@ -396,10 +413,13 @@ impl Lexer {
 
     let (constant, error) = NumberConstant::parse(&num, suffix, is_floating);
     if let Some(e) = error {
-      self.add_error(e);
+      self.add_error(ErrorV2::new(
+        self.span(start),
+        ErrorData::InvalidNumberFormat(e),
+      ));
     }
 
-    Token::number(constant, start_loc)
+    Token::number(constant, self.span(start))
   }
 
   fn is_digit_of_base(c: char, base: u32) -> bool {
@@ -412,29 +432,30 @@ impl Lexer {
     }
   }
 
-  fn lex_string(&mut self, start_loc: SourceLocation) -> Token {
-    let start = self.cursor;
-
-    while !self.is_at_end() && self.peek(0) != ('"') {
+  fn lex_string(&mut self, start: usize) -> Token {
+    while !self.is_at_end() && self.peek() != ('"') {
       self.advance();
     }
 
     if self.is_at_end() {
-      self.add_error("Unterminated string literal".to_string());
-      let text = self.slice_str(start, self.cursor);
-      return Token::string(text.to_string(), start_loc);
+      self.add_error(ErrorV2::new(
+        self.span(start),
+        ErrorData::UnterminatedString,
+      ));
+      let text = self.slice(start, self.byte_cursor);
+      return Token::string(text.to_string(), self.span(start));
     }
 
-    let end = self.cursor;
+    let end = self.byte_cursor;
     self.advance(); // consume closing quote
 
-    let text = self.slice_str(start, end);
-    Token::string(text.to_string(), start_loc)
+    let text = self.slice(start, end);
+    Token::string(text.to_string(), self.span(start))
   }
 
   fn skip_block_comment(&mut self) {
     while !self.is_at_end() {
-      if self.peek(0) == ('*') && self.peek(1) == ('/') {
+      if self.peek() == ('*') && self.peek_next() == ('/') {
         self.advance_n(2); // consume '*/'
         break;
       } else {
@@ -444,14 +465,14 @@ impl Lexer {
   }
 
   fn skip_line_comment(&mut self) {
-    while !self.is_at_end() && self.peek(0) != ('\n') {
+    while !self.is_at_end() && self.peek() != ('\n') {
       self.advance();
     }
   }
 
   fn lex_compound_op(
     &mut self,
-    start_loc: SourceLocation,
+    start: usize,
     default: Operator,
     patterns: &'static [(&'static str, Operator)],
   ) -> Option<Token> {
@@ -462,7 +483,7 @@ impl Lexer {
     // note: called after consuming the first character already.
     for (pattern, op) in patterns {
       debug_assert!(
-        self.peek(pattern.chars().count() - 1) != '\0',
+        self.peek_n(pattern.chars().count() - 1) != '\0',
         "should not match past end of input 
         (if this happens, simply continue to the next pattern;
         but here I assert to catch logic errors)"
@@ -475,13 +496,13 @@ impl Lexer {
       // so compare pattern[1..] against peek(0..).
       if self.matches_ahead(pattern.chars().skip(1)) {
         self.advance_n(pattern.chars().count() - 1);
-        return Some(Token::operator(op.clone(), start_loc));
+        return Some(Token::operator(op.clone(), self.span(start)));
       }
     }
-    Some(Token::operator(default, start_loc))
+    Some(Token::operator(default, self.span(start)))
   }
 
   fn matches_ahead(&self, pattern: impl Iterator<Item = char>) -> bool {
-    pattern.enumerate().all(|(i, ch)| self.peek(i) == (ch))
+    pattern.enumerate().all(|(i, ch)| self.peek_n(i) == (ch))
   }
 }

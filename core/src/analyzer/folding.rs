@@ -1,6 +1,6 @@
 use crate::{
   analyzer::expression::{Expression, RawExpr, SizeOf, Variable},
-  common::{operator::Operator, storage::Storage},
+  common::{Operator, Storage},
   types::Type,
 };
 

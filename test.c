@@ -8,6 +8,7 @@ int j;
 // extern int k[10];
 // int k[];
 // extern int k[10];
+typedef int INT;
 inline static int foo(int a) { return a + 1; }
 int main(void) { //
   goto label;
@@ -16,8 +17,11 @@ int main(void) { //
     int k = foo(0);
   }
   int f(int, int);
-  typedef int INT;
   INT x = sizeof(char);
+  typedef int const CONST_INT;
+  typedef int const CONST_INT;
+  int foo;
+  CONST_INT INT = 10;
   static int y = sizeof x;
   switch (x) {
   case 0:

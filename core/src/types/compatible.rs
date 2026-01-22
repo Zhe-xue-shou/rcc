@@ -1,14 +1,12 @@
 #![allow(unused)]
-use rc_utils::breakpoint;
+use ::rc_utils::breakpoint;
 
 use super::{
   Array, ArraySize, Enum, FunctionProto, Pointer, Primitive, QualifiedType,
-  Record, Type, Union,
+  Qualifiers, Record, Type, Union,
 };
-use crate::types::Qualifiers;
 
 /// rules about the `metadata`. used for declaration and definition.
-#[allow(unused)]
 pub trait Compatibility {
   fn compatible(lhs: &Self, rhs: &Self) -> bool;
   #[inline]

@@ -2,12 +2,15 @@ use ::std::{path::PathBuf, rc::Rc, str::FromStr};
 
 use crate::{
   common::{
-    keyword::Keyword,
-    operator::Operator::{self, *},
-    token::{SourceLocation, Token},
+    Keyword,
+    Operator::{self, *},
+    SourceLocation, SourceSpan, Token,
   },
-  types::Constant,
+  // this isn't strictrly correct, i uses the same `Constant` type in lexer and the parser,
+  //    yet the lexeer part distinguishes number and string, but the parser part does not
+  types::Constant as NumberConstant,
 };
+
 pub struct Lexer {
   source: String,
   chars: Vec<char>,
@@ -89,8 +92,7 @@ impl Lexer {
 
   fn loc(&self) -> SourceLocation {
     SourceLocation {
-      file: Rc::clone(&self.filepath),
-      line_string: String::new().into(), // placeholder, do it later
+      span: SourceSpan::default(), // placeholder
       line: self.line,
       column: self.column,
     }
@@ -368,7 +370,7 @@ impl Lexer {
       let s = self.slice_str(head, self.cursor);
       match is_floating {
         true =>
-          if Constant::FLOATING_SUFFIXES.contains(&s) {
+          if NumberConstant::FLOATING_SUFFIXES.contains(&s) {
             Some(s)
           } else {
             self.add_error(format!(
@@ -378,7 +380,7 @@ impl Lexer {
             None
           },
         false =>
-          if Constant::INTEGER_SUFFIXES.contains(&s) {
+          if NumberConstant::INTEGER_SUFFIXES.contains(&s) {
             Some(s)
           } else {
             self.add_error(format!(
@@ -392,7 +394,7 @@ impl Lexer {
       None
     };
 
-    let (constant, error) = Constant::parse(&num, suffix, is_floating);
+    let (constant, error) = NumberConstant::parse(&num, suffix, is_floating);
     if let Some(e) = error {
       self.add_error(e);
     }

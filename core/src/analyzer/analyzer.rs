@@ -3,10 +3,8 @@ use rc_utils::breakpoint;
 use crate::{
   analyzer::{declaration as ad, expression as ae, statement as astmt},
   common::{
-    environment::{Environment, Symbol, VarDeclKind},
-    error::Error,
-    operator::{Category, Operator},
-    storage::Storage,
+    Environment, Error, Operator, OperatorCategory, Storage, Symbol,
+    VarDeclKind,
   },
   parser::{declaration as pd, expression as pe, statement as ps},
   types::{
@@ -15,7 +13,7 @@ use crate::{
   },
 };
 
-type TypeRes = Result<Type, Error>;
+type TypeRes = Result<QualifiedType, Error>;
 type ExprRes = Result<ae::Expression, Error>;
 type DeclRes<T> = Result<T, Error>;
 type StmtRes<T> = Result<T, Error>;
@@ -109,6 +107,7 @@ impl Analyzer {
   }
 
   fn apply_modifiers_for_functiondecl(
+    &self,
     return_type: QualifiedType,
     modifiers: Vec<pd::Modifier>,
   ) -> DeclRes<(
@@ -128,7 +127,7 @@ impl Analyzer {
       },
     };
     // we need to build function type
-    let parameters = Self::parse_parameters(function_signature.parameters)?;
+    let parameters = self.parse_parameters(function_signature.parameters)?;
     let is_variadic = function_signature.is_variadic;
     let parameter_types = parameters
       .iter()
@@ -147,6 +146,7 @@ impl Analyzer {
   }
 
   fn parse_parameters(
+    &self,
     parameters: Vec<pd::Parameter>,
   ) -> DeclRes<Vec<ad::Parameter>> {
     let mut analyzed_parameters = Vec::new();
@@ -155,7 +155,7 @@ impl Analyzer {
         declarator,
         declspecs,
       } = parameter;
-      let (_, storage, qualified_type) = Self::parse_declspecs(declspecs)?;
+      let (_, storage, qualified_type) = self.parse_declspecs(declspecs)?;
       if storage.is_some() {
         return err_or_debugbreak!(); // error: parameter cannot have storage class
       }
@@ -176,70 +176,74 @@ impl Analyzer {
   }
 
   fn parse_declspecs(
+    &self,
     declspecs: pd::DeclSpecs,
   ) -> Result<(FunctionSpecifier, Option<Storage>, QualifiedType), Error> {
-    let unqualified_type = Self::get_type(declspecs.type_specifiers)?;
-    let qualifiers = declspecs.qualifiers;
-    let qualified_type = QualifiedType::new(qualifiers, unqualified_type);
+    let qualified_type = self
+      .get_type(declspecs.type_specifiers)?
+      .with_qualifiers(declspecs.qualifiers);
     let storage_class = declspecs.storage_class;
     let function_specifier = declspecs.function_specifiers;
 
     Ok((function_specifier, storage_class, qualified_type))
   }
 
-  fn get_type(mut type_specifiers: Vec<pd::TypeSpecifier>) -> TypeRes {
+  fn get_type(&self, mut type_specifiers: Vec<pd::TypeSpecifier>) -> TypeRes {
     assert!(!type_specifiers.is_empty());
-    // todo, convert typedefs into real types
-    // type_specifiers.iter_mut().for_each(|ts| {});
     type_specifiers.sort_by_key(|s| s.sort_key());
     type TS = pd::TypeSpecifier;
     // 6.7.3.1
-    let m = match type_specifiers.as_slice() {
-      [TS::Nullptr] => Type::Primitive(Primitive::Nullptr),
-      [TS::Void] => Type::Primitive(Primitive::Void),
+    match type_specifiers.as_slice() {
+      [TS::Nullptr] => Ok(Type::Primitive(Primitive::Nullptr).into()),
+      [TS::Void] => Ok(Type::Primitive(Primitive::Void).into()),
 
-      [TS::Bool] => Type::Primitive(Primitive::Bool),
+      [TS::Bool] => Ok(Type::Primitive(Primitive::Bool).into()),
 
-      [TS::Char] => Type::Primitive(Primitive::Char),
-      [TS::Signed, TS::Char] => Type::Primitive(Primitive::SChar),
-      [TS::Unsigned, TS::Char] => Type::Primitive(Primitive::UChar),
+      [TS::Char] => Ok(Type::Primitive(Primitive::Char).into()),
+      [TS::Signed, TS::Char] => Ok(Type::Primitive(Primitive::SChar).into()),
+      [TS::Unsigned, TS::Char] => Ok(Type::Primitive(Primitive::UChar).into()),
 
       [TS::Short]
       | [TS::Short, TS::Int]
       | [TS::Signed, TS::Short]
-      | [TS::Signed, TS::Short, TS::Int] => Type::Primitive(Primitive::Short),
+      | [TS::Signed, TS::Short, TS::Int] =>
+        Ok(Type::Primitive(Primitive::Short).into()),
       [TS::Unsigned, TS::Short] | [TS::Unsigned, TS::Short, TS::Int] =>
-        Type::Primitive(Primitive::UShort),
+        Ok(Type::Primitive(Primitive::UShort).into()),
 
       [TS::Int] | [TS::Signed] | [TS::Signed, TS::Int] =>
-        Type::Primitive(Primitive::Int),
+        Ok(Type::Primitive(Primitive::Int).into()),
       [TS::Unsigned] | [TS::Unsigned, TS::Int] =>
-        Type::Primitive(Primitive::UInt),
+        Ok(Type::Primitive(Primitive::UInt).into()),
 
       [TS::Long]
       | [TS::Long, TS::Int]
       | [TS::Signed, TS::Long]
-      | [TS::Signed, TS::Long, TS::Int] => Type::Primitive(Primitive::Long),
+      | [TS::Signed, TS::Long, TS::Int] =>
+        Ok(Type::Primitive(Primitive::Long).into()),
       [TS::Unsigned, TS::Long] | [TS::Unsigned, TS::Long, TS::Int] =>
-        Type::Primitive(Primitive::ULong),
+        Ok(Type::Primitive(Primitive::ULong).into()),
 
       [TS::Long, TS::Long]
       | [TS::Long, TS::Long, TS::Int]
       | [TS::Signed, TS::Long, TS::Long]
       | [TS::Signed, TS::Long, TS::Long, TS::Int] =>
-        Type::Primitive(Primitive::LongLong),
+        Ok(Type::Primitive(Primitive::LongLong).into()),
       [TS::Unsigned, TS::Long, TS::Long]
       | [TS::Unsigned, TS::Long, TS::Long, TS::Int] =>
-        Primitive::ULongLong.into(),
+        Ok(Type::Primitive(Primitive::ULongLong).into()),
 
-      [TS::Float] => Type::Primitive(Primitive::Float),
-      [TS::Double] => Type::Primitive(Primitive::Double),
-      [TS::Long, TS::Double] => Type::Primitive(Primitive::LongDouble),
+      [TS::Float] => Ok(Type::Primitive(Primitive::Float).into()),
+      [TS::Double] => Ok(Type::Primitive(Primitive::Double).into()),
+      [TS::Long, TS::Double] =>
+        Ok(Type::Primitive(Primitive::LongDouble).into()),
 
-      [TS::Float, TS::Complex] => Type::Primitive(Primitive::ComplexFloat),
-      [TS::Double, TS::Complex] => Type::Primitive(Primitive::ComplexDouble),
+      [TS::Float, TS::Complex] =>
+        Ok(Type::Primitive(Primitive::ComplexFloat).into()),
+      [TS::Double, TS::Complex] =>
+        Ok(Type::Primitive(Primitive::ComplexDouble).into()),
       [TS::Long, TS::Double, TS::Complex] =>
-        Type::Primitive(Primitive::ComplexLongDouble),
+        Ok(Type::Primitive(Primitive::ComplexLongDouble).into()),
 
       // treat complex integers as error
       [TS::Char, TS::Complex]
@@ -266,10 +270,20 @@ impl Analyzer {
         panic!("Complex integer types are not supported");
       },
 
+      [TS::Typedef(t)] => {
+        let typedef = self
+          .environment
+          .find(t)
+          .expect("invariant: identifier not found");
+        if typedef.borrow().is_typedef() {
+          Ok(typedef.borrow().qualified_type.clone())
+        } else {
+          err_or_debugbreak!() // error: not a typedef
+        }
+      },
       // skip _BitInt, _Decimal32, _Decimal64, _Decimal128 here
-      _ => todo!("union, struct, enum, typedef, typeof, etc."),
-    };
-    Ok(m)
+      _ => todo!("union, struct, enum, typeof, etc."),
+    }
   }
 }
 
@@ -313,15 +327,15 @@ impl Analyzer {
       declspecs,
     } = function;
     let (function_specifier, storage, return_type) =
-      Self::parse_declspecs(declspecs)?;
+      self.parse_declspecs(declspecs)?;
     let storage = match storage {
       Some(s) => s,
       None => Storage::Extern,
     };
     let pd::Declarator { modifiers, name } = declarator;
-    let name = name.ok_or(())?; // function must have a name
+    let name = name.expect("function must have a name");
     let (qualified_type, parameters) =
-      Self::apply_modifiers_for_functiondecl(return_type, modifiers)?;
+      self.apply_modifiers_for_functiondecl(return_type, modifiers)?;
     let symbol = Symbol::new_ref(Symbol::new(
       qualified_type,
       storage,
@@ -396,12 +410,12 @@ impl Analyzer {
       initializer,
     } = vardef;
     let (function_specifier, storage, qualified_type) =
-      Self::parse_declspecs(declspecs)?;
+      self.parse_declspecs(declspecs)?;
     if !function_specifier.is_empty() {
       return err_or_debugbreak!(); // var cannot have inline and noreturn
     }
     let pd::Declarator { modifiers, name } = declarator;
-    let name = name.ok_or(())?;
+    let name = name.expect("variable must have a name");
     let qualified_type =
       Self::apply_modifiers_for_varty(qualified_type, modifiers);
     let initializer = match initializer {
@@ -432,18 +446,18 @@ impl Analyzer {
     // prev: extern -- update storage class (and possibly initializer)
     // prev: tentative -- update to definition
     // prev: declaration -- update to definition
-    if let Some(prev_symbol_ref) = self.environment.find(&name) {
-      // let mut prev_symbol = prev_symbol_ref.borrow_mut();
-      let prev_declkind = prev_symbol_ref.borrow().declkind;
-      let new_declkind = vardef.symbol.borrow().declkind;
-      // todo: type checking so that redeclaration/definition with different type is caught
-      // not just compare
+    // prev: typedef w/ current vardef or vice versa -> override
+    // prev and cur all typedef -> if all same nothing, otherwise error
+    if let Some(prev_symbol_ref) = self.environment.shallow_find(&name) {
       if !QualifiedType::compatible(
         &prev_symbol_ref.borrow().qualified_type,
         &vardef.symbol.borrow().qualified_type,
       ) {
-        return err_or_debugbreak!(); // error: conflicting types for redeclaration/definition
+        // return err_or_debugbreak!(); // error: conflicting types for redeclaration/definition
+        panic!()
       }
+      let prev_declkind = prev_symbol_ref.borrow().declkind;
+      let new_declkind = vardef.symbol.borrow().declkind;
       type VDK = VarDeclKind;
       match (&prev_declkind, &new_declkind) {
         (VDK::Definition, VDK::Definition) => err_or_debugbreak!(), // error: redefinition
@@ -571,7 +585,7 @@ impl Analyzer {
           declarator,
         } = unprocessed_type;
         let qualified_type = {
-          let (_, _, base_type) = Self::parse_declspecs(declspecs)?;
+          let (_, _, base_type) = self.parse_declspecs(declspecs)?;
           Self::apply_modifiers_for_varty(base_type, declarator.modifiers)
         };
         Ok(ae::Expression::new_rvalue(
@@ -673,13 +687,13 @@ impl Analyzer {
     let left = self.expression(*pe_left)?;
     let right = self.expression(*pe_right)?;
     match operator.category() {
-      Category::Assignment => self.assignment(operator, left, right),
-      Category::Logical => self.logical(operator, left, right),
-      Category::Relational => self.relational(operator, left, right),
-      Category::Arithmetic => self.arithmetic(operator, left, right),
-      Category::Bitwise => self.bitwise(operator, left, right),
-      Category::BitShift => self.bitshift(operator, left, right),
-      Category::Comma => self.comma(operator, left, right),
+      OperatorCategory::Assignment => self.assignment(operator, left, right),
+      OperatorCategory::Logical => self.logical(operator, left, right),
+      OperatorCategory::Relational => self.relational(operator, left, right),
+      OperatorCategory::Arithmetic => self.arithmetic(operator, left, right),
+      OperatorCategory::Bitwise => self.bitwise(operator, left, right),
+      OperatorCategory::BitShift => self.bitshift(operator, left, right),
+      OperatorCategory::Comma => self.comma(operator, left, right),
     }
   }
 
@@ -1101,14 +1115,11 @@ impl Analyzer {
       Some(expr) => Some(self.expression(expr)?),
       None => None,
     };
-    assert!(
-      self.current_function.is_some(),
-      "return statement outside function should be handled in parser"
-    );
+
     let return_type = match &self
       .current_function
       .as_ref()
-      .unwrap()
+      .expect("return statement outside function should be handled in parser")
       .symbol
       .borrow()
       .qualified_type
@@ -1130,7 +1141,7 @@ impl Analyzer {
       },
       (Some(_), _) => {
         let a = unsafe {
-          // this has value for absolutely sure
+          // this has value for ABSOLUTELY sure
           analyzed_expr.unwrap_unchecked()
         }
         .lvalue_conversion()

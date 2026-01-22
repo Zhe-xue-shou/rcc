@@ -1,12 +1,10 @@
-use ::std::{fmt::Debug, path::PathBuf, rc::Rc};
+use ::std::fmt::Debug;
 
-use crate::{
-  common::{
-    keyword::Keyword::{self, *},
-    operator::Operator,
-  },
-  types::Constant,
+use super::{
+  Keyword::{self, *},
+  Operator, SourceLocation,
 };
+use crate::types::Constant;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Literal {
@@ -17,13 +15,6 @@ pub enum Literal {
   Operator(Operator),
 }
 
-#[derive(Debug, Default)]
-pub struct SourceLocation {
-  pub file: Rc<PathBuf>,
-  pub line_string: Rc<String>,
-  pub line: u32,
-  pub column: u32,
-}
 #[derive(Debug)]
 pub struct Token {
   pub literal: Literal,

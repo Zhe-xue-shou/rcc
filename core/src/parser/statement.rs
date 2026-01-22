@@ -1,9 +1,8 @@
 use ::rc_utils::interconvert;
 
-use crate::{
-  parser::{declaration::Declaration, expression::Expression},
-  type_alias_stmt,
-};
+use super::{declaration::Declaration, expression::Expression};
+use crate::type_alias_stmt;
+
 #[derive(Debug)]
 pub enum Statement {
   Empty(),

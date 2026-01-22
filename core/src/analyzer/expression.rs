@@ -1,10 +1,7 @@
 use ::strum_macros::Display;
 
 use crate::{
-  common::{
-    environment::SymbolRef,
-    operator::{Category, Operator},
-  },
+  common::{Operator, OperatorCategory, SymbolRef},
   type_alias_expr,
   types::{
     CastType::{self, *},
@@ -225,7 +222,7 @@ impl Assignment {
     right: Expression,
   ) -> Option<Self> {
     match operator.category() {
-      Category::Assignment => Some(Self {
+      OperatorCategory::Assignment => Some(Self {
         operator,
         left: Box::new(left),
         right: Box::new(right),

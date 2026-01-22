@@ -1,3 +1,8 @@
+use ::std::{
+  cell::RefCell,
+  rc::{Rc, Weak},
+};
+
 #[macro_export]
 macro_rules! interconvert {
   ($inner:ident, $outer:ident) => {
@@ -72,25 +77,40 @@ macro_rules! make_trio_for {
 
 #[macro_export]
 macro_rules! breakpoint {
-  () => {{
-    use std::io::{Write, stderr, stdout};
-    _ = stdout().flush();
-    _ = stderr().flush();
-    eprintln!("Breakpoint at {}:{}", file!(), line!());
-    _ = stdout().flush();
-    _ = stderr().flush();
-    std::intrinsics::breakpoint();
-  }};
+  () => {
+    ::rc_utils::breakpoint!("");
+  };
   ($($arg:tt)*) => {{
-    use std::io::{Write, stderr, stdout};
+    use ::std::io::{Write, stderr, stdout};
     eprintln!("Fatal error at {}:{}:", file!(), line!());
     eprintln!($($arg)*);
     _ = stdout().flush();
     _ = stderr().flush();
-    std::intrinsics::breakpoint();
+    ::core::hint::black_box(());
+    ::std::intrinsics::breakpoint();
+    ::core::hint::black_box(());
     _ = stdout().flush();
     _ = stderr().flush();
   }};
 }
 
+#[macro_export]
+macro_rules! static_assert {
+  ($condition:expr $(,)?) => {
+    const _: () = {
+      assert!($condition);
+    };
+  };
+  ($condition:expr, $($arg:tt)+) => {
+    const _: () = {
+      assert!($condition, $($arg)+);
+    };
+  };
+}
+
 pub type SmallString = compact_str::CompactString;
+/// as someone who came from C++, I'd more prefer to call it shared_ptr rather than Rc/RefCell or whatever. :p
+#[allow(non_camel_case_types)]
+pub type shared_ptr<T> = Rc<RefCell<T>>;
+#[allow(non_camel_case_types)]
+pub type weak_ptr<T> = Weak<RefCell<T>>;

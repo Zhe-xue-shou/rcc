@@ -255,7 +255,7 @@ impl<StmtTy, DeclTy, ExprTy> RawStmt<StmtTy, DeclTy, ExprTy> {
 }
 
 mod fmt {
-  use std::fmt::Display;
+  use ::std::fmt::Display;
 
   use super::*;
 

@@ -1,10 +1,10 @@
 use ::once_cell::sync::Lazy;
+use ::rc_utils::{interconvert, make_trio_for};
 use ::std::str::FromStr;
 use ::strum_macros::{Display, EnumString, IntoStaticStr};
-use rc_utils::{interconvert, make_trio_for};
 
 use super::{Compatibility, TypeInfo};
-use crate::common::error::Error;
+use crate::common::Error;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
@@ -24,7 +24,7 @@ pub enum Type {
 /// -    alignment-specifier (don't care)
 ///
 /// specifier would be merged into `Type` directly, so here only have qualifiers
-  #[derive(Debug, Copy, Clone, PartialEq)]
+  #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
   pub struct Qualifiers: u8 {
     const Const = 0x01;
     const Volatile = 0x02;
@@ -33,7 +33,7 @@ pub enum Type {
   }
 }
 ::bitflags::bitflags! {
-  #[derive(Debug,Clone,Copy,PartialEq,Eq,Default)]
+  #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
   pub struct FunctionSpecifier : u8 {
     const Inline = 0x01;
     const Noreturn = 0x10;
@@ -354,6 +354,11 @@ impl Type {
   }
 }
 impl QualifiedType {
+  pub fn with_qualifiers(mut self, qualifiers: Qualifiers) -> Self {
+    self.qualifiers |= qualifiers;
+    self
+  }
+
   pub fn is_modifiable(&self) -> bool {
     self.unqualified_type.is_modifiable()
       && !self.qualifiers.contains(Qualifiers::Const)

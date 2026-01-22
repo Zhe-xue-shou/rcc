@@ -1,5 +1,5 @@
 use crate::{
-  common::operator::Operator,
+  common::Operator,
   parser::expression::{Binary, Constant, Expression},
 };
 

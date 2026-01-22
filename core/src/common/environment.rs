@@ -1,22 +1,21 @@
 #![allow(unused)]
 
+use ::rc_utils::{shared_ptr, weak_ptr};
 use ::std::{
   cell::RefCell,
   collections::{HashMap, HashSet},
   rc::Rc,
 };
 
-use crate::{
-  common::storage::Storage,
-  types::{QualifiedType, Type},
-};
+use super::Storage;
+use crate::types::{QualifiedType, Type};
 
-/// as someone who came from C++, I'd more prefer to call it shared_ptr rather than Rc/RefCell or whatever. :p
-#[allow(non_camel_case_types)]
-pub type shared_ptr<T> = Rc<RefCell<T>>;
 pub type SymbolRef = shared_ptr<Symbol>;
+pub type WeakSymbolRef = weak_ptr<Symbol>;
 
+/// a lexical scope.
 type ScopeAssoc<T> = HashMap<String, shared_ptr<T>>;
+/// A lexical scope stack.
 #[derive(Debug)]
 pub struct Scope<T> {
   scopes: Vec<ScopeAssoc<T>>,
@@ -61,7 +60,7 @@ pub struct Symbol {
 #[derive(Debug, Default)]
 pub struct Environment {
   symbols: Scope<Symbol>,
-  cache: HashMap<String, SymbolRef>,
+  cache: RefCell<HashMap<String, WeakSymbolRef>>,
 }
 impl Environment {
   pub fn new() -> Self {
@@ -78,25 +77,38 @@ impl Environment {
   }
 
   pub fn exit(&mut self) {
+    // do we still needs to clear cache although weak refs are used?
+    // self.cache.borrow_mut().clear();
     self.symbols.pop_scope();
-    self.cache.clear();
   }
 
   /// look up symbol and potentially cache it
-  pub fn find(&mut self, name: &str) -> Option<SymbolRef> {
-    match self.cache.get(name) {
-      Some(sym) => {
-        // println!("cache hit for symbol {}", name);
-        Some(sym.clone())
-      },
-      None => {
-        let sym = self.symbols.get(name);
-        if let Some(s) = &sym {
-          self.cache.insert(name.to_string(), s.clone());
-        }
-        sym
-      },
+  pub fn find(&self, name: &str) -> Option<SymbolRef> {
+    if let Some(sym) = self.cache.borrow().get(name) {
+      // upgrade weak ref, this already handles whether the ref is dead or not
+      return sym.upgrade();
     }
+
+    let sym = self.symbols.get(name);
+    if let Some(s) = &sym {
+      self
+        .cache
+        .borrow_mut()
+        .insert(name.to_string(), Rc::downgrade(s));
+    }
+    sym
+  }
+
+  // we dont provide cache layer for shallow find, since it'll contain non-local symbols
+  pub fn shallow_find(&self, name: &str) -> Option<SymbolRef> {
+    let sym = self.symbols.shallow_get(name);
+    if let Some(s) = &sym {
+      self
+        .cache
+        .borrow_mut()
+        .insert(name.to_string(), Rc::downgrade(s));
+    }
+    sym
   }
 
   pub fn declare_symbol(
@@ -105,7 +117,10 @@ impl Environment {
     symbol: SymbolRef,
   ) -> SymbolRef {
     // overwrite cache
-    self.cache.insert(name.clone(), symbol.clone());
+    self
+      .cache
+      .borrow_mut()
+      .insert(name.clone(), Rc::downgrade(&symbol));
     self.symbols.declare(name, symbol.clone())
   }
 }
@@ -271,7 +286,7 @@ impl<T> Scope<T> {
 mod fmt {
   use ::std::fmt::Display;
 
-  use super::Symbol;
+  use super::*;
 
   impl Display for Symbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

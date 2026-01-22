@@ -2,11 +2,7 @@ use rc_utils::breakpoint;
 
 use crate::{
   common::{
-    environment::UnitScope,
-    keyword::Keyword,
-    operator::{Category, Operator},
-    storage::Storage,
-    token::{Literal, Token},
+    Keyword, Literal, Operator, OperatorCategory, Storage, Token, UnitScope,
   },
   parser::{
     declaration::{
@@ -141,7 +137,8 @@ impl Parser {
     let token = &self.tokens[self.cursor];
     self.errors.push(format!(
       "In file {}:{}:{}: {}",
-      token.location.file.to_str().unwrap_or("<invalid utf8>"),
+      "todo",
+      // token.location.file.to_str().unwrap_or("<invalid utf8>"),
       token.location.line,
       token.location.column,
       message
@@ -152,7 +149,8 @@ impl Parser {
     let token = &self.tokens[self.cursor];
     self.warnings.push(format!(
       "In file {}:{}:{}: {}",
-      token.location.file.to_str().unwrap_or("<invalid utf8>"),
+      "todo",
+      // token.location.file.to_str().unwrap_or("<invalid utf8>"),
       token.location.line,
       token.location.column,
       message
@@ -938,7 +936,7 @@ impl Parser {
           let operator = op.clone();
           self.get(); // operator
           let right = self.next_expression(
-            if operator.category() == Category::Assignment {
+            if operator.category() == OperatorCategory::Assignment {
               operator.precedence()
             } else {
               operator.precedence() + 1

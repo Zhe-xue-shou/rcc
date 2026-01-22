@@ -1,4 +1,6 @@
-use crate::{common::operator::Operator, types::QualifiedType};
+use super::Operator;
+use crate::types::QualifiedType;
+
 #[macro_export(local_inner_macros)]
 macro_rules! type_alias_expr {
   ($exprty:ident,$typety:ident $(, $extra:ident)*) => {

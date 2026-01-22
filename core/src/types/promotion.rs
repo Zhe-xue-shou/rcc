@@ -1,6 +1,6 @@
 //! applied during unary operations, including (implicit) unary inside binary operations
 
-use rc_utils::breakpoint;
+use ::rc_utils::breakpoint;
 
 use super::{CastType, Primitive, Primitive::*, QualifiedType, Type};
 pub trait Promotion {

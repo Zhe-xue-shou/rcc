@@ -1,6 +1,6 @@
 use crate::{
   analyzer::expression::{Binary, Constant, Expression},
-  common::operator::Operator,
+  common::Operator,
   types::QualifiedType,
 };
 

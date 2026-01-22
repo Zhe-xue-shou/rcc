@@ -1,7 +1,11 @@
-use ::strum_macros::{Display, EnumString};
-
 #[derive(
-  Debug, Clone, Display, EnumString, PartialEq, Eq, ::std::marker::ConstParamTy,
+  Debug,
+  Clone,
+  PartialEq,
+  Eq,
+  ::strum_macros::Display,
+  ::strum_macros::EnumString,
+  ::std::marker::ConstParamTy,
 )]
 pub enum Keyword {
   // C
@@ -107,7 +111,13 @@ pub enum Keyword {
   Constexpr,
 }
 #[derive(
-  Debug, Clone, Display, EnumString, PartialEq, Eq, ::std::marker::ConstParamTy,
+  Debug,
+  Clone,
+  PartialEq,
+  Eq,
+  ::strum_macros::Display,
+  ::strum_macros::EnumString,
+  ::std::marker::ConstParamTy,
 )]
 #[allow(unused)]
 pub enum Reserved {

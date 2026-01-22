@@ -1,6 +1,4 @@
-use ::strum_macros::Display;
-
-#[derive(Debug, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ::strum_macros::Display)]
 pub enum CastType {
   Noop, // don't use this for implicit casts - in that case no cast is needed; only used for explicit casts like (int)x where x is already int
   ToVoid, // (void)expr

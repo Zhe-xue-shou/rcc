@@ -2,7 +2,7 @@ use ::std::{cell::Ref, collections::HashSet};
 
 use crate::{
   analyzer::{expression::Expression, statement::Compound},
-  common::environment::SymbolRef,
+  common::SymbolRef,
   types::{FunctionSpecifier, QualifiedType, Type},
 };
 

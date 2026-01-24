@@ -9,6 +9,7 @@ use ::rc_core::{
   lexer::Lexer,
   parser::Parser,
 };
+use ::rc_utils::DisplayWith;
 use ::std::{env::args, fs::File, io::Read, path::PathBuf, process::exit};
 // use rcns::preprocessor;
 

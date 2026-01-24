@@ -21,7 +21,7 @@ int main(void) { //
   typedef int const CONST_INT;
   typedef int const CONST_INT;
   int foo;
-  CONST_INT INT = 10;
+  CONST_INT INT = (10);
   static int y = sizeof x;
   switch (x) {
   case 0:

@@ -13,6 +13,7 @@ pub enum Expression {
   Binary(Binary),
   Variable(Variable),
   Call(Call),
+  Paren(Paren),
   MemberAccess(MemberAccess),
   Ternary(Ternary),
   SizeOf(SizeOf),
@@ -48,6 +49,7 @@ interconvert!(Constant, Expression);
 interconvert!(Unary, Expression);
 interconvert!(Binary, Expression);
 interconvert!(Call, Expression);
+interconvert!(Paren, Expression);
 interconvert!(MemberAccess, Expression);
 interconvert!(Ternary, Expression);
 interconvert!(SizeOf, Expression);
@@ -62,6 +64,7 @@ mod fmt {
     Binary, Call, Constant, Expression, Expression::*, SizeOf, Ternary, Unary,
     UnprocessedType, Variable,
   };
+  use crate::parser::expression::Paren;
 
   impl Display for Expression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -74,6 +77,7 @@ mod fmt {
         Call(call) => <Call as Display>::fmt(call, f),
         SizeOf(s) => <SizeOf as Display>::fmt(s, f),
         Empty => write!(f, "<noop>"),
+        Paren(p) => <Paren as Display>::fmt(p, f),
         _ => todo!("{:#?}", self),
       }
     }

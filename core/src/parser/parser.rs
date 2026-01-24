@@ -1,9 +1,9 @@
-use rc_utils::breakpoint;
+use ::rc_utils::{DisplayWith, breakpoint};
 
 use crate::{
   common::{
-    Keyword, Literal, Operator, OperatorCategory, SourceDisplay, SourceManager,
-    Storage, Token, UnitScope,
+    Keyword, Literal, Operator, OperatorCategory, SourceManager, Storage,
+    Token, UnitScope,
   },
   parser::{
     declaration::{
@@ -12,7 +12,7 @@ use crate::{
       TypeSpecifier, VarDef,
     },
     expression::{
-      Binary, Call, Constant, Expression, SizeOf, Ternary, Unary,
+      Binary, Call, Constant, Expression, Paren, SizeOf, Ternary, Unary,
       UnprocessedType, Variable,
     },
     statement::{
@@ -872,9 +872,9 @@ impl<'a> Parser<'a> {
           if *self.peek(0) == Literal::Operator(Operator::RightParen) {
             self.get();
           } else {
-            self.add_error("Expect '}'".to_string());
+            self.add_error("Expect ')'".to_string());
           }
-          expr
+          Paren::new(expr).into()
         } else {
           self.add_error(format!(
             "Unexpected operator {op} in factor, assuming int",
@@ -954,7 +954,7 @@ impl<'a> Parser<'a> {
           current =
             Binary::from_operator_unchecked(operator, current, right).into();
           continue;
-        } else if op == &Operator::Question {
+        } else if op == Operator::Question {
           self.must_get_op::<{ Operator::Question }>();
           let then_branch = self.next_expression(Operator::DEFAULT);
           self.recoverable_get::<{ Operator::Colon }>();

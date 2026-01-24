@@ -14,6 +14,7 @@ macro_rules! type_alias_expr {
       Unary(Unary),
       Binary(Binary),
       Call(Call),
+      Paren(Paren),
       MemberAccess(MemberAccess),
       Ternary(Ternary),
       SizeOf(SizeOf),
@@ -29,6 +30,7 @@ macro_rules! type_alias_expr {
     pub type Unary = $crate::common::rawexpr::RawUnary<$exprty>;
     pub type Binary = $crate::common::rawexpr::RawBinary<$exprty>;
     pub type Call = $crate::common::rawexpr::RawCall<$exprty>;
+    pub type Paren = $crate::common::rawexpr::RawParen<$exprty>;
     pub type MemberAccess = $crate::common::rawexpr::RawMemberAccess<$exprty>;
     pub type Ternary = $crate::common::rawexpr::RawTernary<$exprty>;
     pub type SizeOf = $crate::common::rawexpr::RawSizeOf<$exprty, $typety>;
@@ -47,6 +49,7 @@ macro_rules! type_alias_expr {
             RawExpr::Binary(b) => <Binary as Display>::fmt(b, f),
             RawExpr::Ternary(t) => <Ternary as Display>::fmt(t, f),
             RawExpr::Call(call) => <Call as Display>::fmt(call, f),
+            RawExpr::Paren(p) => <Paren as Display>::fmt(p, f),
             RawExpr::Empty => ::std::write!(f, "<noop>"),
             $(
               RawExpr::$extra(inner) => <$extra as Display>::fmt(inner, f),
@@ -62,6 +65,7 @@ macro_rules! type_alias_expr {
       ::rc_utils::interconvert!(Unary, RawExpr);
       ::rc_utils::interconvert!(Binary, RawExpr);
       ::rc_utils::interconvert!(Call, RawExpr);
+      ::rc_utils::interconvert!(Paren, RawExpr);
       ::rc_utils::interconvert!(MemberAccess, RawExpr);
       ::rc_utils::interconvert!(Ternary, RawExpr);
       ::rc_utils::interconvert!(SizeOf, RawExpr);
@@ -90,6 +94,10 @@ pub struct RawBinary<ExprTy> {
 pub struct RawCall<ExprTy> {
   pub callee: Box<ExprTy>,
   pub arguments: Vec<ExprTy>,
+}
+#[derive(Debug)]
+pub struct RawParen<ExprTy> {
+  pub expr: Box<ExprTy>,
 }
 #[derive(Debug)]
 pub struct RawMemberAccess<ExprTy> {
@@ -191,6 +199,11 @@ impl<ExprTy> RawCall<ExprTy> {
     }
   }
 }
+impl<ExprTy> RawParen<ExprTy> {
+  pub fn new(expr: ExprTy) -> Self {
+    Self { expr: expr.into() }
+  }
+}
 mod fmt {
   use ::std::fmt::Display;
 
@@ -225,6 +238,11 @@ mod fmt {
         "({} ? {} : {})",
         self.condition, self.then_expr, self.else_expr
       )
+    }
+  }
+  impl<ExprTy: Display> Display for RawParen<ExprTy> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      write!(f, "({})", self.expr)
     }
   }
   impl<ExprTy: Display, TypeTy: Display> Display for RawSizeOf<ExprTy, TypeTy> {

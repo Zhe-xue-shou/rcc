@@ -266,3 +266,9 @@ impl Operator {
     matches!(self, Plus | Minus | Star | Slash | Percent)
   }
 }
+
+impl PartialEq<Operator> for &Operator {
+  fn eq(&self, other: &Operator) -> bool {
+    *self == other
+  }
+}

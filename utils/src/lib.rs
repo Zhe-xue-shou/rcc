@@ -1,112 +1,9 @@
+mod macros;
+
 use ::std::{
   cell::RefCell,
   rc::{Rc, Weak},
 };
-
-#[macro_export]
-macro_rules! interconvert {
-  ($inner:ident, $outer:ident) => {
-    $crate::interconvert!($inner, $outer, $inner);
-  };
-
-  ($inner:ident, $outer:ident, $variant:ident) => {
-    impl From<$inner> for $outer {
-      #[inline]
-      fn from(value: $inner) -> Self {
-        $outer::$variant(value)
-      }
-    }
-    impl TryFrom<$outer> for $inner {
-      type Error = ();
-
-      #[inline]
-      fn try_from(value: $outer) -> Result<Self, Self::Error> {
-        match value {
-          $outer::$variant(inner) => Ok(inner),
-          _ => Err(()),
-        }
-      }
-    }
-  };
-}
-
-#[macro_export]
-macro_rules! make_trio_for {
-  ($variant:ident,$main:ident) => {
-    make_trio_for!($variant, $variant, $main);
-  };
-  // We use :ident because we are working with names, not complex types
-  ($variant:ident, $inner:ident, $main:ident) => {
-    ::paste::paste! {
-        impl $main {
-            #[inline]
-            pub fn [<is_ $variant:lower>](&self) -> bool {
-                matches!(self, Self::$variant(_))
-            }
-
-            #[inline]
-            pub fn [<as_ $variant:lower>](&self) -> Option<&$inner> {
-                match self {
-                    Self::$variant(v) => Some(v),
-                    _ => None,
-                }
-            }
-
-            #[inline]
-            pub fn [<as_ $variant:lower _unchecked>](&self) -> &$inner {
-                match self {
-                    Self::$variant(v) => v,
-                    _ => {
-                        $crate::breakpoint!();
-                        unreachable!()
-                    }
-                }
-            }
-
-            #[inline]
-            pub fn [<into_ $variant:lower>](self) -> Option<$inner> {
-                match self {
-                    Self::$variant(v) => Some(v),
-                    _ => None,
-                }
-            }
-        }
-    }
-  };
-}
-
-#[macro_export]
-macro_rules! breakpoint {
-  () => {
-    $crate::breakpoint!("");
-  };
-  ($($arg:tt)*) => {{
-    use ::std::io::{Write, stderr, stdout};
-    eprintln!("Fatal error at {}:{}:", file!(), line!());
-    eprintln!($($arg)*);
-    _ = stdout().flush();
-    _ = stderr().flush();
-    ::core::hint::black_box(());
-    ::std::intrinsics::breakpoint();
-    ::core::hint::black_box(());
-    _ = stdout().flush();
-    _ = stderr().flush();
-  }};
-}
-
-#[macro_export]
-macro_rules! static_assert {
-  ($condition:expr $(,)?) => {
-    const _: () = {
-      assert!($condition);
-    };
-  };
-  ($condition:expr, $($arg:tt)+) => {
-    const _: () = {
-      assert!($condition, $($arg)+);
-    };
-  };
-}
 
 pub type SmallString = compact_str::CompactString;
 /// as someone who came from C++, I'd more prefer to call it shared_ptr rather than Rc/RefCell or whatever. :p
@@ -114,3 +11,38 @@ pub type SmallString = compact_str::CompactString;
 pub type shared_ptr<T> = Rc<RefCell<T>>;
 #[allow(non_camel_case_types)]
 pub type weak_ptr<T> = Weak<RefCell<T>>;
+
+pub trait IntoWith<With, To> {
+  fn into_with(self, with: With) -> To;
+}
+pub trait DisplayWith<'a, With, To: ::std::fmt::Display> {
+  fn display_with(&'a self, with: &'a With) -> To;
+}
+pub trait FromWith<With, From>: Sized {
+  fn from_with(from: From, with: With) -> Self;
+}
+pub trait TryFromWith<With, From>: Sized {
+  type Error;
+  fn try_from_with(from: From, with: With) -> Result<Self, Self::Error>;
+}
+pub trait Dummy {
+  fn dummy() -> Self;
+}
+impl<T: Dummy> Dummy for shared_ptr<T> {
+  fn dummy() -> Self {
+    Rc::new(RefCell::new(T::dummy()))
+  }
+}
+
+impl Dummy for u32 {
+  #[inline]
+  fn dummy() -> Self {
+    u32::MAX
+  }
+}
+impl Dummy for usize {
+  #[inline]
+  fn dummy() -> Self {
+    usize::MAX
+  }
+}

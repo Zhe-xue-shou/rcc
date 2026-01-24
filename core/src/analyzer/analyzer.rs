@@ -560,6 +560,7 @@ impl Analyzer {
       pe::Expression::Binary(binary) => self.binary(binary),
       pe::Expression::Variable(variable) => self.variable(variable),
       pe::Expression::Call(call) => self.call(call),
+      pe::Expression::Paren(paren) => self.paren(paren),
       pe::Expression::Ternary(ternary) => self.ternary(ternary),
       pe::Expression::SizeOf(sizeof) => self.sizeof(sizeof),
       pe::Expression::CStyleCast(cast) => self.cast(cast),
@@ -626,6 +627,16 @@ impl Analyzer {
     // todo: type promotion, currently just match the exact/compatible types
     Ok(ae::Expression::new_rvalue(
       ae::Call::new(analyzed_callee, analyzed_arguments).into(),
+      expr_type,
+    ))
+  }
+
+  fn paren(&mut self, paren: pe::Paren) -> ExprRes {
+    let pe::Paren { expr } = paren;
+    let analyzed_expr = self.expression(*expr)?;
+    let expr_type = analyzed_expr.qualified_type().clone();
+    Ok(ae::Expression::new_rvalue(
+      ae::Paren::new(analyzed_expr).into(),
       expr_type,
     ))
   }

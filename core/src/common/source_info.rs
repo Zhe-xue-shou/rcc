@@ -1,11 +1,54 @@
-use ::rc_utils::static_assert;
+use ::rc_utils::{DisplayWith, Dummy, static_assert};
 use ::std::path::PathBuf;
+
+pub trait Display<'a, DisplayHelperType: ::std::fmt::Display>:
+  DisplayWith<'a, Manager, DisplayHelperType>
+{
+}
+/// if a type implements DisplayWith for a Manager, automatically give it the Display trait.
+impl<'a, T, DisplayHelperType: ::std::fmt::Display>
+  Display<'a, DisplayHelperType> for T
+where
+  T: DisplayWith<'a, Manager, DisplayHelperType>,
+{
+}
+
+pub type FileId = u32;
+static_assert!(
+  ::std::mem::needs_drop::<FileId>() == false,
+  "FileId should be a POD type"
+);
+
+pub type SpanIndex = u32;
+static_assert!(
+  ::std::mem::needs_drop::<SpanIndex>() == false,
+  "SpanIndex should be a POD type"
+);
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Span {
-  pub file_index: u32,
-  pub start: u32,
-  pub end: u32,
+  pub file_index: FileId,
+  pub start: SpanIndex,
+  pub end: SpanIndex,
+}
+impl Span {
+  pub fn new(file_index: FileId, start: SpanIndex, end: SpanIndex) -> Self {
+    Self {
+      file_index,
+      start,
+      end,
+    }
+  }
+}
+impl Dummy for Span {
+  #[inline]
+  fn dummy() -> Self {
+    Self {
+      file_index: FileId::dummy(),
+      start: SpanIndex::dummy(),
+      end: SpanIndex::dummy(),
+    }
+  }
 }
 static_assert!(
   ::std::mem::needs_drop::<Span>() == false,
@@ -20,17 +63,6 @@ pub struct Coordinate {
 static_assert!(
   ::std::mem::needs_drop::<Coordinate>() == false,
   "Coordinate should be a POD type"
-);
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Location {
-  pub span: Span,
-  pub line: u32,
-  pub column: u32,
-}
-static_assert!(
-  ::std::mem::needs_drop::<Location>() == false,
-  "Location should be a POD type"
 );
 
 #[derive(Debug, Default)]
@@ -98,7 +130,30 @@ impl Manager {
   }
 }
 
-pub trait Display<'a> {
-  type ReturnType;
-  fn display_with(&'a self, source_manager: &'a Manager) -> Self::ReturnType;
+pub struct SpanDisplay<'a> {
+  span: &'a Span,
+  source_manager: &'a Manager,
+}
+impl<'a> DisplayWith<'a, Manager, SpanDisplay<'a>> for Span {
+  fn display_with(&'a self, source_manager: &'a Manager) -> SpanDisplay<'a> {
+    SpanDisplay {
+      span: self,
+      source_manager,
+    }
+  }
+}
+impl<'a> ::std::fmt::Display for SpanDisplay<'a> {
+  fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+    let span = self.span;
+    let file = &self.source_manager.files[span.file_index as usize];
+    let coord = self.source_manager.lookup_line_col(*span);
+
+    write!(
+      f,
+      "{}:{}:{}",
+      file.path.to_str().unwrap_or("<invalid utf8>"),
+      coord.line,
+      coord.column
+    )
+  }
 }

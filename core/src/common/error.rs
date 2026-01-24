@@ -1,5 +1,6 @@
+use ::rc_utils::DisplayWith;
+
 use super::{SourceManager, SourceSpan};
-use crate::common::SourceDisplay;
 
 /// im focusing the ast right now, so left error handling as a placeholder
 pub type Error = ();
@@ -21,13 +22,11 @@ impl ErrorV2 {
     Self { span, data }
   }
 }
-impl<'a> SourceDisplay<'a> for ErrorV2 {
-  type ReturnType = ErrorDisplay<'a>;
-
+impl<'a> DisplayWith<'a, SourceManager, ErrorDisplay<'a>> for ErrorV2 {
   fn display_with(
     &'a self,
     source_manager: &'a SourceManager,
-  ) -> Self::ReturnType {
+  ) -> ErrorDisplay<'a> {
     ErrorDisplay {
       error: self,
       source_manager,
@@ -50,38 +49,5 @@ impl<'a> ::std::fmt::Display for ErrorDisplay<'a> {
       Data::InvalidNumberFormat(s) =>
         write!(f, "Invalid number format '{}'", s),
     }
-  }
-}
-
-pub struct SpanDisplay<'a> {
-  span: &'a SourceSpan,
-  source_manager: &'a SourceManager,
-}
-impl<'a> SourceDisplay<'a> for SourceSpan {
-  type ReturnType = SpanDisplay<'a>;
-
-  fn display_with(
-    &'a self,
-    source_manager: &'a SourceManager,
-  ) -> Self::ReturnType {
-    SpanDisplay {
-      span: self,
-      source_manager,
-    }
-  }
-}
-impl<'a> ::std::fmt::Display for SpanDisplay<'a> {
-  fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-    let span = self.span;
-    let file = &self.source_manager.files[span.file_index as usize];
-    let coord = self.source_manager.lookup_line_col(*span);
-
-    write!(
-      f,
-      "{}:{}:{}",
-      file.path.to_str().unwrap_or("<invalid utf8>"),
-      coord.line,
-      coord.column
-    )
   }
 }

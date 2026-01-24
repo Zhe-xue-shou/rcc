@@ -17,7 +17,8 @@ pub use self::{
   operator::{Category as OperatorCategory, Operator},
   source_info::{
     Coordinate, Display as SourceDisplay, File as SourceFile,
-    Location as SourceLocation, Manager as SourceManager, Span as SourceSpan,
+    FileId as SourceFileId, Manager as SourceManager, Span as SourceSpan,
+    SpanDisplay, SpanIndex as SourceSpanIndex,
   },
   storage::Storage,
   token::{Literal, Token},

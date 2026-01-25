@@ -1,5 +1,5 @@
 use crate::{
-  analyzer::expression::{Expression, RawExpr, SizeOf, Variable},
+  analyzer::expression::{Expression, RawExpr, SizeOfKind, Variable},
   common::{Operator, Storage},
   types::Type,
 };
@@ -16,7 +16,7 @@ impl Expression {
       RawExpr::Constant(c) => c.is_integer() || c.is_char_array(),
       // ignore VLA
       RawExpr::SizeOf(sizeof) =>
-        if let SizeOf::Expression(e) = sizeof {
+        if let SizeOfKind::Expression(e) = &sizeof.sizeof {
           e.unqualified_type().is_integer()
         } else {
           true // sizeof(type) is always constant

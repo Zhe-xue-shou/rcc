@@ -4,7 +4,7 @@ use ::std::str::FromStr;
 use ::strum_macros::{Display, EnumString, IntoStaticStr};
 
 use super::{Compatibility, TypeInfo};
-use crate::common::Error;
+use crate::common::ErrorData;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
@@ -252,15 +252,21 @@ impl FunctionProto {
   pub fn main_proto_validate(
     &self,
     function_specifier: FunctionSpecifier,
-  ) -> Result<(), Error> {
+  ) -> Result<(), ErrorData> {
     if self.is_variadic {
-      Err(())
+      Err(ErrorData::MainFunctionProtoMismatch(
+        "main function cannot be variadic".to_string(),
+      ))
     } else if function_specifier.contains(FunctionSpecifier::Inline) {
-      Err(())
+      Err(ErrorData::MainFunctionProtoMismatch(
+        "main function cannot be inline".to_string(),
+      ))
     } else if !self.compatible_with(&Self::MAIN_PROTO_EMPTY)
       && !self.compatible_with(&Self::MAIN_PROTO_ARGS)
     {
-      Err(())
+      Err(ErrorData::MainFunctionProtoMismatch(
+        "main function must have either no parameters or two parameters (int argc, char** argv)".to_string(),
+      ))
     } else {
       todo!()
     }

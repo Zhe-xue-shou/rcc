@@ -1,6 +1,6 @@
 use strum_macros::Display;
 
-use crate::common::{error::Error, keyword::Keyword, token::Literal};
+use crate::common::{ErrorData, keyword::Keyword, token::Literal};
 
 /// storage-class-specifier
 #[derive(Debug, Display, PartialEq, Eq, Clone)]
@@ -66,13 +66,16 @@ impl From<&Literal> for Storage {
 }
 
 impl Storage {
-  pub fn try_merge(lhs: &Storage, rhs: &Storage) -> Result<Storage, Error> {
+  pub fn try_merge(lhs: &Storage, rhs: &Storage) -> Result<Storage, ErrorData> {
     match (lhs, rhs) {
       (lhs, rhs) if lhs == rhs => Ok(lhs.clone()),
-      (Constexpr, _) | (_, Constexpr) => Err(()), // unimplemented
-      (Typedef, _) | (_, Typedef) => Err(()),     // unmergeable
+      (Constexpr, _) | (_, Constexpr) => Err(ErrorData::UnsupportedFeature(
+        "Constexpr unimplemented yet".to_string(),
+      )),
+      (Typedef, _) | (_, Typedef) =>
+        Err(ErrorData::StorageSpecsUnmergeable(lhs.clone(), rhs.clone())),
       (Extern, other) | (other, Extern) => Ok(other.clone()), // extern is compatible with any other storage class
-      _ => Err(()),
+      _ => Err(ErrorData::StorageSpecsUnmergeable(lhs.clone(), rhs.clone())),
     }
   }
 

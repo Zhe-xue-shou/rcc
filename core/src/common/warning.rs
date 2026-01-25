@@ -3,6 +3,10 @@ use ::rc_utils::DisplayWith;
 use super::{SourceManager, SourceSpan, Storage};
 use crate::types::Qualifiers;
 
+#[allow(dead_code)]
+type CustomMessage = String;
+type Elem = String;
+
 #[derive(Debug)]
 pub struct Warning {
   pub span: SourceSpan,
@@ -10,10 +14,11 @@ pub struct Warning {
 }
 #[derive(Debug)]
 pub enum Data {
-  UnusedVariable(String),
-  DeprecatedFunction(String),
+  UnusedVariable(Elem),
+  DeprecatedFunction(Elem),
   RedundantStorageSpecs(Storage),
   RedundantQualifier(Qualifiers),
+  ExternVariableWithInitializer(Elem),
   EmptyTypedef,
   EmptyStatement,
 }
@@ -56,6 +61,11 @@ impl<'a> ::std::fmt::Display for WarningDisplay<'a> {
       Data::RedundantQualifier(qualifiers) =>
         write!(f, "Redundant type qualifiers '{qualifiers}'"),
       Data::EmptyTypedef => write!(f, "Typedef defines nothing"),
+      Data::ExternVariableWithInitializer(name) => write!(
+        f,
+        "Extern global variable '{}' should not have an initializer",
+        name
+      ),
     }
   }
 }

@@ -1,6 +1,7 @@
 use ::rc_utils::interconvert;
 
 use crate::{
+  common::SourceSpan,
   parser::declaration::{DeclSpecs, Declarator},
   type_alias_expr,
 };
@@ -23,8 +24,8 @@ pub enum Expression {
 }
 type_alias_expr! {Expression, UnprocessedType, Variable}
 impl Variable {
-  pub fn new(name: String) -> Self {
-    Self { name }
+  pub fn new(name: String, span: SourceSpan) -> Self {
+    Self { name, span }
   }
 }
 #[derive(Debug)]
@@ -43,6 +44,7 @@ impl UnprocessedType {
 #[derive(Debug)]
 pub struct Variable {
   pub name: String,
+  pub span: SourceSpan,
 }
 interconvert!(Variable, Expression);
 interconvert!(Constant, Expression);

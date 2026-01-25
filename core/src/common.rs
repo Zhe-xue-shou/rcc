@@ -13,7 +13,7 @@ mod warning;
 
 pub use self::{
   environment::{Environment, Symbol, SymbolRef, UnitScope, VarDeclKind},
-  error::{Data as ErrorData, Error, ErrorDisplay, ErrorV2},
+  error::{Data as ErrorData, Error, ErrorDisplay},
   keyword::Keyword,
   operator::{Category as OperatorCategory, Operator},
   source_info::{

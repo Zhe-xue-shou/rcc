@@ -1,5 +1,10 @@
+use ::rc_utils::{Dummy, IntoWith};
+
 use super::Operator;
-use crate::{common::SourceSpan, types::QualifiedType};
+use crate::{
+  common::SourceSpan,
+  types::{Constant, QualifiedType},
+};
 
 #[macro_export(local_inner_macros)]
 macro_rules! type_alias_expr {
@@ -26,7 +31,11 @@ macro_rules! type_alias_expr {
         $extra($extra),
       )*
     }
-    pub type Constant = $crate::types::Constant;
+    /// exists to avoid name clash with `Constant` in this module; this is a design mistake
+    pub type ConstantLiteral = $crate::types::Constant;
+    /// type or expression
+    pub type SizeOfKind = $crate::common::rawexpr::RawSizeOfKind<$exprty, $typety>;
+    pub type Constant = $crate::common::rawexpr::RawConstant;
     pub type Unary = $crate::common::rawexpr::RawUnary<$exprty>;
     pub type Binary = $crate::common::rawexpr::RawBinary<$exprty>;
     pub type Call = $crate::common::rawexpr::RawCall<$exprty>;
@@ -61,6 +70,7 @@ macro_rules! type_alias_expr {
     }
     mod cvtrawexpr {
       use super::*;
+
       ::rc_utils::interconvert!(Constant, RawExpr);
       ::rc_utils::interconvert!(Unary, RawExpr);
       ::rc_utils::interconvert!(Binary, RawExpr);
@@ -75,10 +85,65 @@ macro_rules! type_alias_expr {
       $(
         ::rc_utils::interconvert!($extra, RawExpr);
       )*
+
+      impl From<ConstantLiteral> for RawExpr {
+        fn from(constant: ConstantLiteral) -> Self {
+          RawExpr::Constant(constant.into())
+        }
+      }
+
+      impl ::rc_utils::IntoWith<SourceSpan, RawExpr> for ConstantLiteral {
+        fn into_with(self, span: SourceSpan) -> RawExpr {
+          RawExpr::Constant(self.into_with(span))
+        }
+      }
+
+      impl From<SizeOfKind> for RawExpr {
+        fn from(sizeof: SizeOfKind) -> Self {
+          RawExpr::SizeOf(sizeof.into())
+        }
+      }
+
+      impl ::rc_utils::IntoWith<SourceSpan, RawExpr> for SizeOfKind {
+        fn into_with(self, span: SourceSpan) -> RawExpr {
+          RawExpr::SizeOf(self.into_with(span))
+        }
+      }
+    }
+
+    mod getspan {
+      use super::*;
+      use $crate::common::SourceSpan;
+      use ::rc_utils::Dummy;
+      impl RawExpr {
+        pub fn span(&self) -> SourceSpan {
+          match self {
+            RawExpr::Empty => SourceSpan::dummy(),
+            RawExpr::Constant(c) => c.span,
+            RawExpr::Unary(u) => u.span,
+            RawExpr::Binary(b) => b.span,
+            RawExpr::Call(call) => call.span,
+            RawExpr::Paren(p) => p.span,
+            RawExpr::MemberAccess(ma) => ma.span,
+            RawExpr::Ternary(t) => t.span,
+            RawExpr::SizeOf(sizeof) => sizeof.span,
+            RawExpr::CStyleCast(cast) => cast.span,
+            RawExpr::ArraySubscript(arrsub) => arrsub.span,
+            RawExpr::CompoundLiteral(cl) => cl.span,
+            $(
+              RawExpr::$extra(inner) => inner.span,
+            )*
+          }
+        }
+      }
     }
   };
 }
-
+#[derive(Debug)]
+pub struct RawConstant {
+  pub constant: Constant,
+  pub span: SourceSpan,
+}
 #[derive(Debug)]
 pub struct RawUnary<ExprTy> {
   pub operator: Operator,
@@ -117,9 +182,15 @@ pub struct RawTernary<ExprTy> {
   pub span: SourceSpan,
 }
 #[derive(Debug)]
-pub enum RawSizeOf<ExprTy, TypeTy> {
+pub enum RawSizeOfKind<ExprTy, TypeTy> {
   Type(TypeTy), // ignore for now
   Expression(Box<ExprTy>),
+}
+
+#[derive(Debug)]
+pub struct RawSizeOf<ExprTy, TypeTy> {
+  pub sizeof: RawSizeOfKind<ExprTy, TypeTy>,
+  pub span: SourceSpan,
 }
 
 #[derive(Debug)]
@@ -139,6 +210,33 @@ pub struct RawCompoundLiteral {
   pub target_type: QualifiedType,
   // pub initializer: Initializer,
   pub span: SourceSpan,
+}
+
+impl RawConstant {
+  pub fn new(constant: Constant, span: SourceSpan) -> Self {
+    Self { constant, span }
+  }
+}
+
+// impl deref for rawconstant to constant
+impl std::ops::Deref for RawConstant {
+  type Target = Constant;
+
+  fn deref(&self) -> &Self::Target {
+    &self.constant
+  }
+}
+
+impl From<Constant> for RawConstant {
+  fn from(constant: Constant) -> Self {
+    Self::new(constant, SourceSpan::dummy())
+  }
+}
+
+impl IntoWith<SourceSpan, RawConstant> for Constant {
+  fn into_with(self, span: SourceSpan) -> RawConstant {
+    RawConstant::new(self, span)
+  }
 }
 
 impl<ExprTy> RawUnary<ExprTy> {
@@ -219,7 +317,26 @@ impl<ExprTy> RawTernary<ExprTy> {
     }
   }
 }
+impl<ExprTy, TypeTy> RawSizeOf<ExprTy, TypeTy> {
+  pub fn new(sizeof: RawSizeOfKind<ExprTy, TypeTy>, span: SourceSpan) -> Self {
+    Self { sizeof, span }
+  }
+}
+impl<ExprTy, TypeTy> From<RawSizeOfKind<ExprTy, TypeTy>>
+  for RawSizeOf<ExprTy, TypeTy>
+{
+  fn from(sizeof: RawSizeOfKind<ExprTy, TypeTy>) -> Self {
+    Self::new(sizeof, SourceSpan::dummy())
+  }
+}
 
+impl<ExprTy, TypeTy> IntoWith<SourceSpan, RawSizeOf<ExprTy, TypeTy>>
+  for RawSizeOfKind<ExprTy, TypeTy>
+{
+  fn into_with(self, span: SourceSpan) -> RawSizeOf<ExprTy, TypeTy> {
+    RawSizeOf::new(self, span)
+  }
+}
 impl<ExprTy> RawCall<ExprTy> {
   pub fn new(callee: ExprTy, arguments: Vec<ExprTy>, span: SourceSpan) -> Self {
     Self {
@@ -241,6 +358,12 @@ mod fmt {
   use ::std::fmt::Display;
 
   use super::*;
+
+  impl Display for RawConstant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      write!(f, "{}", self.constant)
+    }
+  }
 
   impl<ExprTy: Display> Display for RawCall<ExprTy> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -280,9 +403,16 @@ mod fmt {
   }
   impl<ExprTy: Display, TypeTy: Display> Display for RawSizeOf<ExprTy, TypeTy> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      write!(f, "{}", self.sizeof)
+    }
+  }
+  impl<ExprTy: Display, TypeTy: Display> Display
+    for RawSizeOfKind<ExprTy, TypeTy>
+  {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       match self {
-        RawSizeOf::Type(ty) => write!(f, "sizeof({})", ty),
-        RawSizeOf::Expression(expr) => write!(f, "sizeof {}", expr),
+        RawSizeOfKind::Type(typ) => write!(f, "sizeof({})", typ),
+        RawSizeOfKind::Expression(expr) => write!(f, "sizeof({})", expr),
       }
     }
   }

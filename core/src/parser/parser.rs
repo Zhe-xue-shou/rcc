@@ -1,4 +1,4 @@
-use ::rc_utils::{DisplayWith, Dummy, breakpoint};
+use ::rc_utils::{DisplayWith, Dummy, IntoWith, breakpoint};
 
 use crate::{
   common::{
@@ -12,8 +12,8 @@ use crate::{
       TypeSpecifier, VarDef,
     },
     expression::{
-      Binary, Call, Constant, Expression, Paren, SizeOf, Ternary, Unary,
-      UnprocessedType, Variable,
+      Binary, Call, ConstantLiteral, Expression, Paren, SizeOfKind, Ternary,
+      Unary, UnprocessedType, Variable,
     },
     statement::{
       Break, Case, Compound, Continue, Default, DoWhile, For, Goto, If, Label,
@@ -993,8 +993,17 @@ impl<'a> Parser<'a> {
     self.get();
     let literal = &self.tokens[self.cursor - 1].literal;
     match literal {
-      Literal::Number(num) => num.clone().into(),
-      Literal::String(str) => Constant::String(str.to_string()).into(),
+      Literal::Number(num) =>
+        Expression::Constant(num.clone().into_with(SourceSpan {
+          end: self.peek_loc(0).end,
+          ..location
+        })),
+      Literal::String(str) => Expression::Constant(
+        ConstantLiteral::String(str.clone()).into_with(SourceSpan {
+          end: self.peek_loc(0).end,
+          ..location
+        }),
+      ),
       Literal::Operator(op) =>
         if op.unary() {
           Unary::new(
@@ -1026,10 +1035,20 @@ impl<'a> Parser<'a> {
             "Unexpected operator {op} in factor, assuming int",
           ));
           self.get();
-          Constant::Int(0).into()
+          Expression::Constant(ConstantLiteral::Int(0).into_with(SourceSpan {
+            end: self.peek_loc(0).end,
+            ..location
+          }))
         },
       Literal::Identifier(ident) => {
-        let ident_expr = Variable::new(ident.to_string()).into();
+        let ident_expr = Variable::new(
+          ident.to_string(),
+          SourceSpan {
+            end: self.peek_loc(0).end,
+            ..location
+          },
+        )
+        .into();
         if *self.peek(0) == Literal::Operator(Operator::LeftParen) {
           let arguments = self.parse_argument_list();
           Call::new(
@@ -1055,13 +1074,17 @@ impl<'a> Parser<'a> {
             "Unexpected keyword {} in factor, assuming int",
             keyword,
           ));
-          Constant::Int(0).into()
+          Expression::Constant(ConstantLiteral::Int(0).into_with(SourceSpan {
+            end: self.peek_loc(0).end,
+            ..location
+          }))
         },
       },
     }
   }
 
   fn next_sizeof(&mut self) -> Expression {
+    let location = *self.peek_loc(0);
     self.must_get_key::<{ Keyword::Sizeof }>();
     // maybe type or expression, assume expression for now
     // let expr = self.parse_paren_expression();
@@ -1076,18 +1099,34 @@ impl<'a> Parser<'a> {
           let declarator =
             self.parse_declarator::<{ DeclaratorType::Abstract }, false>();
           self.recoverable_get::<{ Operator::RightParen }>();
-          SizeOf::Type(UnprocessedType::new(declspecs, declarator)).into()
+          Expression::SizeOf(
+            SizeOfKind::Type(UnprocessedType::new(declspecs, declarator))
+              .into_with(SourceSpan {
+                end: self.peek_loc(0).end,
+                ..location
+              }),
+          )
         },
         None => {
           // expression
           let expr = self.next_expression(Operator::DEFAULT);
           self.recoverable_get::<{ Operator::RightParen }>();
-          SizeOf::Expression(expr.into()).into()
+          Expression::SizeOf(SizeOfKind::Expression(expr.into()).into_with(
+            SourceSpan {
+              end: self.peek_loc(0).end,
+              ..location
+            },
+          ))
         },
       }
     } else {
       let expr = self.next_expression(Operator::DEFAULT);
-      SizeOf::Expression(expr.into()).into()
+      Expression::SizeOf(SizeOfKind::Expression(expr.into()).into_with(
+        SourceSpan {
+          end: self.peek_loc(0).end,
+          ..location
+        },
+      ))
     }
   }
 

@@ -1,10 +1,10 @@
-use rc_utils::breakpoint;
+use ::rc_utils::{IntoWith, breakpoint};
 
 use crate::{
   analyzer::{declaration as ad, expression as ae, statement as astmt},
   common::{
-    Environment, Error, Operator, OperatorCategory, SourceSpan, Storage,
-    Symbol, VarDeclKind,
+    Environment, Error, ErrorData, Operator, OperatorCategory, SourceSpan,
+    Storage, Symbol, VarDeclKind, Warning, WarningData,
   },
   parser::{declaration as pd, expression as pe, statement as ps},
   types::{
@@ -22,16 +22,8 @@ pub struct Analyzer {
   program: pd::Program,
   environment: Environment,
   current_function: Option<ad::Function>,
-  errors: Vec<String>,
-  warnings: Vec<String>,
-}
-
-/// i haven't built up the error handling system yet, and all tests are expected to pass, so use this macro to catch bugs while debugging
-macro_rules! err_or_debugbreak {
-  () => {{
-    breakpoint!();
-    Err(())
-  }};
+  errors: Vec<Error>,
+  warnings: Vec<Warning>,
 }
 
 impl Analyzer {
@@ -42,30 +34,28 @@ impl Analyzer {
     }
   }
 
-  pub fn add_error(&mut self, error: String) {
+  pub fn add_error(&mut self, error: Error) {
     self.errors.push(error);
   }
 
-  pub fn add_warning(&mut self, warning: String) {
+  pub fn add_warning(&mut self, warning: Warning) {
     self.warnings.push(warning);
   }
 
-  pub fn analyze(&mut self) -> DeclRes<ad::TranslationUnit> {
+  pub fn analyze(&mut self) -> ad::TranslationUnit {
     self.environment.enter();
-    let declarations = self.externaldecl()?;
+    let declarations = self.externaldecl();
+
     self.environment.exit();
 
-    match self.errors.is_empty() {
-      true => Ok(ad::TranslationUnit::new(declarations)),
-      false => err_or_debugbreak!(),
-    }
+    ad::TranslationUnit::new(declarations)
   }
 
-  pub fn errors(&self) -> &[String] {
+  pub fn errors(&self) -> &[Error] {
     &self.errors
   }
 
-  pub fn warnings(&self) -> &[String] {
+  pub fn warnings(&self) -> &[Warning] {
     &self.warnings
   }
 }
@@ -158,7 +148,9 @@ impl Analyzer {
       } = parameter;
       let (_, storage, qualified_type) = self.parse_declspecs(declspecs)?;
       if storage.is_some() {
-        return err_or_debugbreak!(); // error: parameter cannot have storage class
+        panic!(
+          "invariant: parameter cannot have storage class specifier; this should be handled in parser"
+        );
       }
       let pd::Declarator {
         modifiers,
@@ -283,7 +275,7 @@ impl Analyzer {
         if typedef.borrow().is_typedef() {
           Ok(typedef.borrow().qualified_type.clone())
         } else {
-          err_or_debugbreak!() // error: not a typedef
+          panic!("invariant: identifier is not a typedef");
         }
       },
       // skip _BitInt, _Decimal32, _Decimal64, _Decimal128 here
@@ -293,17 +285,16 @@ impl Analyzer {
 }
 
 impl Analyzer {
-  fn externaldecl(&mut self) -> DeclRes<Vec<ad::ExternalDeclaration>> {
+  fn externaldecl(&mut self) -> Vec<ad::ExternalDeclaration> {
     let mut declarations = Vec::new();
     std::mem::take(&mut self.program)
       .declarations
       .into_iter()
-      .try_for_each(|decl| {
-        let analyzed_decl = self.declarations(decl)?;
-        declarations.push(analyzed_decl);
-        Ok(())
-      })?;
-    Ok(declarations)
+      .for_each(|decl| match self.declarations(decl) {
+        Ok(declaration) => declarations.push(declaration),
+        Err(e) => self.add_error(e),
+      });
+    declarations
   }
 
   pub fn declarations(
@@ -343,7 +334,9 @@ impl Analyzer {
       name,
       span: _,
     } = declarator;
-    let name = name.expect("function must have a name");
+    let name = name.expect(
+      "invariant: function must have a name; it should be handled in parser",
+    );
     let (qualified_type, parameters) =
       self.apply_modifiers_for_functiondecl(return_type, modifiers)?;
     let symbol = Symbol::new_ref(Symbol::new(
@@ -364,7 +357,11 @@ impl Analyzer {
 
     match body {
       Some(body) => match self.current_function {
-        Some(_) => err_or_debugbreak!(), // error: nested function definition is not allowed, this should be handled in parser
+        Some(_) => panic!(
+          "invariant: nested function definition is not allowed; this should be handled in parser: current function {}, new function {}",
+          self.current_function.as_ref().unwrap().symbol.borrow().name,
+          function.symbol.borrow().name
+        ),
         None => self.function_with_body(body, function),
       },
       None => Ok(function),
@@ -406,7 +403,10 @@ impl Analyzer {
 
     for goto in &function.gotos {
       if !function.labels.contains(goto) {
-        return err_or_debugbreak!(); // error: goto to undefined label
+        panic!(
+          "invariant: goto label '{}' not found; this should be handled in parser",
+          goto
+        );
       }
     }
     Ok(function)
@@ -422,7 +422,9 @@ impl Analyzer {
     let (function_specifier, storage, qualified_type) =
       self.parse_declspecs(declspecs)?;
     if !function_specifier.is_empty() {
-      return err_or_debugbreak!(); // var cannot have inline and noreturn
+      panic!(
+        "invariant: variable cannot have function specifier; this should be handled in parser"
+      );
     }
     let pd::Declarator {
       modifiers,
@@ -480,7 +482,12 @@ impl Analyzer {
       let new_declkind = vardef.symbol.borrow().declkind;
       type VDK = VarDeclKind;
       match (&prev_declkind, &new_declkind) {
-        (VDK::Definition, VDK::Definition) => err_or_debugbreak!(), // error: redefinition
+        (VDK::Definition, VDK::Definition) => Err(Error::new(
+          span,
+          ErrorData::VariableAlreadyDefined(
+            vardef.symbol.borrow().name.clone(),
+          ),
+        )),
         (VDK::Definition, VDK::Declaration)
         | (VDK::Definition, VDK::Tentative) => {
           // valid and nothing to do
@@ -549,7 +556,10 @@ impl Analyzer {
       },
       (Some(storage), Some(initializer)) => {
         if storage == Storage::Extern {
-          return err_or_debugbreak!(); // warning, extern vardef should not have initializer
+          self.add_warning(Warning::new(
+            span,
+            WarningData::ExternVariableWithInitializer(name.clone()),
+          ))
         }
         let symbol = Symbol::def(qualified_type, storage, name);
         ad::VarDef::new(symbol, Some(initializer), span)
@@ -566,10 +576,14 @@ impl Analyzer {
     span: SourceSpan,
   ) -> DeclRes<ad::VarDef> {
     if storage == Storage::Extern && initializer.is_some() {
-      return err_or_debugbreak!(); // error: local extern vardef cannot have initializer
+      Err(Error::new(
+        span,
+        ErrorData::LocalExternVarWithInitializer(name),
+      ))
+    } else {
+      let symbol = Symbol::decl(qualified_type, storage, name);
+      Ok(ad::VarDef::new(symbol, initializer, span))
     }
-    let symbol = Symbol::decl(qualified_type, storage, name);
-    Ok(ad::VarDef::new(symbol, initializer, span))
   }
 }
 
@@ -593,16 +607,21 @@ impl Analyzer {
   }
 
   fn sizeof(&mut self, sizeof: pe::SizeOf) -> ExprRes {
-    match sizeof {
-      pe::SizeOf::Expression(expression) => {
+    match sizeof.sizeof {
+      pe::SizeOfKind::Expression(expression) => {
         let analyzed_expr = self.expression(*expression)?;
         let size = analyzed_expr.unqualified_type().size();
         Ok(ae::Expression::new_rvalue(
-          ae::RawExpr::Constant(ae::Constant::ULongLong(size as u64)),
+          ae::RawExpr::Constant(
+            ae::ConstantLiteral::ULongLong(size as u64).into_with(SourceSpan {
+              end: analyzed_expr.span().end,
+              ..sizeof.span
+            }),
+          ),
           QualifiedType::new_unqualified(Primitive::ULongLong.into()),
         ))
       },
-      pe::SizeOf::Type(unprocessed_type) => {
+      pe::SizeOfKind::Type(unprocessed_type) => {
         let pe::UnprocessedType {
           declspecs,
           declarator,
@@ -612,9 +631,10 @@ impl Analyzer {
           Self::apply_modifiers_for_varty(base_type, declarator.modifiers)
         };
         Ok(ae::Expression::new_rvalue(
-          ae::RawExpr::Constant(ae::Constant::ULongLong(
-            qualified_type.size() as u64
-          )),
+          ae::RawExpr::Constant(
+            ae::ConstantLiteral::ULongLong(qualified_type.size() as u64)
+              .into_with(sizeof.span),
+          ),
           QualifiedType::new_unqualified(Primitive::ULongLong.into()),
         ))
       },
@@ -633,9 +653,21 @@ impl Analyzer {
       Type::FunctionProto(proto) => proto,
       Type::Pointer(ptr) => match ptr.pointee.unqualified_type() {
         Type::FunctionProto(proto) => proto,
-        _ => return err_or_debugbreak!(), // error: callee is not a function pointer
+        _ =>
+          return Err(Error::new(
+            span,
+            ErrorData::InvalidCallee(
+              ptr.pointee.unqualified_type().to_string(),
+            ),
+          )),
       },
-      _ => return err_or_debugbreak!(), // error: callee is not a function
+      _ =>
+        return Err(Error::new(
+          span,
+          ErrorData::InvalidCallee(
+            analyzed_callee.unqualified_type().to_string(),
+          ),
+        )),
     };
 
     let mut analyzed_arguments = Vec::new();
@@ -647,7 +679,7 @@ impl Analyzer {
     if !function_proto.is_variadic
       && analyzed_arguments.len() != function_proto.parameter_types.len()
     {
-      return err_or_debugbreak!(); // error: argument count mismatch
+      panic!("invariant: argument count mismatch");
     }
     let expr_type = function_proto.return_type.as_ref().clone();
     // todo: type promotion, currently just match the exact/compatible types
@@ -672,18 +704,24 @@ impl Analyzer {
   }
 
   fn variable(&mut self, variable: pe::Variable) -> ExprRes {
-    let symbol = self.environment.find(&variable.name).ok_or(())?;
+    let symbol = self.environment.find(&variable.name).ok_or(Error::new(
+      variable.span,
+      ErrorData::UndefinedVariable(variable.name.clone()),
+    ))?;
     if symbol.borrow().is_typedef() {
-      err_or_debugbreak!()
+      panic!(
+        "invariant: variable cannot be a typedef; this should be handled in parser"
+      );
     } else {
       Ok(ae::Expression::new_lvalue(
-        ae::Variable::new(symbol.clone()).into(),
+        ae::Variable::new(symbol.clone(), variable.span).into(),
         symbol.borrow().qualified_type.clone(),
       ))
     }
   }
 
   fn constant(&mut self, constant: pe::Constant) -> ExprRes {
+    let pe::Constant { constant, span } = constant;
     let unqualified_type = constant.unqualified_type();
     let value_category = if constant.is_char_array() {
       ae::ValueCategory::LValue
@@ -691,7 +729,7 @@ impl Analyzer {
       ae::ValueCategory::RValue
     };
     Ok(ae::Expression::new(
-      constant.into(),
+      ae::Constant::new(constant, span).into(),
       QualifiedType::new_unqualified(unqualified_type),
       value_category,
     ))
@@ -803,7 +841,13 @@ impl Analyzer {
             result_type,
           ))
         } else {
-          err_or_debugbreak!() // error: incompatible pointer types in ternary expression
+          Err(Error::new(
+            span,
+            ErrorData::IncompatiblePointerTypes(
+              left_pointee.to_string(),
+              right_pointee.to_string(),
+            ),
+          ))
         }
       },
       _ => todo!(),
@@ -822,7 +866,10 @@ impl Analyzer {
     let operand = operand.lvalue_conversion().decay();
 
     if !operand.unqualified_type().is_arithmetic() {
-      err_or_debugbreak!() // error: operand of unary arithmetic operator must be arithmetic type
+      Err(Error::new(
+        span,
+        ErrorData::NonArithmeticInUnaryOp(operator, operand.to_string()),
+      ))
     } else {
       let converted_operand = operand.usual_arithmetic_conversion_unary()?;
       let expr_type = converted_operand.qualified_type().clone();
@@ -847,9 +894,11 @@ impl Analyzer {
     let operand = operand.lvalue_conversion().decay();
 
     if !operand.unqualified_type().is_integer() {
-      err_or_debugbreak!() // error: operand of bitwise NOT operator must be an integer
+      Err(Error::new(
+        span,
+        ErrorData::NonIntegerInBitwiseUnaryOp(operator, operand.to_string()),
+      ))
     } else {
-      // Ok(operand.usual_arithmetic_conversion_unary()?)
       let converted_operand = operand.usual_arithmetic_conversion_unary()?;
       let expr_type = converted_operand.qualified_type().clone();
       Ok(ae::Expression::new_rvalue(
@@ -889,7 +938,10 @@ impl Analyzer {
   ) -> ExprRes {
     assert_eq!(operator, Operator::Ampersand);
     if !operand.is_lvalue() {
-      err_or_debugbreak!() // error: operand of address-of operator must be an lvalue
+      Err(Error::new(
+        span,
+        ErrorData::AddressofOperandNotLvalue(operand.to_string()),
+      ))
     } else {
       let pointer_type =
         Pointer::new(operand.qualified_type().clone().into()).into();
@@ -915,13 +967,19 @@ impl Analyzer {
     let operand = operand.lvalue_conversion().decay();
 
     if !operand.unqualified_type().is_pointer() {
-      return err_or_debugbreak!(); // error: operand of indirection operator must be a pointer
+      return Err(Error::new(
+        span,
+        ErrorData::IndirectionOperandNotPointer(operand.to_string()),
+      ));
     }
 
     let pointee_type =
       &operand.unqualified_type().as_pointer_unchecked().pointee;
     if pointee_type.unqualified_type() == &Type::Primitive(Primitive::Void) {
-      err_or_debugbreak!() // error: cannot dereference void pointer
+      Err(Error::new(
+        span,
+        ErrorData::DereferenceOfVoidPointer(operand.to_string()),
+      ))
     } else {
       // If the operand points to a function, the result is a function designator; -- which means the we don't need to perform decay here
       // if it points to an object, the result is an lvalue designating the object.
@@ -949,7 +1007,10 @@ impl Analyzer {
       "compound assignment not implemented"
     );
     if !left.is_modifiable_lvalue() {
-      return err_or_debugbreak!(); // expression is not assignable
+      return Err(Error::new(
+        span,
+        ErrorData::ExprNotAssignable(left.to_string()),
+      ));
     }
     let assigned_expr = right
       .lvalue_conversion()
@@ -1053,7 +1114,15 @@ impl Analyzer {
     if !left.unqualified_type().is_integer()
       || !right.unqualified_type().is_integer()
     {
-      return err_or_debugbreak!(); // error: bitwise operator requires integer operands
+      // return err_or_debugbreak!(); // error: bitwise operator requires integer operands
+      return Err(Error::new(
+        span,
+        ErrorData::NonIntegerInBitwiseBinaryOp(
+          left.to_string(),
+          right.to_string(),
+          operator,
+        ),
+      ));
     }
 
     let (lhs, rhs, result_type) =
@@ -1081,7 +1150,15 @@ impl Analyzer {
     if !lhs.unqualified_type().is_integer()
       || !rhs.unqualified_type().is_integer()
     {
-      return err_or_debugbreak!(); // error: bitshift operator requires integer operands
+      // return err_or_debugbreak!(); // error: bitshift operator requires integer operands
+      return Err(Error::new(
+        span,
+        ErrorData::NonIntegerInBitshiftOp(
+          lhs.to_string(),
+          rhs.to_string(),
+          operator,
+        ),
+      ));
     }
 
     let expr_type = lhs.qualified_type().clone();
@@ -1207,12 +1284,20 @@ impl Analyzer {
     match (&analyzed_expr, return_type.unqualified_type()) {
       (None, Type::Primitive(Primitive::Void)) =>
         Ok(astmt::Return::new(None, span)),
-      (None, _) => {
-        err_or_debugbreak!() // error: non-void function must return a value
-      },
-      (Some(_), Type::Primitive(Primitive::Void)) => {
-        err_or_debugbreak!() // error: returning a value from a void function
-      },
+      (None, _) => Err(Error::new(
+        span,
+        ErrorData::ReturnTypeMismatch(
+          "non-void function must return a value".to_string(),
+        ),
+      )),
+
+      (Some(_), Type::Primitive(Primitive::Void)) => Err(Error::new(
+        span,
+        ErrorData::ReturnTypeMismatch(
+          "void function cannot return a value".to_string(),
+        ),
+      )),
+
       (Some(_), _) => {
         let a = unsafe {
           // this has value for ABSOLUTELY sure
@@ -1339,7 +1424,12 @@ impl Analyzer {
     let ps::Case { body, value, span } = case;
     let analyzed_value = self.expression(value)?;
     if !analyzed_value.is_integer_constant() {
-      Err(()) // error: case value must be an integer constant
+      Err(Error::new(
+        span,
+        ErrorData::ExpressionNotConstant(
+          "case value must be an integer constant".to_string(),
+        ),
+      ))
     } else {
       let mut analyzed_body = vec![];
       for stmt in body {
@@ -1360,7 +1450,9 @@ impl Analyzer {
 
   fn labelstmt(&mut self, label: ps::Label) -> StmtRes<astmt::Label> {
     match self.environment.is_global() {
-      true => err_or_debugbreak!(), // error: label cannot be declared in global scope
+      true => panic!(
+        "invariant: label statement in global scope should be handled in parser"
+      ),
       false => {
         let ps::Label {
           name,
@@ -1376,7 +1468,7 @@ impl Analyzer {
         {
           true =>
             Ok(astmt::Label::new(name, self.statement(*statement)?, span)),
-          false => err_or_debugbreak!(), // error: duplicate label in function
+          false => Err(Error::new(span, ErrorData::DuplicateLabel(name))),
         }
       },
     }
@@ -1384,7 +1476,9 @@ impl Analyzer {
 
   fn gotostmt(&mut self, goto: ps::Goto) -> StmtRes<astmt::Statement> {
     match self.environment.is_global() {
-      true => err_or_debugbreak!(), // error: goto cannot be declared in global scope
+      true => panic!(
+        "invariant: goto statement in global scope should be handled in parser"
+      ),
       false => {
         self
           .current_function
@@ -1401,7 +1495,9 @@ impl Analyzer {
 
   fn breakstmt(&mut self, break_stmt: ps::Break) -> StmtRes<astmt::Statement> {
     match self.environment.is_global() {
-      true => err_or_debugbreak!(), // error: should be handled in parser
+      true => panic!(
+        "invariant: break statement in global scope should be handled in parser"
+      ),
       false => Ok(astmt::Statement::Break(astmt::Break::new(
         break_stmt.tag,
         break_stmt.span,
@@ -1414,7 +1510,9 @@ impl Analyzer {
     continue_stmt: ps::Continue,
   ) -> StmtRes<astmt::Statement> {
     match self.environment.is_global() {
-      true => err_or_debugbreak!(), // error: should be handled in parser
+      true => panic!(
+        "invariant: continue statement in global scope should be handled in parser"
+      ),
       false => Ok(astmt::Statement::Continue(astmt::Continue::new(
         continue_stmt.tag,
         continue_stmt.span,

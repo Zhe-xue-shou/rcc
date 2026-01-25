@@ -5,7 +5,7 @@ use ::std::{
 
 use crate::{
   common::{
-    Coordinate, ErrorData, ErrorV2, Keyword,
+    Coordinate, Error, ErrorData, Keyword,
     Operator::{self, *},
     SourceSpan, Token,
   },
@@ -27,7 +27,7 @@ pub struct Lexer<'a> {
   /// report line/col errors *during* lexing
   coords: Coordinate,
 
-  errors: Vec<ErrorV2>,
+  errors: Vec<Error>,
 }
 impl<'a> Lexer<'a> {
   pub fn new(source: &'a str) -> Self {
@@ -40,11 +40,11 @@ impl<'a> Lexer<'a> {
     }
   }
 
-  pub fn errors(&self) -> &[ErrorV2] {
+  pub fn errors(&self) -> &[Error] {
     &self.errors
   }
 
-  fn add_error(&mut self, error: ErrorV2) {
+  fn add_error(&mut self, error: Error) {
     self.errors.push(error);
   }
 
@@ -334,7 +334,7 @@ impl<'a> Lexer<'a> {
       // exponent digits, required
       if !self.peek().is_ascii_digit() {
         // self.add_error("Expected digits after exponent marker".to_string());
-        self.add_error(ErrorV2::new(
+        self.add_error(Error::new(
           self.span(start),
           ErrorData::InvalidNumberFormat(
             "Expected digits after exponent marker".to_string(),
@@ -358,7 +358,7 @@ impl<'a> Lexer<'a> {
       }
 
       if !self.peek().is_ascii_digit() {
-        self.add_error(ErrorV2::new(
+        self.add_error(Error::new(
           self.span(start),
           ErrorData::InvalidNumberFormat(
             "Expected digits after hexadecimal exponent marker".to_string(),
@@ -384,7 +384,7 @@ impl<'a> Lexer<'a> {
           if NumberConstant::FLOATING_SUFFIXES.contains(&s) {
             Some(s)
           } else {
-            self.add_error(ErrorV2::new(
+            self.add_error(Error::new(
               self.span(start),
               ErrorData::InvalidNumberFormat(format!(
                 "Invalid floating point literal suffix '{}', ignoring",
@@ -397,7 +397,7 @@ impl<'a> Lexer<'a> {
           if NumberConstant::INTEGER_SUFFIXES.contains(&s) {
             Some(s)
           } else {
-            self.add_error(ErrorV2::new(
+            self.add_error(Error::new(
               self.span(start),
               ErrorData::InvalidNumberFormat(format!(
                 "Invalid integer literal suffix '{}', ignoring",
@@ -413,7 +413,7 @@ impl<'a> Lexer<'a> {
 
     let (constant, error) = NumberConstant::parse(&num, suffix, is_floating);
     if let Some(e) = error {
-      self.add_error(ErrorV2::new(
+      self.add_error(Error::new(
         self.span(start),
         ErrorData::InvalidNumberFormat(e),
       ));
@@ -438,7 +438,7 @@ impl<'a> Lexer<'a> {
     }
 
     if self.is_at_end() {
-      self.add_error(ErrorV2::new(
+      self.add_error(Error::new(
         self.span(start),
         ErrorData::UnterminatedString,
       ));

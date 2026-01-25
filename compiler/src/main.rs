@@ -75,14 +75,18 @@ fn main() {
   let analyze_warnings = analyzer.warnings();
   if !analyze_warnings.is_empty() {
     eprintln!("Analyze warnings:");
-    analyze_warnings.iter().for_each(|e| eprintln!("{e}"));
+    analyze_warnings
+      .iter()
+      .for_each(|e| eprintln!("{}", e.display_with(&source_manager)));
   }
   let analyze_errors = analyzer.errors();
   if !analyze_errors.is_empty() {
     eprintln!("Analyze errors:");
-    analyze_errors.iter().for_each(|e| eprintln!("{e}"));
+    analyze_errors
+      .iter()
+      .for_each(|e| eprintln!("{}", e.display_with(&source_manager)));
     exit(1);
   }
-  println!("{:#?}", translation_unit.unwrap());
+  println!("{:}", translation_unit);
   println!("Analyze succeeded.");
 }

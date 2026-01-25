@@ -1,7 +1,7 @@
 use ::strum_macros::Display;
 
 use crate::{
-  common::{Operator, OperatorCategory, SymbolRef},
+  common::{Operator, OperatorCategory, SourceSpan, SymbolRef},
   type_alias_expr,
   types::{
     CastType::{self, *},
@@ -176,6 +176,10 @@ impl Expression {
       ..self
     }
   }
+
+  pub fn span(&self) -> SourceSpan {
+    self.raw_expr.span()
+  }
 }
 
 impl ::core::default::Default for Expression {
@@ -190,20 +194,30 @@ impl ::core::default::Default for Expression {
 #[derive(Debug)]
 pub struct Variable {
   pub name: SymbolRef,
+  pub span: SourceSpan,
 }
 impl Variable {
-  pub fn new(name: SymbolRef) -> Self {
-    Self { name }
+  pub fn new(name: SymbolRef, span: SourceSpan) -> Self {
+    Self { name, span }
   }
 }
 #[derive(Debug)]
 pub struct ImplicitCast {
   pub expr: Box<Expression>,
   pub cast_type: CastType,
+  pub span: SourceSpan,
 }
 impl ImplicitCast {
-  pub fn new(expr: Box<Expression>, cast_type: CastType) -> Self {
-    Self { expr, cast_type }
+  pub fn new(
+    expr: Box<Expression>,
+    cast_type: CastType,
+    span: SourceSpan,
+  ) -> Self {
+    Self {
+      expr,
+      cast_type,
+      span,
+    }
   }
 }
 /// assignment-expression:
@@ -214,25 +228,33 @@ pub struct Assignment {
   pub operator: Operator,
   pub left: Box<Expression>,
   pub right: Box<Expression>,
+  pub span: SourceSpan,
 }
 impl Assignment {
   pub fn from_operator(
     operator: Operator,
     left: Expression,
     right: Expression,
+    span: SourceSpan,
   ) -> Option<Self> {
     match operator.category() {
       OperatorCategory::Assignment => Some(Self {
         operator,
         left: Box::new(left),
         right: Box::new(right),
+        span,
       }),
       _ => None,
     }
   }
 
-  pub fn new(operator: Operator, left: Expression, right: Expression) -> Self {
-    Self::from_operator(operator, left, right).unwrap()
+  pub fn new(
+    operator: Operator,
+    left: Expression,
+    right: Expression,
+    span: SourceSpan,
+  ) -> Self {
+    Self::from_operator(operator, left, right, span).unwrap()
   }
 }
 mod fmt {
@@ -272,12 +294,12 @@ mod test {
     use super::*;
 
     let int_expr = Expression::new(
-      RawExpr::Constant(Constant::Int(42)),
+      RawExpr::Constant(ConstantLiteral::Int(42).into()),
       Type::from(Primitive::Int).into(),
       RValue,
     );
     let float_expr = Expression::new(
-      RawExpr::Constant(Constant::Float(3.14)),
+      RawExpr::Constant(ConstantLiteral::Float(3.14).into()),
       Type::from(Primitive::Float).into(),
       RValue,
     );

@@ -25,6 +25,28 @@ pub trait TryFromWith<With, From>: Sized {
   type Error;
   fn try_from_with(from: From, with: With) -> Result<Self, Self::Error>;
 }
+/// A trait for creating dummy instances of types.
+///
+/// This is useful for situations where a placeholder value is needed,
+/// such as during testing or when initializing data structures,
+/// but their actual values do not matter.
+///
+/// The difference between this and the [`Default`] trait is that Dummy
+/// instances are often invalid or nonsensical in a real context,
+/// whereas [`Default`] instances are expected to be valid and meaningful.
+///
+/// In other words, [`Dummy`] targets for ppl who read and write the code.
+///
+/// Why not use [`Option<T>`] or [`Result<T, E>`]? -- there's no point
+/// to wrap every single type in Option or Result just to represent a dummy value.
+///
+/// Notable use case from myself:
+/// - use [`Dummy`] to create placeholder
+/// expressions/statements (just returns an empty node)
+/// to indicate errors during semantic analysis.
+/// - [`SourceSpan`] to represent an invalid source location,
+/// ususally for unconstructed spans/nodes, or representing a error node's location.
+///
 pub trait Dummy {
   fn dummy() -> Self;
 }

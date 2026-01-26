@@ -2,7 +2,7 @@ use ::rc_utils::IntoWith;
 
 use crate::{
   analyzer::expression::{Expression, ImplicitCast},
-  common::{ErrorData, Error, SourceSpan},
+  common::{Error, ErrorData, SourceSpan},
   types::{
     CastType, Compatibility, Pointer, Primitive, Promotion, QualifiedType, Type,
   },
@@ -73,7 +73,7 @@ impl Expression {
   }
 
   /// If an expression of any other type is evaluated as a void expression, its value or designator is discarded.
-  /// (A void expression is evaluated for its side effects.)
+  /// (A void expression is evaluated for its side effects -- of course we need to evaluate it!)
   ///
   /// unary.
   #[must_use]
@@ -391,9 +391,7 @@ impl Expression {
 
   /// used for unary `~`, `+` and `-`
   #[must_use]
-  fn usual_arithmetic_conversion_unary_unchecked(
-    self,
-  ) -> Result<Self, Error> {
+  fn usual_arithmetic_conversion_unary_unchecked(self) -> Result<Self, Error> {
     let promoted = self.promote();
     match promoted.unqualified_type() {
       Type::Primitive(p) if p.is_arithmetic() => Ok(promoted),

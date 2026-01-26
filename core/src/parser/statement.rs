@@ -1,4 +1,4 @@
-use ::rc_utils::interconvert;
+use ::rc_utils::{Dummy, interconvert};
 
 use super::{declaration::Declaration, expression::Expression};
 use crate::type_alias_stmt;
@@ -39,6 +39,11 @@ interconvert!(Continue, Statement);
 impl Statement {
   pub(super) fn new_loop_dummy_identifier(str: &'static str) -> String {
     RawStmt::new_loop_dummy_identifier(str)
+  }
+}
+impl Dummy for Statement {
+  fn dummy() -> Self {
+    Self::Empty()
   }
 }
 mod fmt {

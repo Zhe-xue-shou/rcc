@@ -272,3 +272,9 @@ impl PartialEq<Operator> for &Operator {
     *self == other
   }
 }
+
+impl ::std::default::Default for Operator {
+  fn default() -> Self {
+    Operator::EOF
+  }
+}

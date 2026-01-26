@@ -1,3 +1,4 @@
+use ::rc_utils::Dummy;
 use ::strum_macros::Display;
 
 use crate::{
@@ -52,6 +53,14 @@ impl Expression {
       raw_expr,
       expr_type,
       value_category: LValue,
+    }
+  }
+
+  pub fn new_error_node(expr_type: QualifiedType) -> Self {
+    Self {
+      raw_expr: RawExpr::Empty,
+      expr_type,
+      value_category: RValue,
     }
   }
 
@@ -189,6 +198,11 @@ impl ::core::default::Default for Expression {
       expr_type: Type::void().into(),
       value_category: RValue,
     }
+  }
+}
+impl Dummy for Expression {
+  fn dummy() -> Self {
+    Self::default()
   }
 }
 #[derive(Debug)]

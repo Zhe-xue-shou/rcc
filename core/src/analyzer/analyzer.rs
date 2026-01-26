@@ -1,5 +1,5 @@
 use ::rc_utils::{
-  IntoWith, contract_assert, contract_violation, not_implemented_feature,
+  Dummy, IntoWith, contract_assert, contract_violation, not_implemented_feature,
 };
 
 use crate::{
@@ -63,6 +63,23 @@ impl<T> ImplHelper<T> for Option<T> {
     }
   }
 }
+#[allow(unused)]
+trait ImplHelper2<T, Listener> {
+  fn handle_with(self, context: &mut Listener, default: T) -> T;
+}
+
+impl<T> ImplHelper2<T, Analyzer> for Result<T, Error> {
+  /// if it's error, log it, and return a default value (means error)
+  fn handle_with(self, context: &mut Analyzer, default: T) -> T {
+    match self {
+      Ok(t) => t,
+      Err(e) => {
+        context.add_error(e);
+        default
+      },
+    }
+  }
+}
 
 #[derive(Debug, Default)]
 pub struct Analyzer {
@@ -91,10 +108,9 @@ impl Analyzer {
 
   pub fn analyze(&mut self) -> ad::TranslationUnit {
     self.environment.enter();
-    let declarations = self.externaldecl();
+    let translation_unit = ad::TranslationUnit::new(self.externaldecl());
     self.environment.exit();
-
-    ad::TranslationUnit::new(declarations)
+    translation_unit
   }
 
   pub fn errors(&self) -> &[Error] {
@@ -385,8 +401,9 @@ impl Analyzer {
     } = declarator;
     let name = name
       .shall_ok("function must have a name; it should be handled in parser");
-    let (qualified_type, parameters) =
-      self.apply_modifiers_for_functiondecl(return_type, modifiers)?;
+    let (qualified_type, parameters) = self
+      .apply_modifiers_for_functiondecl(return_type, modifiers)
+      .shall_ok("failed to apply modifiers for function declarator");
     let symbol = Symbol::new_ref(Symbol::new(
       qualified_type,
       storage,
@@ -455,7 +472,8 @@ impl Analyzer {
     self.current_function.as_mut().unwrap().body =
       Some(astmt::Compound::new(statements, body.span));
     // verify labels and gotos
-    let function = std::mem::take(&mut self.current_function).unwrap();
+    let function =
+      std::mem::take(&mut self.current_function).expect("never fails");
 
     for goto in &function.gotos {
       if !function.labels.contains(goto) {
@@ -493,8 +511,10 @@ impl Analyzer {
       Self::apply_modifiers_for_varty(qualified_type, modifiers);
     let initializer = match initializer {
       Some(init) => match init {
-        pd::Initializer::Expression(expression) =>
-          Some(ad::Initializer::Scalar(self.expression(*expression)?)),
+        pd::Initializer::Expression(expression) => self
+          .expression(*expression)
+          .map(|expr| Some(ad::Initializer::Scalar(expr)))
+          .unwrap_or(None),
         pd::Initializer::List(_) => {
           not_implemented_feature!("initializer list");
         },
@@ -518,7 +538,8 @@ impl Analyzer {
         initializer,
         span,
       ),
-    }?;
+    }
+    .shall_ok("failed to create vardef");
     // no prev - just insert
     // if found a *real* definition and current vardef is also a real refinition -> error
     // prev: extern -- update storage class (and possibly initializer)
@@ -614,10 +635,10 @@ impl Analyzer {
       },
       (Some(storage), Some(initializer)) => {
         if storage == Storage::Extern {
-          self.add_warning(Warning::new(
-            span,
-            WarningData::ExternVariableWithInitializer(name.clone()),
-          ))
+          self.add_warning(
+            WarningData::ExternVariableWithInitializer(name.clone())
+              .into_with(span),
+          );
         }
         let symbol = Symbol::def(qualified_type, storage, name);
         ad::VarDef::new(symbol, Some(initializer), span)
@@ -634,11 +655,11 @@ impl Analyzer {
     span: SourceSpan,
   ) -> DeclRes<ad::VarDef> {
     if storage == Storage::Extern && initializer.is_some() {
-      Err(LocalExternVarWithInitializer(name).into_with(span))
-    } else {
-      let symbol = Symbol::decl(qualified_type, storage, name);
-      Ok(ad::VarDef::new(symbol, initializer, span))
+      self
+        .add_error(LocalExternVarWithInitializer(name.clone()).into_with(span));
     }
+    let symbol = Symbol::decl(qualified_type, storage, name);
+    Ok(ad::VarDef::new(symbol, initializer, span))
   }
 }
 
@@ -664,7 +685,12 @@ impl Analyzer {
   fn sizeof(&mut self, sizeof: pe::SizeOf) -> ExprRes {
     match sizeof.sizeof {
       pe::SizeOfKind::Expression(expression) => {
-        let analyzed_expr = self.expression(*expression)?;
+        let analyzed_expr = self.expression(*expression).handle_with(
+          self,
+          ae::Expression::new_error_node(QualifiedType::new_unqualified(
+            Primitive::ULongLong.into(),
+          )),
+        );
         let size = analyzed_expr.unqualified_type().size();
         Ok(ae::Expression::new_rvalue(
           ae::RawExpr::Constant(
@@ -800,7 +826,9 @@ impl Analyzer {
       Operator::Tilde => self.tilde(operator, operand, span),
       Operator::Plus | Operator::Minus =>
         self.unary_arithmetic(operator, operand, span),
-      Operator::PlusPlus | Operator::MinusMinus => todo!(),
+      Operator::PlusPlus | Operator::MinusMinus => not_implemented_feature!(
+        "Unary ++ and -- operators are not implemented yet"
+      ),
       _ => unreachable!("operator is not unary: {:#?}", operator),
     }
   }
@@ -969,7 +997,7 @@ impl Analyzer {
     let converted_operand = operand.conditional_conversion()?;
     Ok(ae::Expression::new_rvalue(
       ae::Unary::new(operator, converted_operand, span).into(),
-      QualifiedType::new_unqualified(Primitive::Bool.into()),
+      QualifiedType::bool(),
     ))
   }
 
@@ -1012,15 +1040,13 @@ impl Analyzer {
     let operand = operand.lvalue_conversion().decay();
 
     if !operand.unqualified_type().is_pointer() {
-      return Err(
-        IndirectionOperandNotPointer(operand.to_string()).into_with(span),
-      );
+      return Err(DerefNonPtr(operand.to_string()).into_with(span));
     }
 
     let pointee_type =
       &operand.unqualified_type().as_pointer_unchecked().pointee;
     if pointee_type.unqualified_type() == &Type::Primitive(Primitive::Void) {
-      Err(DereferenceOfVoidPointer(operand.to_string()).into_with(span))
+      Err(DerefVoidPtr(operand.to_string()).into_with(span))
     } else {
       // If the operand points to a function, the result is a function designator; -- which means the we don't need to perform decay here
       // if it points to an object, the result is an lvalue designating the object.
@@ -1043,12 +1069,14 @@ impl Analyzer {
     right: ae::Expression,
     span: SourceSpan,
   ) -> ExprRes {
-    assert!(
-      operator == Operator::Assign,
-      "compound assignment not implemented"
+    assert_eq!(
+      operator,
+      Operator::Assign,
+      "compound assignment(e.g. +=, /=, etc) not implemented"
     );
     if !left.is_modifiable_lvalue() {
-      return Err(ExprNotAssignable(left.to_string()).into_with(span));
+      self.add_error(ExprNotAssignable(left.to_string()).into_with(span));
+      return Ok(left);
     }
     let assigned_expr = right
       .lvalue_conversion()
@@ -1080,7 +1108,7 @@ impl Analyzer {
     let rhs = right.conditional_conversion()?;
     Ok(ae::Expression::new_rvalue(
       ae::Binary::new(operator, lhs, rhs, span).into(),
-      QualifiedType::new_unqualified(Primitive::Bool.into()),
+      QualifiedType::bool(), // todo: this should be an `int` according to standard(?)
     ))
   }
 
@@ -1106,7 +1134,7 @@ impl Analyzer {
 
       return Ok(ae::Expression::new_rvalue(
         ae::Binary::new(operator, lhs, rhs, span).into(),
-        QualifiedType::new_unqualified(Primitive::Bool.into()),
+        QualifiedType::bool(), // ditto
       ));
     }
     todo!()
@@ -1130,6 +1158,7 @@ impl Analyzer {
 
     let (lhs, rhs, result_type) =
       ae::Expression::usual_arithmetic_conversion(left, right)?;
+
     Ok(ae::Expression::new_rvalue(
       ae::Binary::new(operator, lhs, rhs, span).into(),
       result_type,
@@ -1152,12 +1181,11 @@ impl Analyzer {
     if !left.unqualified_type().is_integer()
       || !right.unqualified_type().is_integer()
     {
-      // return err_or_debugbreak!(); // error: bitwise operator requires integer operands
-      return Err(
+      self.add_error(
         NonIntegerInBitwiseBinaryOp(
           left.to_string(),
           right.to_string(),
-          operator,
+          operator.clone(),
         )
         .into_with(span),
       );
@@ -1271,18 +1299,21 @@ impl Analyzer {
 
     callback(self);
 
-    // if any fail, we still exit the scope
-    let result = (|| {
-      let mut statements = Vec::new();
-      for statement in compound.statements {
-        statements.push(self.statement(statement)?);
-      }
-      Ok(astmt::Compound::new(statements, compound.span))
-    })();
+    let statements = compound
+      .statements
+      .into_iter()
+      .filter_map(|statement| match self.statement(statement) {
+        Ok(stmt) => Some(stmt),
+        Err(e) => {
+          self.add_error(e);
+          None
+        },
+      })
+      .collect::<Vec<_>>();
 
     self.environment.exit();
 
-    result
+    Ok(astmt::Compound::new(statements, compound.span))
   }
 
   fn exprstmt(
@@ -1347,10 +1378,21 @@ impl Analyzer {
       else_branch,
       span,
     } = if_stmt;
-    let analyzed_condition = self.expression(condition)?;
-    let analyzed_then_branch = Box::new(self.statement(*then_branch)?);
+    let analyzed_condition = self
+      .expression(condition)
+      .and_then(|e| e.conditional_conversion())
+      .handle_with(self, ae::Expression::new_error_node(QualifiedType::bool()));
+    let analyzed_then_branch = self
+      .statement(*then_branch)
+      .handle_with(self, astmt::Statement::dummy())
+      .into();
     let analyzed_else_branch = match else_branch {
-      Some(else_branch) => Some(Box::new(self.statement(*else_branch)?)),
+      Some(else_branch) => Some(
+        self
+          .statement(*else_branch)
+          .handle_with(self, astmt::Statement::dummy())
+          .into(),
+      ),
       None => None,
     };
     Ok(astmt::If::new(
@@ -1368,8 +1410,14 @@ impl Analyzer {
       tag: label,
       span,
     } = while_stmt;
-    let analyzed_condition = self.expression(condition)?;
-    let analyzed_body = Box::new(self.statement(*body)?);
+    let analyzed_condition = self
+      .expression(condition)
+      .and_then(|e| e.conditional_conversion())
+      .handle_with(self, ae::Expression::new_error_node(QualifiedType::bool()));
+    let analyzed_body = self
+      .statement(*body)
+      .handle_with(self, astmt::Statement::dummy())
+      .into();
     Ok(astmt::While::new(
       analyzed_condition,
       analyzed_body,
@@ -1385,8 +1433,14 @@ impl Analyzer {
       tag: label,
       span,
     } = do_while;
-    let analyzed_body = Box::new(self.statement(*body)?);
-    let analyzed_condition = self.expression(condition)?;
+    let analyzed_body = self
+      .statement(*body)
+      .handle_with(self, astmt::Statement::dummy())
+      .into();
+    let analyzed_condition = self
+      .expression(condition)
+      .and_then(|e| e.conditional_conversion())
+      .handle_with(self, ae::Expression::new_error_node(QualifiedType::bool()));
     Ok(astmt::DoWhile::new(
       analyzed_body,
       analyzed_condition,
@@ -1404,15 +1458,27 @@ impl Analyzer {
       tag: label,
       span,
     } = for_stmt;
-    let analyzed_initializer = initializer
-      .map(|init| self.statement(*init))
-      .transpose()?
-      .map(Box::new);
-    let analyzed_condition =
-      condition.map(|cond| self.expression(cond)).transpose()?;
-    let analyzed_increment =
-      increment.map(|inc| self.expression(inc)).transpose()?;
-    let analyzed_body = Box::new(self.statement(*body)?);
+    let analyzed_initializer = initializer.map(|init| {
+      self
+        .statement(*init)
+        .handle_with(self, astmt::Statement::dummy())
+        .into()
+    });
+    let analyzed_condition = condition.map(|cond| {
+      self.expression(cond).handle_with(
+        self,
+        ae::Expression::new_error_node(QualifiedType::bool()),
+      )
+    });
+    let analyzed_increment = increment.map(|inc| {
+      self
+        .expression(inc)
+        .handle_with(self, ae::Expression::dummy())
+    });
+    let analyzed_body = self
+      .statement(*body)
+      .handle_with(self, astmt::Statement::dummy())
+      .into();
     Ok(astmt::For::new(
       analyzed_initializer,
       analyzed_condition,
@@ -1431,13 +1497,30 @@ impl Analyzer {
       tag,
       span,
     } = switch;
-    let analyzed_condition = self.expression(condition)?;
+    let analyzed_condition = match self.expression(condition) {
+      Ok(val) if val.unqualified_type().is_integer() => val,
+      Ok(val) => {
+        self.add_error(
+          ExprNotConstant(format!(
+            "switch condition must have integer type, found '{}'",
+            val.qualified_type()
+          ))
+          .into_with(span),
+        );
+        val
+      },
+      Err(e) => {
+        self.add_error(e);
+        ae::Expression::new_error_node(QualifiedType::int())
+      },
+    };
     let mut analyzed_cases = Vec::new();
     for case in cases {
-      analyzed_cases.push(self.casestmt(case)?);
+      analyzed_cases.push(self.casestmt(case).shall_ok("switch case"));
     }
     let analyzed_default = match default {
-      Some(default) => Some(self.defaultstmt(default)?),
+      Some(default) =>
+        Some(self.defaultstmt(default).shall_ok("switch default")),
       None => None,
     };
     Ok(astmt::Switch::new(
@@ -1451,30 +1534,49 @@ impl Analyzer {
 
   fn casestmt(&mut self, case: ps::Case) -> StmtRes<astmt::Case> {
     let ps::Case { body, value, span } = case;
-    let analyzed_value = self.expression(value)?;
-    if !analyzed_value.is_integer_constant() {
-      Err(
-        ExprNotConstant(format!(
-          "Integer constant expression must have integer type, found '{}'",
-          analyzed_value.qualified_type()
-        ))
-        .into_with(span),
-      )
-    } else {
-      let mut analyzed_body = vec![];
-      for stmt in body {
-        analyzed_body.push(self.statement(stmt)?);
-      }
-      Ok(astmt::Case::new(analyzed_value, analyzed_body, span))
-    }
+    let analyzed_value = match self.expression(value) {
+      Ok(val) if val.is_integer_constant() => val,
+      Ok(val) => {
+        self.add_error(
+          ExprNotConstant(format!(
+            "Integer constant expression must have integer type, found '{}'",
+            val.qualified_type()
+          ))
+          .into_with(span),
+        );
+        val
+      },
+      Err(e) => {
+        self.add_error(e);
+        ae::Expression::new_error_node(QualifiedType::int())
+      },
+    };
+    let analyzed_body = body
+      .into_iter()
+      .filter_map(|stmt| match self.statement(stmt) {
+        Ok(stmt) => Some(stmt),
+        Err(e) => {
+          self.add_error(e);
+          None
+        },
+      })
+      .collect::<Vec<_>>();
+
+    Ok(astmt::Case::new(analyzed_value, analyzed_body, span))
   }
 
   fn defaultstmt(&mut self, default: ps::Default) -> StmtRes<astmt::Default> {
     let ps::Default { body, span } = default;
-    let mut analyzed_body = vec![];
-    for stmt in body {
-      analyzed_body.push(self.statement(stmt)?);
-    }
+    let analyzed_body = body
+      .into_iter()
+      .filter_map(|stmt| match self.statement(stmt) {
+        Ok(stmt) => Some(stmt),
+        Err(e) => {
+          self.add_error(e);
+          None
+        },
+      })
+      .collect::<Vec<_>>();
     Ok(astmt::Default::new(analyzed_body, span))
   }
 
@@ -1496,8 +1598,13 @@ impl Analyzer {
           .labels
           .insert(name.clone())
         {
-          true =>
-            Ok(astmt::Label::new(name, self.statement(*statement)?, span)),
+          true => Ok(astmt::Label::new(
+            name,
+            self
+              .statement(*statement)
+              .handle_with(self, astmt::Statement::dummy()),
+            span,
+          )),
           false => Err(DuplicateLabel(name).into_with(span)),
         }
       },

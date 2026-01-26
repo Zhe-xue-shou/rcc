@@ -60,8 +60,8 @@ pub enum Data {
   NonIntegerInBitwiseBinaryOp(Elem, Elem, Operator),
   NonIntegerInBitshiftOp(Elem, Elem, Operator),
   AddressofOperandNotLvalue(Elem),
-  IndirectionOperandNotPointer(Elem),
-  DereferenceOfVoidPointer(Elem),
+  DerefNonPtr(Elem),
+  DerefVoidPtr(Elem),
   ExprNotAssignable(Elem),
   ReturnTypeMismatch(CustomMessage),
   DuplicateLabel(Elem),
@@ -207,12 +207,12 @@ impl<'a> ::std::fmt::Display for ErrorDisplay<'a> {
         "Operand of address-of operator must be lvalue, got '{}'",
         type_name
       ),
-      IndirectionOperandNotPointer(type_name) => write!(
+      DerefNonPtr(type_name) => write!(
         f,
         "Operand of indirection operator must be pointer type, got '{}'",
         type_name
       ),
-      DereferenceOfVoidPointer(type_name) =>
+      DerefVoidPtr(type_name) =>
         write!(f, "Cannot dereference void pointer of type '{}'", type_name),
       ExprNotAssignable(type_name) =>
         write!(f, "Expression of type '{}' is not assignable", type_name),

@@ -53,6 +53,7 @@ impl Parser {
 
   pub fn parse(&mut self) -> Program {
     let mut program = Program::new();
+
     self.typedefs.push_scope(); // global scope
     while !self.is_at_end() {
       debug_assert!(self.typedefs.is_top_level());
@@ -69,22 +70,37 @@ impl Parser {
     program
   }
 
+  #[inline]
   fn is_at_end(&self) -> bool {
     self.tokens.len() <= self.cursor + 1
   }
 
+  #[inline]
+  fn peek(&self) -> &Token {
+    &self.tokens[self.cursor]
+  }
+
+  #[inline]
+  fn peek_with_offset(&self, offset: usize) -> &Token {
+    &self.tokens[self.cursor + offset]
+  }
+
+  #[inline]
   fn peek_lit(&self) -> &Literal {
     &self.tokens[self.cursor].literal
   }
 
+  #[inline]
   fn peek_lit_with_offset(&self, offset: usize) -> &Literal {
     &self.tokens[self.cursor + offset].literal
   }
 
+  #[inline]
   fn peek_loc(&self) -> &SourceSpan {
     &self.tokens[self.cursor].location
   }
 
+  #[inline]
   fn peek_loc_with_offset(&self, offset: usize) -> &SourceSpan {
     if self.is_at_end() {
       &self.tokens[self.cursor].location
@@ -93,14 +109,17 @@ impl Parser {
     }
   }
 
+  #[inline]
   fn peek_prev_lit(&self) -> &Literal {
     &self.tokens[self.cursor - 1].literal
   }
 
+  #[inline]
   fn peek_prev_loc(&self) -> &SourceSpan {
     &self.tokens[self.cursor - 1].location
   }
 
+  #[inline]
   fn peek_backward_loc(&self, offset: isize) -> &SourceSpan {
     contract_assert!(
       (offset as isize) < (self.cursor as isize),
@@ -113,6 +132,7 @@ impl Parser {
     &self.tokens[(self.cursor as isize + offset) as usize].location
   }
 
+  #[inline]
   fn peek_backward_lit_with_offset(&self, offset: isize) -> &Literal {
     contract_assert!(
       (offset as isize) < (self.cursor as isize),
@@ -125,6 +145,8 @@ impl Parser {
     &self.tokens[(self.cursor as isize + offset) as usize].literal
   }
 
+  /// identical to `self.get()`, but will panic if the next token is not KEY. useful for debugging.
+  #[inline]
   fn must_get_key<const KEY: Keyword>(&mut self) -> usize {
     let index = self.get();
     contract_assert!(
@@ -136,7 +158,8 @@ impl Parser {
     index
   }
 
-  /// consume and return the index of the token if it's OP; else, panic.
+  /// ditto; consume and return the index of the token if it's OP; else, panic.
+  #[inline]
   fn must_get_op<const OP: Operator>(&mut self) -> usize {
     let index = self.get();
     contract_assert!(
@@ -148,10 +171,12 @@ impl Parser {
     index
   }
 
+  #[inline]
   fn get(&mut self) -> usize {
     self.get_with_offset(1)
   }
 
+  #[inline]
   fn get_with_offset(&mut self, offset: usize) -> usize {
     assert!(self.cursor < self.tokens.len());
     let index = self.cursor;
@@ -171,6 +196,7 @@ impl Parser {
     }
   }
 
+  /// get if the next token is OP; otherwise, do nothing.
   fn silent_get_if<const OP: Operator>(&mut self) {
     if self.peek_lit() == OP {
       self.must_get_op::<OP>();
@@ -198,13 +224,9 @@ impl Parser {
 /// opt checks
 impl Parser {
   fn ios_c_strict_check_for_decl(&mut self, statement: &Statement) {
-    // if matches!(statement, Statement::Declaration(_)) {
-    //   self.add_error(
-    //     "C standard pre C23 does not allow declaration in 'if', 'while', 'for' statements. If it's intended, please use surrounding braces '{}' to form a block."
-    //       .to_string(),
-    //   );
-    // }
-    _ = statement; // temporary workaround
+    if matches!(statement, Statement::Declaration(_)) {
+      self.add_warning(DeprecatedStmtDeclCvt.into_with(*self.peek_loc()));
+    }
   }
 }
 /// meta parse
@@ -304,10 +326,31 @@ impl Parser {
     declspecs
   }
 
+  /// `TYPE`: Named: must have a name; Maybe: may have a name; Abstract: no name.
+  /// `AGGRESSIVE`: if true, will try to recover from missing identifier by consuming the next token.
   fn parse_declarator<const TYPE: DeclaratorType, const AGGRESSIVE: bool>(
     &mut self,
   ) -> Declarator {
     let location = *self.peek_loc();
+
+    let mut pointer_qualifiers = Vec::new();
+    while self.peek_lit() == Star {
+      self.must_get_op::<{ Star }>();
+
+      let mut qualifier = Qualifiers::empty();
+      while self.peek_lit().is_qualifier() {
+        let q = Qualifiers::from(self.peek_lit());
+        self.get();
+        if qualifier.contains(q) {
+          self.add_warning(RedundantQualifier(q).into_with(SourceSpan {
+            end: self.peek_loc().end,
+            ..location
+          }));
+        }
+        qualifier |= q;
+      }
+      pointer_qualifiers.push(qualifier);
+    }
 
     let name = if TYPE != DeclaratorType::Abstract {
       if let Literal::Identifier(_) = self.peek_lit() {
@@ -331,19 +374,25 @@ impl Parser {
     } else {
       None
     };
-    let mut declarator = Declarator::new(name, SourceSpan::dummy());
+    let mut modifiers = Vec::new();
     // if the next token is '(', it's a function declarator
     if self.peek_lit() == LeftParen {
       self.must_get_op::<{ LeftParen }>();
       let parameters = self.parse_function_params();
       self.recoverable_get::<{ RightParen }>();
-      declarator.modifiers.push(Modifier::Function(parameters));
+      modifiers.push(Modifier::Function(parameters));
     }
-    declarator.span = SourceSpan {
-      end: self.peek_loc().end,
-      ..location
-    };
-    declarator
+    for qualifiers in pointer_qualifiers.into_iter().rev() {
+      modifiers.push(Modifier::Pointer(qualifiers));
+    }
+    Declarator::new(
+      name,
+      modifiers,
+      SourceSpan {
+        end: self.peek_loc().end,
+        ..location
+      },
+    )
   }
 
   fn parse_argument_list(&mut self) -> Vec<Expression> {
@@ -362,7 +411,7 @@ impl Parser {
       if self.peek_lit() == RightParen {
         self.add_error(
           ExtraneousComma(
-            "Trailing comma in argument list is not allowed in C.".to_string(),
+            "Trailing comma in argument list is not allowed in C.",
           )
           .into_with(SourceSpan {
             end: self.peek_loc().end,
@@ -380,7 +429,7 @@ impl Parser {
     // C17: a function declaration without a parameter list
     //  or function body provides no information about that function’s parameters
     // but I won't support that obselete feature :(
-    if let Literal::Keyword(Keyword::Void) = self.tokens[self.cursor].literal {
+    if self.peek_lit() == Keyword::Void {
       // single void parameter
       self.must_get_key::<{ Keyword::Void }>();
       if self.peek_lit() != RightParen {
@@ -394,6 +443,9 @@ impl Parser {
           self.get();
         }
       }
+      FunctionSignature::default()
+    } else if self.peek_lit() == RightParen {
+      // empty parameter list -- assuming no parameters
       FunctionSignature::default()
     } else {
       let mut parameters = Vec::new();
@@ -429,8 +481,7 @@ impl Parser {
             if self.peek_lit() == RightParen {
               self.add_error(
                 ExtraneousComma(
-                  "Trailing comma in parameter list is not allowed in C."
-                    .to_string(),
+                  "Trailing comma in parameter list is not allowed in C.",
                 )
                 .into_with(*self.peek_loc()),
               );
@@ -664,7 +715,7 @@ impl Parser {
     declspecs: DeclSpecs,
     declarator: Declarator,
   ) -> (DeclSpecs, Declarator, Option<Compound>) {
-    let body = match self.tokens[self.cursor].literal {
+    let body = match self.peek_lit() {
       Literal::Operator(LeftBrace) => Some(self.next_block()),
       _ => {
         self.recoverable_get::<{ Semicolon }>();

@@ -5,6 +5,7 @@ use crate::types::{QualifiedType, Qualifiers};
 
 /// Custom message. would be printed as-is.
 type CustomMessage = String;
+type CustomMsgFixed = &'static str;
 /// Element, like `expect ')' after <elem>`
 type Elem = String;
 /// Error `Version 2`. Will replace the old `Error` type (which is just ()) soon.
@@ -27,7 +28,7 @@ pub enum Data {
   MultipleStorageSpecs(Storage, Storage),
   MissingTypeSpecifier,
   MissingIdentifier(CustomMessage),
-  ExtraneousComma(CustomMessage),
+  ExtraneousComma(CustomMsgFixed),
   VoidVariableDecl(CustomMessage),
   ExtraneousStorageSpecs(Storage),
   UnclosedParameterList(CustomMessage),

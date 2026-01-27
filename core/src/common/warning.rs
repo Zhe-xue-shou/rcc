@@ -19,6 +19,8 @@ pub enum Data {
   RedundantQualifier(Qualifiers),
   ExternVariableWithInitializer(Elem),
   VariableUninitialized(CustomMessage),
+  DeprecatedFunctionNoProto,
+  DeprecatedStmtDeclCvt,
   EmptyTypedef,
   EmptyStatement,
 }
@@ -68,6 +70,14 @@ impl<'a> ::std::fmt::Display for WarningDisplay<'a> {
         f,
         "Extern global variable '{}' should not have an initializer",
         name
+      ),
+      Data::DeprecatedFunctionNoProto => write!(
+        f,
+        "Function declarations without prototypes(e.g., int main()) are deprecated and removed in C23. Please provide a prototype (e.g., int main(void)) rather than leaving it empty."
+      ),
+      Data::DeprecatedStmtDeclCvt => write!(
+        f,
+        "C standard pre C23 does not allow declaration after label, if/else, while, do-while, for, and switch statements(e.g.`while(cond) int i = 0;` is invalid). If it's intended, please use surrounding braces to form a block."
       ),
       Data::VariableUninitialized(msg) => write!(f, "{}", msg),
     }

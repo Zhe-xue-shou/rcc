@@ -2,7 +2,7 @@ use ::std::fmt::Display;
 
 use super::{
   Array, ArraySize, Constant, Enum, FunctionProto, FunctionSpecifier, Pointer,
-  QualifiedType, Qualifiers, Record, Type, Union,
+  Primitive, QualifiedType, Qualifiers, Record, Type, Union,
 };
 
 impl Display for Qualifiers {
@@ -68,13 +68,13 @@ impl Display for FunctionProto {
 impl Display for Type {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      Type::Primitive(builtin) => write!(f, "{}", builtin),
-      Type::FunctionProto(proto) => write!(f, "{}", proto),
-      Type::Pointer(ptr) => write!(f, "*{}", ptr),
-      Type::Array(array_type) => write!(f, "{}", array_type),
-      Type::Enum(enum_type) => write!(f, "enum {}", enum_type),
-      Type::Record(record_type) => write!(f, "struct {}", record_type),
-      Type::Union(variant_type) => write!(f, "union {}", variant_type),
+      Type::Primitive(builtin) => <Primitive as Display>::fmt(builtin, f),
+      Type::FunctionProto(proto) => <FunctionProto as Display>::fmt(proto, f),
+      Type::Pointer(ptr) => <Pointer as Display>::fmt(ptr, f),
+      Type::Array(array_type) => <Array as Display>::fmt(array_type, f),
+      Type::Enum(enum_type) => <Enum as Display>::fmt(enum_type, f),
+      Type::Record(record_type) => <Record as Display>::fmt(record_type, f),
+      Type::Union(variant_type) => <Union as Display>::fmt(variant_type, f),
     }
   }
 }

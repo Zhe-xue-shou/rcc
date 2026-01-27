@@ -267,10 +267,14 @@ impl Program {
   }
 }
 impl Declarator {
-  pub fn new(name: Option<String>, span: SourceSpan) -> Self {
+  pub fn new(
+    name: Option<String>,
+    modifiers: Vec<Modifier>,
+    span: SourceSpan,
+  ) -> Self {
     Self {
       name,
-      modifiers: Vec::default(),
+      modifiers,
       span,
     }
   }

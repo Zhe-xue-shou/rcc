@@ -1,4 +1,7 @@
-
+int *p;
+int const *ptr;
+// func ptr test
+// int (*func_ptr)(int, int);
 extern int j;
 static int j = 0;
 extern int j;
@@ -11,7 +14,7 @@ int j;
 typedef int INT;
 typedef int const CONST_INT;
 inline static static int foo(int a) { return a + 1; }
-int main(void) { //
+int main(int argc, char **argv) { //
   goto label;
   {
   label:;

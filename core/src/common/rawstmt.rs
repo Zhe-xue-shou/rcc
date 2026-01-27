@@ -283,10 +283,10 @@ impl RawContinue {
 
 impl<StmtTy, DeclTy, ExprTy> RawStmt<StmtTy, DeclTy, ExprTy> {
   pub fn new_loop_dummy_identifier(str: &'static str) -> String {
-    static LOOP_LABEL_COUNTER: std::sync::atomic::AtomicUsize =
-      std::sync::atomic::AtomicUsize::new(0);
+    static LOOP_LABEL_COUNTER: ::std::sync::atomic::AtomicUsize =
+      ::std::sync::atomic::AtomicUsize::new(0);
     let id =
-      LOOP_LABEL_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+      LOOP_LABEL_COUNTER.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
     format!("{}_{}", str, id)
   }
 }

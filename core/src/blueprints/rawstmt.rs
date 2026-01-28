@@ -25,21 +25,20 @@ pub enum RawStmt<StmtTy, DeclTy, ExprTy> {
 macro_rules! type_alias_stmt {
   ($stmtty:ident,$declty:ident,$exprty:ident) => {
     #[allow(dead_code)]
-    pub type RawStmt =
-      $crate::common::rawstmt::RawStmt<$stmtty, $declty, $exprty>;
-    pub type Return = $crate::common::rawstmt::RawReturn<$exprty>;
-    pub type If = $crate::common::rawstmt::RawIf<$stmtty, $exprty>;
-    pub type While = $crate::common::rawstmt::RawWhile<$stmtty, $exprty>;
-    pub type DoWhile = $crate::common::rawstmt::RawDoWhile<$stmtty, $exprty>;
-    pub type For = $crate::common::rawstmt::RawFor<$stmtty, $exprty>;
-    pub type Switch = $crate::common::rawstmt::RawSwitch<$stmtty, $exprty>;
-    pub type Case = $crate::common::rawstmt::RawCase<$stmtty, $exprty>;
-    pub type Default = $crate::common::rawstmt::RawDefault<$stmtty>;
-    pub type Label = $crate::common::rawstmt::RawLabel<$stmtty>;
-    pub type Goto = $crate::common::rawstmt::RawGoto;
-    pub type Compound = $crate::common::rawstmt::RawCompound<$stmtty>;
-    pub type Break = $crate::common::rawstmt::RawBreak;
-    pub type Continue = $crate::common::rawstmt::RawContinue;
+    pub type RawStmt = $crate::blueprints::RawStmt<$stmtty, $declty, $exprty>;
+    pub type Return = $crate::blueprints::RawReturn<$exprty>;
+    pub type If = $crate::blueprints::RawIf<$stmtty, $exprty>;
+    pub type While = $crate::blueprints::RawWhile<$stmtty, $exprty>;
+    pub type DoWhile = $crate::blueprints::RawDoWhile<$stmtty, $exprty>;
+    pub type For = $crate::blueprints::RawFor<$stmtty, $exprty>;
+    pub type Switch = $crate::blueprints::RawSwitch<$stmtty, $exprty>;
+    pub type Case = $crate::blueprints::RawCase<$stmtty, $exprty>;
+    pub type Default = $crate::blueprints::RawDefault<$stmtty>;
+    pub type Label = $crate::blueprints::RawLabel<$stmtty>;
+    pub type Goto = $crate::blueprints::RawGoto;
+    pub type Compound = $crate::blueprints::RawCompound<$stmtty>;
+    pub type Break = $crate::blueprints::RawBreak;
+    pub type Continue = $crate::blueprints::RawContinue;
   };
 }
 

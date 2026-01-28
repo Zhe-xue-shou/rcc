@@ -5,6 +5,7 @@
 // for std::fmt::Formatter
 #![feature(formatting_options)]
 pub mod analyzer;
+pub(crate) mod blueprints;
 pub mod codegen;
 pub mod common;
 pub mod lexer;

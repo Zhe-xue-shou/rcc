@@ -13,7 +13,7 @@ int j;
 // extern int k[10];
 typedef int INT;
 typedef int const CONST_INT;
-inline static static int foo(int a) { return a + 1; }
+inline static int foo(int a) { return a + 1; }
 int main(int argc, char **argv) { //
   goto label;
   {

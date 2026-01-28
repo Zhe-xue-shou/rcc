@@ -1,7 +1,3 @@
-pub mod rawdecl;
-pub mod rawexpr;
-pub mod rawstmt;
-
 mod environment;
 mod error;
 mod keyword;
@@ -18,8 +14,9 @@ pub use self::{
   operator::{Category as OperatorCategory, Operator},
   source_info::{
     Coordinate, Display as SourceDisplay, File as SourceFile,
-    FileId as SourceFileId, Manager as SourceManager, Span as SourceSpan,
-    SpanDisplay, SpanIndex as SourceSpanIndex,
+    Id as SourceFileId, Id as FileId, Index as SourceSpanIndex,
+    Index as SpanIndex, Manager as SourceManager, Span as SourceSpan,
+    SpanDisplay,
   },
   storage::Storage,
   token::{Literal, Token},

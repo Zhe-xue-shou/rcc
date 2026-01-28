@@ -1,4 +1,4 @@
-use ::rc_utils::{Dummy, IntoWith, contract_assert};
+use ::rc_utils::{IntoWith, contract_assert};
 
 use crate::{
   common::{

@@ -13,26 +13,26 @@ where
 {
 }
 
-pub type FileId = u32;
+pub type Id = u32;
 static_assert!(
-  ::std::mem::needs_drop::<FileId>() == false,
-  "FileId should be a POD type"
+  ::std::mem::needs_drop::<Id>() == false,
+  "Id should be a POD type"
 );
 
-pub type SpanIndex = u32;
+pub type Index = u32;
 static_assert!(
-  ::std::mem::needs_drop::<SpanIndex>() == false,
-  "SpanIndex should be a POD type"
+  ::std::mem::needs_drop::<Index>() == false,
+  "Index should be a POD type"
 );
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Span {
-  pub file_index: FileId,
-  pub start: SpanIndex,
-  pub end: SpanIndex,
+  pub file_index: Id,
+  pub start: Index,
+  pub end: Index,
 }
 impl Span {
-  pub fn new(file_index: FileId, start: SpanIndex, end: SpanIndex) -> Self {
+  pub fn new(file_index: Id, start: Index, end: Index) -> Self {
     Self {
       file_index,
       start,
@@ -44,9 +44,9 @@ impl Dummy for Span {
   #[inline]
   fn dummy() -> Self {
     Self {
-      file_index: FileId::dummy(),
-      start: SpanIndex::dummy(),
-      end: SpanIndex::dummy(),
+      file_index: Id::dummy(),
+      start: Index::dummy(),
+      end: Index::dummy(),
     }
   }
 }
@@ -57,8 +57,8 @@ static_assert!(
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Coordinate {
-  pub line: SpanIndex,
-  pub column: SpanIndex,
+  pub line: Index,
+  pub column: Index,
 }
 static_assert!(
   ::std::mem::needs_drop::<Coordinate>() == false,
@@ -118,8 +118,8 @@ impl Manager {
     let col_idx = (span.start as usize) - line_start;
 
     Coordinate {
-      line: (line_idx + 1) as SpanIndex,
-      column: (col_idx + 1) as SpanIndex,
+      line: (line_idx + 1) as Index,
+      column: (col_idx + 1) as Index,
     }
   }
 

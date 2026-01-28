@@ -8,7 +8,7 @@ type CustomMessage = String;
 type CustomMsgFixed = &'static str;
 /// Element, like `expect ')' after <elem>`
 type Elem = String;
-/// Error `Version 2`. Will replace the old `Error` type (which is just ()) soon.
+
 #[derive(Debug)]
 pub struct Error {
   pub span: SourceSpan,

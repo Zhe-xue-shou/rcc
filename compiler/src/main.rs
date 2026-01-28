@@ -18,7 +18,12 @@ fn main() {
   };
   let mut source_manager = SourceManager::default();
 
-  let _id = source_manager.try_add_file(filename.into());
+  let _id = source_manager
+    .try_add_file(filename.into())
+    .unwrap_or_else(|e| {
+      eprintln!("Error reading file {}: {}", filename, e);
+      ::std::process::exit(1);
+    });
 
   let mut lexer = Lexer::new(&source_manager.files[0].source);
   let tokens = lexer.lex_all();

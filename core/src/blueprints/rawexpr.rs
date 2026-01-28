@@ -1,8 +1,7 @@
 use ::rc_utils::{Dummy, IntoWith};
 
-use super::Operator;
 use crate::{
-  common::SourceSpan,
+  common::{Operator, SourceSpan},
   types::{Constant, QualifiedType},
 };
 
@@ -34,18 +33,18 @@ macro_rules! type_alias_expr {
     /// exists to avoid name clash with `Constant` in this module; this is a design mistake
     pub type ConstantLiteral = $crate::types::Constant;
     /// type or expression
-    pub type SizeOfKind = $crate::common::rawexpr::RawSizeOfKind<$exprty, $typety>;
-    pub type Constant = $crate::common::rawexpr::RawConstant;
-    pub type Unary = $crate::common::rawexpr::RawUnary<$exprty>;
-    pub type Binary = $crate::common::rawexpr::RawBinary<$exprty>;
-    pub type Call = $crate::common::rawexpr::RawCall<$exprty>;
-    pub type Paren = $crate::common::rawexpr::RawParen<$exprty>;
-    pub type MemberAccess = $crate::common::rawexpr::RawMemberAccess<$exprty>;
-    pub type Ternary = $crate::common::rawexpr::RawTernary<$exprty>;
-    pub type SizeOf = $crate::common::rawexpr::RawSizeOf<$exprty, $typety>;
-    pub type CStyleCast = $crate::common::rawexpr::RawCStyleCast<$exprty>;
-    pub type ArraySubscript = $crate::common::rawexpr::RawArraySubscript<$exprty>;
-    pub type CompoundLiteral = $crate::common::rawexpr::RawCompoundLiteral;
+    pub type SizeOfKind = $crate::blueprints::RawSizeOfKind<$exprty, $typety>;
+    pub type Constant = $crate::blueprints::RawConstant;
+    pub type Unary = $crate::blueprints::RawUnary<$exprty>;
+    pub type Binary = $crate::blueprints::RawBinary<$exprty>;
+    pub type Call = $crate::blueprints::RawCall<$exprty>;
+    pub type Paren = $crate::blueprints::RawParen<$exprty>;
+    pub type MemberAccess = $crate::blueprints::RawMemberAccess<$exprty>;
+    pub type Ternary = $crate::blueprints::RawTernary<$exprty>;
+    pub type SizeOf = $crate::blueprints::RawSizeOf<$exprty, $typety>;
+    pub type CStyleCast = $crate::blueprints::RawCStyleCast<$exprty>;
+    pub type ArraySubscript = $crate::blueprints::RawArraySubscript<$exprty>;
+    pub type CompoundLiteral = $crate::blueprints::RawCompoundLiteral;
 
     mod fmtrawexpr {
       use super::*;

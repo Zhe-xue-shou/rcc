@@ -122,7 +122,7 @@ impl Parser {
   #[inline]
   fn peek_backward_loc(&self, offset: isize) -> &SourceSpan {
     contract_assert!(
-      (offset as isize) < (self.cursor as isize),
+      offset < (self.cursor as isize),
       "peek_backward_loc: offset out of bounds"
     );
     contract_assert!(
@@ -135,7 +135,7 @@ impl Parser {
   #[inline]
   fn peek_backward_lit_with_offset(&self, offset: isize) -> &Literal {
     contract_assert!(
-      (offset as isize) < (self.cursor as isize),
+      offset < (self.cursor as isize),
       "peek_backward_lit: offset out of bounds"
     );
     contract_assert!(
@@ -334,6 +334,7 @@ impl Parser {
     let location = *self.peek_loc();
 
     let mut pointer_qualifiers = Vec::new();
+
     while self.peek_lit() == Star {
       self.must_get_op::<{ Star }>();
 
@@ -352,38 +353,52 @@ impl Parser {
       pointer_qualifiers.push(qualifier);
     }
 
-    let name = if TYPE != DeclaratorType::Abstract {
-      if let Literal::Identifier(_) = self.peek_lit() {
-        let name_idx = self.get(); // consume the ident
-        Some(self.tokens[name_idx].to_owned_string())
-      } else {
-        if TYPE == DeclaratorType::Named {
-          self.add_error(
-            MissingIdentifier("Expect identifier in declarator".to_string())
-              .into_with(SourceSpan {
-                end: self.peek_loc().end,
-                ..location
-              }),
-          );
-          if AGGRESSIVE {
-            self.get();
-          }
-        }
-        None
-      }
-    } else {
-      None
-    };
-    let mut modifiers = Vec::new();
-    // if the next token is '(', it's a function declarator
-    if self.peek_lit() == LeftParen {
+    let (name, mut modifiers) = if self.peek_lit() == LeftParen
+    // FIXME: i didnt know it is ok to check this cond?
+      && !self.is_function_params_ahead()
+    {
       self.must_get_op::<{ LeftParen }>();
-      let parameters = self.parse_function_params();
+      let inner_declarator = self.parse_declarator::<TYPE, AGGRESSIVE>();
       self.recoverable_get::<{ RightParen }>();
-      modifiers.push(Modifier::Function(parameters));
-    }
-    if self.peek_lit() == LeftBracket {
-      todo!("unimplementeds feature: array declarator");
+      (inner_declarator.name, inner_declarator.modifiers)
+    } else {
+      let name = if TYPE != DeclaratorType::Abstract {
+        if let Literal::Identifier(_) = self.peek_lit() {
+          let name_idx = self.get(); // consume the ident
+          Some(self.tokens[name_idx].to_owned_string())
+        } else {
+          if TYPE == DeclaratorType::Named {
+            self.add_error(
+              MissingIdentifier("Expect identifier in declarator".to_string())
+                .into_with(SourceSpan {
+                  end: self.peek_loc().end,
+                  ..location
+                }),
+            );
+            if AGGRESSIVE {
+              self.get();
+            }
+          }
+          None
+        }
+      } else {
+        None
+      };
+      (name, Vec::new())
+    };
+    while matches!(
+      self.peek_lit(),
+      Literal::Operator(LeftParen) | Literal::Operator(LeftBracket)
+    ) {
+      if self.peek_lit() == LeftParen {
+        self.must_get_op::<{ LeftParen }>();
+        let parameters = self.parse_function_params();
+        self.recoverable_get::<{ RightParen }>();
+        modifiers.push(Modifier::Function(parameters));
+      }
+      if self.peek_lit() == LeftBracket {
+        todo!("unimplementeds feature: array declarator");
+      }
     }
     for qualifiers in pointer_qualifiers.into_iter().rev() {
       modifiers.push(Modifier::Pointer(qualifiers));
@@ -697,31 +712,28 @@ impl Parser {
       )
       .into();
     }
-    let declaration = if declarator
-      .modifiers
-      .iter()
-      .any(|m| matches!(m, Modifier::Function(_)))
-    {
-      // int(void) is not allowed
-      if declarator.name.is_none() {
-        self.add_error(MissingFunctionName.into_with(*self.peek_loc()));
-      }
-      let (declspecs, declarator, body) =
-        self.next_function_body(declspecs, declarator);
-      Function::new(
-        declspecs,
-        declarator,
-        body,
-        SourceSpan {
-          end: self.peek_loc().end,
-          ..location
-        },
-      )
-      .into()
-    } else {
-      // `int;` is allowed although useless
-      self.next_vardef(declspecs, declarator).into()
-    };
+    let declaration =
+      if matches!(declarator.modifiers.first(), Some(Modifier::Function(_))) {
+        // int(void) is not allowed
+        if declarator.name.is_none() {
+          self.add_error(MissingFunctionName.into_with(*self.peek_loc()));
+        }
+        let (declspecs, declarator, body) =
+          self.next_function_body(declspecs, declarator);
+        Function::new(
+          declspecs,
+          declarator,
+          body,
+          SourceSpan {
+            end: self.peek_loc().end,
+            ..location
+          },
+        )
+        .into()
+      } else {
+        // `int;` is allowed although useless
+        self.next_vardef(declspecs, declarator).into()
+      };
     if recovery {
       self.recoverable_get::<{ RightBrace }>();
     }
@@ -775,7 +787,7 @@ impl Parser {
       Some(self.next_expression(Operator::DEFAULT))
     };
 
-    assert_eq!(*self.peek_lit(), Literal::Operator(Semicolon));
+    assert_eq!(self.peek_lit(), Literal::Operator(Semicolon));
     self.must_get_op::<{ Semicolon }>();
     Return::new(
       expression,

@@ -16,7 +16,7 @@ fn main() {
     [_] => ("all", "test.c"),
     [_, kind, filename] => (kind.as_str(), filename.as_str()),
     _ => {
-      eprintln!("Usage: rcns [all|lex|parse] <filename>");
+      eprintln!("Usage: rc [all|lex|parse] <filename>");
       ::std::process::exit(1);
     },
   };
@@ -139,14 +139,22 @@ mod test {
   }
 
   #[test]
-  fn test_str() {
+  fn t1() {
     let s = r#"
 static const volatile int **const *const* volatile 
     volatile_ptr_to_very_const_ptr_to_very_const_ptr;
     int main(int argc, char **);
 "#;
+    test_str(s);
+  }
+  #[test]
+  fn t2() {
+    let s = "int (*func_ptr)(int, int);";
+    test_str(s);
+  }
+  fn test_str(source: &str) {
     let mut source_manager = SourceManager::default();
-    source_manager.add_string(s.into());
-    pipeline(&mut source_manager, Stage::Analyze, false);
+    source_manager.add_string(source.into());
+    pipeline(&mut source_manager, Stage::Analyze, true);
   }
 }

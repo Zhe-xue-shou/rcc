@@ -17,7 +17,6 @@ const int *const *const const_ptr_to_const_ptr_to_const;
 static const volatile int **const *const
     *volatile volatile_ptr_to_very_const_ptr_to_very_const_ptr;
 // func ptr test
-// int (*func_ptr)(int, int);
 extern int j;
 static int j = 0;
 extern int j;
@@ -29,6 +28,7 @@ int j;
 // extern int k[10];
 typedef int INT;
 typedef int const CONST_INT;
+int (*func_ptr)(INT, CONST_INT);
 inline static int foo(int a) { return a + 1; }
 int main(int argc, char **argv) { //
   goto label;
@@ -62,7 +62,7 @@ int main(int argc, char **argv) { //
 int f(int i, int j) {
 label:;
   int k = i + j;
-  int* ptr_to_k = &k;
+  int *(ptr_to_k) = &k;
   float a = 1.0;
   goto label;
   return k;

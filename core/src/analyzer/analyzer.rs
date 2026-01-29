@@ -146,6 +146,7 @@ impl Analyzer {
 }
 impl Analyzer {
   fn apply_modifiers_for_varty(
+    &mut self,
     mut qualified_type: QualifiedType,
     modifiers: Vec<pd::Modifier>,
   ) -> QualifiedType {
@@ -158,8 +159,8 @@ impl Analyzer {
             Pointer::new(qualified_type.into()).into(),
           );
         },
-        pd::Modifier::Array(array_mod) => {
-          let size = match array_mod.bound {
+        pd::Modifier::Array(arraymodifier) => {
+          let size = match arraymodifier.bound {
             pd::ArrayBound::Constant(n) => ArraySize::Constant(n),
             pd::ArrayBound::Incomplete => ArraySize::Incomplete,
             pd::ArrayBound::Variable(_) => ArraySize::Variable,
@@ -170,10 +171,19 @@ impl Analyzer {
           }
           .into();
         },
-        pd::Modifier::Function(_) => {
-          contract_violation!(
-            "function modifier should be handled in function declarator parsing"
-          );
+        pd::Modifier::Function(functionsignature) => {
+          // func ptr or so
+          let pd::FunctionSignature {
+            parameters,
+            is_variadic,
+          } = functionsignature;
+          let analyzed_parameter_types = self.parse_parameter_types(parameters);
+          qualified_type = FunctionProto::new(
+            qualified_type.into(),
+            analyzed_parameter_types,
+            is_variadic,
+          )
+          .into();
         },
       }
     }
@@ -214,42 +224,72 @@ impl Analyzer {
     Ok((functionproto.into(), parameters))
   }
 
+  fn parse_parameter_types(
+    &mut self,
+    parameters: Vec<pd::Parameter>,
+  ) -> Vec<QualifiedType> {
+    parameters
+      .into_iter()
+      .map(|parameter| {
+        let pd::Parameter {
+          declarator,
+          declspecs,
+          span: _,
+        } = parameter;
+        let (_, storage, base_type) = self
+          .parse_declspecs(declspecs)
+          .shall_ok("Failed to parse declspecs for parameter");
+        contract_assert!(
+          storage.is_none(),
+          "parameter cannot have storage class specifier; this should be handled in parser.
+          also, `register` is currently unimplemented"
+        );
+        let pd::Declarator {
+          modifiers,
+          name: _,
+          span: _,
+        } = declarator;
+        self.apply_modifiers_for_varty(base_type, modifiers)
+      })
+      .collect()
+  }
+
   fn parse_parameters(
     &mut self,
     parameters: Vec<pd::Parameter>,
   ) -> DeclRes<Vec<ad::Parameter>> {
-    let mut analyzed_parameters = Vec::new();
-    parameters.into_iter().for_each(|parameter| {
-      let pd::Parameter {
-        declarator,
-        declspecs,
-        span,
-      } = parameter;
-      let (_, storage, qualified_type) = self
-        .parse_declspecs(declspecs)
-        .shall_ok("Failed to parse declspecs for parameter");
-      if storage.is_some() {
-        contract_violation!(
+    parameters
+      .into_iter()
+      .map(|parameter| {
+        let pd::Parameter {
+          declarator,
+          declspecs,
+          span,
+        } = parameter;
+        let (_, storage, base_type) = self
+          .parse_declspecs(declspecs)
+          .shall_ok("Failed to parse declspecs for parameter");
+        contract_assert!(
+          storage.is_none(),
           "parameter cannot have storage class specifier; this should be handled in parser.
           also, `register` is currently unimplemented"
         );
-      }
-      let pd::Declarator {
-        modifiers,
-        name,
-        span: _,
-      } = declarator;
-      let qualified_type =
-        Self::apply_modifiers_for_varty(qualified_type, modifiers);
-      let symbol = Symbol::new_ref(Symbol::new(
-        qualified_type,
-        Storage::Automatic,
-        name.unwrap_or_else(|| Self::unnamed_placeholder()),
-        VarDeclKind::Declaration,
-      ));
-      analyzed_parameters.push(ad::Parameter::new(symbol, span));
-    });
-    Ok(analyzed_parameters)
+        let pd::Declarator {
+          modifiers,
+          name,
+          span: _,
+        } = declarator;
+        let qualified_type =
+          self.apply_modifiers_for_varty(base_type, modifiers);
+        let symbol = Symbol::new_ref(Symbol::new(
+          qualified_type,
+          Storage::Automatic,
+          name.unwrap_or_else(|| Self::unnamed_placeholder()),
+          VarDeclKind::Declaration,
+        ));
+        Ok(ad::Parameter::new(symbol, span))
+      })
+      .collect()
   }
 
   fn parse_declspecs(
@@ -403,10 +443,7 @@ impl Analyzer {
     let (function_specifier, storage, return_type) = self
       .parse_declspecs(declspecs)
       .shall_ok("current implementation shall not return Err here");
-    let storage = match storage {
-      Some(s) => s,
-      None => Storage::Extern,
-    };
+    let storage = storage.unwrap_or_else(|| Storage::Extern);
     let pd::Declarator {
       modifiers,
       name,
@@ -491,17 +528,7 @@ impl Analyzer {
         }
       });
 
-    let statements = body
-      .statements
-      .into_iter()
-      .filter_map(|stmt| match self.statement(stmt) {
-        Ok(analyzed_stmt) => Some(analyzed_stmt),
-        Err(e) => {
-          self.add_error(e);
-          None
-        },
-      })
-      .collect::<Vec<_>>();
+    let statements = self.statements(body.statements);
 
     self.environment.exit();
 
@@ -546,7 +573,7 @@ impl Analyzer {
     let name = name
       .shall_ok("variable must have a name; it should be handled in parser");
     let qualified_type =
-      Self::apply_modifiers_for_varty(qualified_type, modifiers);
+      self.apply_modifiers_for_varty(qualified_type, modifiers);
     let initializer = match initializer {
       Some(init) => match init {
         pd::Initializer::Expression(expression) => self
@@ -745,7 +772,7 @@ impl Analyzer {
         let qualified_type = {
           let (_, _, base_type) =
             self.parse_declspecs(declspecs).shall_ok("sizeof type");
-          Self::apply_modifiers_for_varty(base_type, declarator.modifiers)
+          self.apply_modifiers_for_varty(base_type, declarator.modifiers)
         };
         Ok(ae::Expression::new_rvalue(
           ae::RawExpr::Constant(
@@ -1280,6 +1307,22 @@ impl Analyzer {
   }
 }
 impl Analyzer {
+  fn statements(
+    &mut self,
+    statements: Vec<ps::Statement>,
+  ) -> Vec<astmt::Statement> {
+    statements
+      .into_iter()
+      .filter_map(|statement| match self.statement(statement) {
+        Ok(stmt) => Some(stmt),
+        Err(e) => {
+          self.add_error(e);
+          None
+        },
+      })
+      .collect::<Vec<_>>()
+  }
+
   fn statement(
     &mut self,
     statement: ps::Statement,
@@ -1330,17 +1373,7 @@ impl Analyzer {
 
     callback(self);
 
-    let statements = compound
-      .statements
-      .into_iter()
-      .filter_map(|statement| match self.statement(statement) {
-        Ok(stmt) => Some(stmt),
-        Err(e) => {
-          self.add_error(e);
-          None
-        },
-      })
-      .collect::<Vec<_>>();
+    let statements = self.statements(compound.statements);
 
     self.environment.exit();
 
@@ -1561,32 +1594,14 @@ impl Analyzer {
         ae::Expression::new_error_node(QualifiedType::int())
       },
     };
-    let analyzed_body = body
-      .into_iter()
-      .filter_map(|stmt| match self.statement(stmt) {
-        Ok(stmt) => Some(stmt),
-        Err(e) => {
-          self.add_error(e);
-          None
-        },
-      })
-      .collect::<Vec<_>>();
+    let analyzed_body = self.statements(body);
 
     Ok(astmt::Case::new(analyzed_value, analyzed_body, span))
   }
 
   fn defaultstmt(&mut self, default: ps::Default) -> StmtRes<astmt::Default> {
     let ps::Default { body, span } = default;
-    let analyzed_body = body
-      .into_iter()
-      .filter_map(|stmt| match self.statement(stmt) {
-        Ok(stmt) => Some(stmt),
-        Err(e) => {
-          self.add_error(e);
-          None
-        },
-      })
-      .collect::<Vec<_>>();
+    let analyzed_body = self.statements(body);
     Ok(astmt::Default::new(analyzed_body, span))
   }
 

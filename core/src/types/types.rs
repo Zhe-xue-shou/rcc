@@ -105,6 +105,7 @@ pub struct Pointer {
 pub enum ArraySize {
   Constant(usize),
   Incomplete,
+  // unsupported dynamic size, but i kept it here for the `full` type category
   Variable,
 }
 

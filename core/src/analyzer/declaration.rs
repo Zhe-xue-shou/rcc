@@ -37,7 +37,7 @@ pub struct VarDef {
 
 #[derive(Debug)]
 pub struct Parameter {
-  /// If the parameter is named, point to the symbol; otherwise None (abstract/unnamed parameter).
+  /// If the parameter is named, point to the symbol; otherwise the name was set to `<unnamed_n>`.
   pub symbol: SymbolRef,
   pub span: SourceSpan,
 }

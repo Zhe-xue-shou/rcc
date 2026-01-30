@@ -1,5 +1,9 @@
 use ::rc_core::{
-  analyzer::Analyzer, common::SourceManager, lexer::Lexer, parser::Parser,
+  analyzer::Analyzer,
+  common::SourceManager,
+  diagnosis::{self, Diagnosis},
+  lexer::Lexer,
+  parser::Parser,
 };
 use ::rc_utils::DisplayWith;
 enum Stage {
@@ -48,8 +52,8 @@ fn pipeline(
 ) {
   let content = &source_manager.files.get(0).unwrap().source;
   let mut lexer = Lexer::new(content);
-  let tokens = lexer.lex();
-  let errors = lexer.errors();
+  let mut diag = diagnosis::default();
+  let tokens = lexer.lex(&mut diag);
   tokens
     .iter()
     .take(tokens.iter().len() - 1) // last is EOF
@@ -60,9 +64,10 @@ fn pipeline(
         println!("{} ", t);
       }
     });
-  if !errors.is_empty() {
+  if diag.has_errors() {
     eprintln!("Lex errors:");
-    errors
+    diag
+      .errors()
       .iter()
       .for_each(|e| eprintln!("{}", e.display_with(&source_manager)));
     ::std::process::exit(1);

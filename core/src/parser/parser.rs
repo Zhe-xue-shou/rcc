@@ -2,13 +2,11 @@ use ::rc_utils::{IntoWith, contract_assert};
 
 use crate::{
   common::{
-    Error,
-    ErrorData::*,
     Keyword, Literal,
     Operator::{self, *},
-    OperatorCategory, SourceSpan, Storage, Token, UnitScope, Warning,
-    WarningData::*,
+    OperatorCategory, SourceSpan, Storage, Token, UnitScope,
   },
+  diagnosis::{Error, ErrorData::*, Warning, WarningData::*},
   parser::{
     declaration::{
       DeclSpecs, Declaration, Declarator, DeclaratorType, Function,

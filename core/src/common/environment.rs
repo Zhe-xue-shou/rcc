@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use ::rc_utils::{shared_ptr, weak_ptr};
 use ::std::{
   cell::RefCell,
@@ -8,7 +6,7 @@ use ::std::{
 };
 
 use super::Storage;
-use crate::types::{QualifiedType, Type};
+use crate::types::QualifiedType;
 
 pub type SymbolRef = shared_ptr<Symbol>;
 pub type WeakSymbolRef = weak_ptr<Symbol>;
@@ -240,6 +238,7 @@ impl<T> Default for Scope<T> {
   }
 }
 impl<T> Scope<T> {
+  #[allow(unused)]
   pub fn new() -> Self {
     Self::default()
   }

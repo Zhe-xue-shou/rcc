@@ -8,6 +8,7 @@ pub mod analyzer;
 pub(crate) mod blueprints;
 pub mod codegen;
 pub mod common;
+pub mod diagnosis;
 pub mod lexer;
 pub mod parser;
 pub mod types;

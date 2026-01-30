@@ -63,10 +63,9 @@ mod fmt {
   use ::std::fmt::Display;
 
   use super::{
-    Binary, Call, Constant, Expression, Expression::*, SizeOf, Ternary, Unary,
-    UnprocessedType, Variable,
+    Binary, Call, Constant, Expression, Expression::*, Paren, SizeOf, Ternary,
+    Unary, UnprocessedType, Variable,
   };
-  use crate::parser::expression::Paren;
 
   impl Display for Expression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

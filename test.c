@@ -64,6 +64,7 @@ label:;
   int k = i + j;
   int *(ptr_to_k) = &k;
   float a = 1.0;
+  typedef int (*FUNC_PTR)(int, int);
   goto label;
   return k;
 }

@@ -4,7 +4,7 @@ use ::std::str::FromStr;
 use ::strum_macros::{Display, EnumString, IntoStaticStr};
 
 use super::{Compatibility, TypeInfo};
-use crate::common::ErrorData;
+use crate::diagnosis::ErrorData;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {

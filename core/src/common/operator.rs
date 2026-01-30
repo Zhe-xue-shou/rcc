@@ -1,6 +1,11 @@
-use ::strum_macros::{Display, EnumString};
 #[derive(
-  Debug, Clone, Display, EnumString, PartialEq, Eq, ::std::marker::ConstParamTy,
+  Debug,
+  Clone,
+  ::strum_macros::Display,
+  ::strum_macros::EnumString,
+  PartialEq,
+  Eq,
+  ::std::marker::ConstParamTy,
 )]
 pub enum Operator {
   // one-character operators

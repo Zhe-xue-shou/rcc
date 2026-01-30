@@ -5,9 +5,10 @@ use ::rc_utils::{
 use crate::{
   analyzer::{declaration as ad, expression as ae, statement as astmt},
   common::{
-    Environment, Error, ErrorData::*, Operator, OperatorCategory, SourceSpan,
-    Storage, Symbol, VarDeclKind, Warning, WarningData::*,
+    Environment, Operator, OperatorCategory, SourceSpan, Storage, Symbol,
+    VarDeclKind,
   },
+  diagnosis::{Error, ErrorData::*, Warning, WarningData::*},
   parser::{declaration as pd, expression as pe, statement as ps},
   types::{
     Array, ArraySize, Compatibility, FunctionProto, FunctionSpecifier, Pointer,

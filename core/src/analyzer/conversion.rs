@@ -2,9 +2,11 @@ use ::rc_utils::IntoWith;
 
 use crate::{
   analyzer::expression::{Expression, ImplicitCast},
-  common::{Error, ErrorData, SourceSpan},
+  common::SourceSpan,
+  diagnosis::{Error, ErrorData},
   types::{
-    CastType, Compatibility, Pointer, Primitive, Promotion, QualifiedType, Type,
+    CastType, Compatibility, Pointer, Primitive, Promotion, QualifiedType,
+    Qualifiers, Type,
   },
 };
 
@@ -156,7 +158,7 @@ impl Expression {
     );
     let pointer_type = Pointer::new(
       QualifiedType::new(
-        *self.qualifiers(), // should equal to empty -- functionproto never has qualifiers
+        Qualifiers::empty(),
         Type::FunctionProto(function_type.clone()),
       )
       .into(),

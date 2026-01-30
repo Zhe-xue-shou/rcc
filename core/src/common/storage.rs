@@ -1,6 +1,7 @@
 use strum_macros::Display;
 
-use super::{ErrorData, Keyword, Literal};
+use super::{Keyword, Literal};
+use crate::diagnosis::ErrorData;
 
 /// storage-class-specifier
 #[derive(Debug, Display, PartialEq, Eq, Clone, Copy)]

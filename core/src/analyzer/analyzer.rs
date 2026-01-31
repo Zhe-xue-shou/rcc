@@ -155,11 +155,30 @@ impl<'session> Analyzer<'session> {
             Pointer::new(qualified_type.into()).into(),
           );
         },
-        pd::Modifier::Array(arraymodifier) => {
-          let size = match arraymodifier.bound {
-            pd::ArrayBound::Constant(n) => ArraySize::Constant(n),
-            pd::ArrayBound::Incomplete => ArraySize::Incomplete,
-            pd::ArrayBound::Variable(_) => ArraySize::Variable,
+        pd::Modifier::Array(array_modifier) => {
+          let size = match array_modifier.bound {
+            None => ArraySize::Incomplete,
+            Some(expr) => {
+              // check 1. it's a constant expression or not, 2. it's type should be integer
+              let analyzed_expr = self.expression(expr).handle_with(
+                self,
+                ae::Expression::new_error_node(QualifiedType::int()),
+              );
+
+              if analyzed_expr.qualified_type().is_scalar() {
+                if analyzed_expr.is_integer_constant() {
+                  todo!("constant folding not implemented yet");
+                } else {
+                  todo!("VLA not supported yet");
+                }
+              } else {
+                self.add_error(
+                  NonIntegerInArraySubscript(analyzed_expr.to_string())
+                    .into_with(analyzed_expr.span()),
+                );
+                ArraySize::Constant(0) // error case
+              }
+            },
           };
           qualified_type = Array {
             element_type: qualified_type.into(),
@@ -167,12 +186,12 @@ impl<'session> Analyzer<'session> {
           }
           .into();
         },
-        pd::Modifier::Function(functionsignature) => {
+        pd::Modifier::Function(function_signature) => {
           // func ptr or so
           let pd::FunctionSignature {
             parameters,
             is_variadic,
-          } = functionsignature;
+          } = function_signature;
           let analyzed_parameter_types = self.parse_parameter_types(parameters);
           qualified_type = FunctionProto::new(
             qualified_type.into(),

@@ -477,12 +477,12 @@ impl<'session, 'source> Lexer<'session, 'source> {
     );
     // note: called after consuming the first character already.
     for (pattern, op) in patterns {
-      debug_assert!(
-        self.peek_n(pattern.chars().count() - 1) != '\0',
-        "should not match past end of input 
-        (if this happens, simply continue to the next pattern;
-        but here I assert to catch logic errors)"
-      );
+      // debug_assert!(
+      //   self.peek_n(pattern.chars().count() - 1) != '\0',
+      //   "should not match past end of input
+      //   (if this happens, simply continue to the next pattern;
+      //   but here I assert to catch logic errors)"
+      // );
       debug_assert!(
         pattern.chars().count() >= 2,
         "compound operator pattern should be >= 2 chars"

@@ -100,6 +100,10 @@ pub enum Data {
     "Operands of bitshift operator '{2}' must be integer types, got '{0}' and '{1}'"
   )]
   NonIntegerInBitshiftOp(Elem, Elem, Operator),
+  #[error("Array subscript is not an integer, got '{0}'")]
+  NonIntegerInArraySubscript(Elem),
+  #[error("'static' may not be used without an array size")]
+  StaticArrayWithoutBound,
   #[error("Operand of address-of operator must be lvalue, got '{0}'")]
   AddressofOperandNotLvalue(Elem),
   #[error("Operand of indirection operator must be pointer type, got '{0}'")]

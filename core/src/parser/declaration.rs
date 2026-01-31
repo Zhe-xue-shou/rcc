@@ -166,13 +166,8 @@ pub struct VarDef {
 pub struct ArrayModifier {
   pub qualifiers: Qualifiers,
   pub is_static: bool,
-  pub bound: ArrayBound,
-}
-#[derive(Debug)]
-pub enum ArrayBound {
-  Constant(usize),
-  Variable(Expression),
-  Incomplete,
+  pub bound: Option<Expression>,
+  pub span: SourceSpan,
 }
 /// function-declarator:
 ///     - direct-declarator ( parameter-type-list_opt )
@@ -214,6 +209,21 @@ impl Enumerator {
 impl EnumSpecifier {
   pub fn new(name: Option<String>, enumerators: Vec<Enumerator>) -> Self {
     Self { name, enumerators }
+  }
+}
+impl ArrayModifier {
+  pub fn new(
+    qualifiers: Qualifiers,
+    is_static: bool,
+    bound: Option<Expression>,
+    span: SourceSpan,
+  ) -> Self {
+    Self {
+      qualifiers,
+      is_static,
+      bound,
+      span,
+    }
   }
 }
 impl Function {
@@ -265,6 +275,23 @@ impl Program {
   pub fn new() -> Self {
     Self {
       declarations: Vec::default(),
+    }
+  }
+}
+impl DeclSpecs {
+  pub fn new(
+    storage_class: Option<Storage>,
+    qualifiers: Qualifiers,
+    type_specifiers: Vec<TypeSpecifier>,
+    function_specifiers: FunctionSpecifier,
+    span: SourceSpan,
+  ) -> Self {
+    Self {
+      storage_class,
+      qualifiers,
+      type_specifiers,
+      function_specifiers,
+      span,
     }
   }
 }
@@ -402,10 +429,7 @@ mod fmt {
 
   use ::std::fmt::Display;
 
-  use super::{
-    DeclSpecs, Declaration, Declarator, EnumSpecifier, Function,
-    FunctionSignature, Modifier, Program, Struct, TypeSpecifier, VarDef,
-  };
+  use super::{ArrayModifier, DeclSpecs, Declaration, Declarator, EnumSpecifier, Function, FunctionSignature, Modifier, Program, Struct, TypeSpecifier, VarDef};
 
   impl Display for Declaration {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -480,10 +504,37 @@ mod fmt {
             }
           )
         },
-        Modifier::Array(_) => todo!(),
+        Modifier::Array(array_modifier) => <ArrayModifier as Display>::fmt(array_modifier, f),
         Modifier::Function(function_signature) =>
           <FunctionSignature as Display>::fmt(function_signature, f),
       }
+    }
+  }
+  
+  impl Display for ArrayModifier {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+      write!(f, "[")?;
+      if self.is_static {
+        write!(f, "static ")?;
+      }
+      if !self.qualifiers.is_empty() {
+        write!(
+          f,
+          "{} ",
+          self
+            .qualifiers
+            .iter()
+            .map(|q| q.to_string())
+            .collect::<Vec<_>>()
+            .join(" ")
+        )?;
+      }
+      if let Some(bound) = &self.bound {
+        write!(f, "{}", bound)?;
+      } else {
+        write!(f, "*")?;
+      }
+      write!(f, "]")
     }
   }
 

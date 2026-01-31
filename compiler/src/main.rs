@@ -164,6 +164,13 @@ static const volatile int **const *const* volatile
     let s = "int (*func_ptr)(int, int);";
     test_str(s);
   }
+  #[test]
+  fn t3() {
+    let s = "int *arr[10];";
+    let mut source_manager = SourceManager::default();
+    source_manager.add_string(s.into());
+    pipeline(&mut source_manager, Stage::Parse, false);
+  }
   fn test_str(source: &str) {
     let mut source_manager = SourceManager::default();
     source_manager.add_string(source.into());

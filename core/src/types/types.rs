@@ -105,7 +105,9 @@ pub struct Pointer {
 pub enum ArraySize {
   Constant(usize),
   Incomplete,
-  // unsupported dynamic size, but i kept it here for the `full` type category
+  /// unsupported dynamic size, but i kept it here for the `full` type category
+  ///
+  /// TODO: if this holds an expression -- it's a cyclic reference of mod `type` and mod `analyzer::expression`?!
   Variable,
 }
 
@@ -116,6 +118,9 @@ pub struct Array {
   /// the actual element type's qualifiers are stored here.
   pub element_type: Box<QualifiedType>,
   pub size: ArraySize,
+  // These are not elem's, but the arraysize's. static is a hint for optimization;
+  // pub qualifiers: Qualifiers,
+  // pub is_static: bool,
 }
 
 /// function types themselves don't have qualifiers, but pointers to them can.

@@ -11,8 +11,8 @@ use crate::{
   },
   parser::{
     declaration::{
-      DeclSpecs, Declaration, Declarator, DeclaratorType, Function,
-      FunctionSignature, Initializer, Modifier, Parameter, Program,
+      ArrayModifier, DeclSpecs, Declaration, Declarator, DeclaratorType,
+      Function, FunctionSignature, Initializer, Modifier, Parameter, Program,
       TypeSpecifier, VarDef,
     },
     expression::{
@@ -248,15 +248,44 @@ impl<'session> Parser<'session> {
     }
   }
 
+  fn parse_qualifier(&mut self) -> Qualifiers {
+    debug_assert!(
+      self.peek_lit().is_qualifier(),
+      "parse_qualifier called on non-qualifier token: {:?}",
+      self.peek_lit()
+    );
+    let qualifier = Qualifiers::from(self.peek_lit());
+    self.get(); // get the qualifier
+    qualifier
+  }
+
+  fn parse_qualifiers(&mut self) -> Qualifiers {
+    let mut qualifiers = Qualifiers::empty();
+    while self.peek_lit().is_qualifier() {
+      let qualifier = self.parse_qualifier();
+      if qualifiers.contains(qualifier) {
+        self.add_warning(
+          RedundantQualifier(qualifier).into_with(*self.peek_loc()),
+        );
+      }
+      qualifiers |= qualifier;
+    }
+    qualifiers
+  }
+
   fn parse_declspecs(&mut self) -> DeclSpecs {
     let location = *self.peek_loc();
-    let mut declspecs = DeclSpecs::default();
+
+    let mut qualifiers = Qualifiers::empty();
+    let mut storage: Option<Storage> = None;
+    let mut type_specifiers = Vec::new();
+    let mut function_specifiers = FunctionSpecifier::empty();
 
     loop {
       if self.peek_lit().is_qualifier() {
-        let qualifier = Qualifiers::from(self.peek_lit());
+        let qualifier = self.parse_qualifier();
         // qualifiers is a bitfield
-        if declspecs.qualifiers.contains(qualifier) {
+        if qualifiers.contains(qualifier) {
           self.add_warning(RedundantQualifier(qualifier).into_with(
             SourceSpan {
               end: self.peek_loc().end,
@@ -264,12 +293,11 @@ impl<'session> Parser<'session> {
             },
           ));
         } else {
-          declspecs.qualifiers |= qualifier;
+          qualifiers |= qualifier;
         }
-        self.get(); // get the qualifier
       } else if self.peek_lit().is_storage_class() {
         let storage_class = Storage::from(self.peek_lit());
-        match declspecs.storage_class {
+        match storage {
           Some(ref existing_storage) if existing_storage == storage_class => {
             self.add_warning(RedundantStorageSpecs(storage_class).into_with(
               SourceSpan {
@@ -288,36 +316,45 @@ impl<'session> Parser<'session> {
             );
           },
           None => {
-            declspecs.storage_class = Some(storage_class);
+            storage = Some(storage_class);
           },
         }
         self.get(); // get the storage class
       // 1. it's a keyword type specifier
       // 2. it's an identifier and we already have some type specifier -- break
       } else if let Some(specifier) = self.parse_type_specifier() {
-        if !declspecs.type_specifiers.is_empty() {
+        if !type_specifiers.is_empty() {
           // already have some type specifier
           break;
         }
-        declspecs.type_specifiers.push(specifier);
+        type_specifiers.push(specifier);
         self.get();
       } else if let Some(kw) = self.parse_function_specifier() {
-        declspecs.function_specifiers |= kw;
+        function_specifiers |= kw;
         self.get();
       } else {
         break;
       }
     }
 
-    if declspecs.type_specifiers.is_empty() {
+    if type_specifiers.is_empty() {
       self.add_error(MissingTypeSpecifier.into_with(SourceSpan {
         end: self.peek_loc().end,
         ..location
       }));
-      declspecs.type_specifiers.push(TypeSpecifier::Int);
+      type_specifiers.push(TypeSpecifier::Int);
     }
 
-    declspecs
+    DeclSpecs::new(
+      storage,
+      qualifiers,
+      type_specifiers,
+      function_specifiers,
+      SourceSpan {
+        end: self.peek_loc().end,
+        ..location
+      },
+    )
   }
 
   /// `TYPE`: [`DeclaratorType`]
@@ -332,24 +369,12 @@ impl<'session> Parser<'session> {
   ) -> Declarator {
     let location = *self.peek_loc();
 
-    let mut pointer_qualifiers = Vec::new();
+    let mut pointers = Vec::new();
 
     while self.peek_lit() == Star {
       self.must_get_op::<{ Star }>();
 
-      let mut qualifier = Qualifiers::empty();
-      while self.peek_lit().is_qualifier() {
-        let q = Qualifiers::from(self.peek_lit());
-        self.get();
-        if qualifier.contains(q) {
-          self.add_warning(RedundantQualifier(q).into_with(SourceSpan {
-            end: self.peek_loc().end,
-            ..location
-          }));
-        }
-        qualifier |= q;
-      }
-      pointer_qualifiers.push(qualifier);
+      pointers.push(Modifier::Pointer(self.parse_qualifiers()));
     }
 
     let (name, mut modifiers) = if self.peek_lit() == LeftParen
@@ -396,12 +421,13 @@ impl<'session> Parser<'session> {
         modifiers.push(Modifier::Function(parameters));
       }
       if self.peek_lit() == LeftBracket {
-        todo!("unimplementeds feature: array declarator");
+        self.must_get_op::<{ LeftBracket }>();
+        let array_modifier = self.parse_array_declarator();
+        self.recoverable_get::<{ RightBracket }>();
+        modifiers.push(Modifier::Array(array_modifier));
       }
     }
-    for qualifiers in pointer_qualifiers.into_iter().rev() {
-      modifiers.push(Modifier::Pointer(qualifiers));
-    }
+    modifiers.extend(pointers.into_iter().rev());
     Declarator::new(
       name,
       modifiers,
@@ -412,36 +438,70 @@ impl<'session> Parser<'session> {
     )
   }
 
-  fn parse_argument_list(&mut self) -> Vec<Expression> {
+  fn parse_array_declarator(&mut self) -> ArrayModifier {
     let location = *self.peek_loc();
-    self.must_get_op::<{ LeftParen }>();
-    let mut arguments = Vec::new();
 
-    while self.peek_lit() != RightParen {
-      // parse expression
-      let expr = self.next_expression(Operator::EXCOMMA);
-      arguments.push(expr);
-      if self.peek_lit() == RightParen {
-        break;
-      }
-      self.recoverable_get::<{ Comma }>();
-      if self.peek_lit() == RightParen {
-        self.add_error(
-          ExtraneousComma(
-            "Trailing comma in argument list is not allowed in C.",
-          )
-          .into_with(SourceSpan {
-            end: self.peek_loc().end,
-            ..location
-          }),
+    if self.peek_lit() == RightBracket {
+      return ArrayModifier::new(
+        Qualifiers::empty(),
+        false,
+        None,
+        SourceSpan {
+          end: self.peek_loc().end,
+          ..location
+        },
+      );
+    }
+    let mut is_static = false;
+    if self.peek_lit() == Keyword::Static {
+      self.must_get_key::<{ Keyword::Static }>();
+      is_static = true;
+    }
+    let qualifiers_front = self.parse_qualifiers();
+
+    if self.peek_lit() == Keyword::Static {
+      self.must_get_key::<{ Keyword::Static }>();
+      if is_static {
+        // clang chooses to report an error here directly, nonetheless I choose to warn only.
+        self.add_warning(
+          RedundantStorageSpecs(Storage::Static).into_with(*self.peek_loc()),
         );
-        break;
+      } else {
+        is_static = true;
       }
     }
-    self.must_get_op::<{ RightParen }>();
-    arguments
+
+    let qualifiers_back = self.parse_qualifiers();
+
+    // clang also reports error if both `front` and `back` qualifiers are present, I choose to merge them.
+    let qualifiers = qualifiers_front | qualifiers_back;
+    let bound = if let Literal::Operator(Star) = self.peek_lit() {
+      self.must_get_op::<{ Star }>();
+      None
+    } else if self.peek_lit() == RightBracket {
+      None
+    } else {
+      let expr = self.next_expression(Operator::DEFAULT);
+      Some(expr)
+    };
+    if is_static && bound.is_none() {
+      self.add_error(StaticArrayWithoutBound.into_with(SourceSpan {
+        end: self.peek_loc().end,
+        ..location
+      }));
+    }
+    ArrayModifier::new(
+      qualifiers,
+      is_static,
+      bound,
+      SourceSpan {
+        end: self.peek_loc().end,
+        ..location
+      },
+    )
   }
 
+  /// parse function parameter list, use [`Parser::parse_argument_list`] for function call.
   fn parse_function_params(&mut self) -> FunctionSignature {
     // (functionnoproto type, deprecated in C23) a function declaration without a parameter list
     //  or function body provides no information about that function’s parameters
@@ -539,6 +599,39 @@ impl<'session> Parser<'session> {
     } else {
       self.parse_type_specifier().is_some()
     }
+  }
+
+  /// parse argument list in **function call**, not function declaration.
+  ///
+  /// for function declaration, use [`Parser::parse_function_params`].
+  fn parse_argument_list(&mut self) -> Vec<Expression> {
+    let location = *self.peek_loc();
+    self.must_get_op::<{ LeftParen }>();
+    let mut arguments = Vec::new();
+
+    while self.peek_lit() != RightParen {
+      // parse expression
+      let expr = self.next_expression(Operator::EXCOMMA);
+      arguments.push(expr);
+      if self.peek_lit() == RightParen {
+        break;
+      }
+      self.recoverable_get::<{ Comma }>();
+      if self.peek_lit() == RightParen {
+        self.add_error(
+          ExtraneousComma(
+            "Trailing comma in argument list is not allowed in C.",
+          )
+          .into_with(SourceSpan {
+            end: self.peek_loc().end,
+            ..location
+          }),
+        );
+        break;
+      }
+    }
+    self.must_get_op::<{ RightParen }>();
+    arguments
   }
 
   /// common function to parse `(` expr `)`.

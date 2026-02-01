@@ -1,3 +1,4 @@
+#![feature(try_trait_v2)]
 // for using core::intrinsics::breakpoint
 #![allow(internal_features)]
 #![feature(core_intrinsics)]

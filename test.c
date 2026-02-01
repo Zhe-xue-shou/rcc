@@ -22,10 +22,10 @@ static int j = 0;
 extern int j;
 int j;
 
-// this is also ok???
-// extern int k[10];
-// int k[];
-// extern int k[10];
+// this is also... weird but valid
+extern int k[10];
+int k[];
+extern int k[10];
 typedef int INT;
 typedef int const CONST_INT;
 int (*func_ptr)(INT, CONST_INT);
@@ -41,11 +41,11 @@ int main(int argc, char **argv) { //
   INT x = sizeof(char);
   typedef int const CONST_INT;
   int foo;
-  CONST_INT INT = (10);
+  CONST_INT(INT) = (10);
   static int y = sizeof x;
   switch (x) {
-  case 0:
-  case 1:
+  case +0:
+  case 2147483647 + 1:
     y = y + 1;
     x = x + 1;
     break;

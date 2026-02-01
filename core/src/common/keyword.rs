@@ -109,6 +109,14 @@ pub enum Keyword {
   // ^^^ pre C23 / C23 vvv
   #[strum(serialize = "constexpr")]
   Constexpr,
+
+  /// not keyword in C but a predefined constant, but I'll just treat it as keyword anyway
+  #[strum(serialize = "nullptr")]
+  Nullptr,
+  #[strum(serialize = "true")]
+  True,
+  #[strum(serialize = "false")]
+  False,
 }
 #[derive(
   Debug,
@@ -127,12 +135,6 @@ pub enum Reserved {
   #[strum(serialize = "typeof_unqual")] // C23
   #[strum(serialize = "__typeof_unqual__")]
   TypeOfUnqual,
-  #[strum(serialize = "nullptr")]
-  Nullptr,
-  #[strum(serialize = "true")]
-  True,
-  #[strum(serialize = "false")]
-  False,
   #[strum(serialize = "_BitInt")]
   BitInt,
   // C23 optional, but I'll keep it reserved keyword

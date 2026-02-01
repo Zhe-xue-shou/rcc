@@ -1,8 +1,9 @@
-use ::rc_utils::Dummy;
+use ::rc_utils::{Dummy, IntoWith};
 use ::strum_macros::Display;
 
 use crate::{
   common::{Operator, OperatorCategory, SourceSpan, SymbolRef},
+  diagnosis::Diag,
   type_alias_expr,
   types::{
     CastType::{self, *},
@@ -82,6 +83,21 @@ impl Expression {
 
   pub fn value_category(&self) -> ValueCategory {
     self.value_category
+  }
+
+  pub(super) fn destructure(self) -> (RawExpr, QualifiedType, ValueCategory) {
+    (self.raw_expr, self.expr_type, self.value_category)
+  }
+}
+impl TryFrom<Expression> for usize {
+  type Error = Diag;
+
+  fn try_from(value: Expression) -> Result<Self, Self::Error> {
+    match value.raw_expr {
+      RawExpr::Constant(c) =>
+        Self::try_from(c.constant).map_err(|m| m.into_with(c.span)),
+      _ => todo!(),
+    }
   }
 }
 impl Primitive {

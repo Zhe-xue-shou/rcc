@@ -1,4 +1,5 @@
 use super::{QualifiedType, Type};
+use crate::diagnosis::{DiagData, DiagMeta, Severity};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Constant {
@@ -255,5 +256,30 @@ impl Constant {
 
   pub fn is_nullptr(&self) -> bool {
     matches!(self, Self::Nullptr)
+  }
+}
+
+impl TryFrom<Constant> for usize {
+  type Error = DiagMeta;
+
+  fn try_from(value: Constant) -> Result<Self, Self::Error> {
+    match value {
+      Constant::Char(c) if c >= 0 => Ok(c as Self),
+      Constant::Short(s) if s >= 0 => Ok(s as Self),
+      Constant::Int(i) if i >= 0 => Ok(i as Self),
+      Constant::LongLong(l) if l >= 0 => Ok(l as Self),
+      Constant::UChar(u) => Ok(u as Self),
+      Constant::UShort(u) => Ok(u as Self),
+      Constant::UInt(u) => Ok(u as Self),
+      Constant::ULongLong(u) => Ok(u as Self),
+      Constant::Bool(b) => Ok(if b { 1 } else { 0 }),
+      Constant::Nullptr => Ok(0),
+      _ => Err(DiagMeta::new(
+        Severity::Error,
+        DiagData::InvalidConversion(
+          "Array declaration size must be a non-negative integer".to_string(),
+        ),
+      )),
+    }
   }
 }

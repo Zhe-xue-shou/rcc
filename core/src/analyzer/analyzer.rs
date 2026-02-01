@@ -3,7 +3,9 @@ use ::rc_utils::{
 };
 
 use crate::{
-  analyzer::{declaration as ad, expression as ae, statement as astmt},
+  analyzer::{
+    declaration as ad, expression as ae, folding::Folding, statement as astmt,
+  },
   common::{
     Environment, Operator, OperatorCategory, SourceSpan, Storage, Symbol,
     VarDeclKind,
@@ -165,7 +167,7 @@ impl<'session> Analyzer<'session> {
           let size = match array_modifier.bound {
             None => ArraySize::Incomplete,
             Some(expr) => {
-              // check 1. it's a constant expression or not, 2. it's type should be integer
+              // check 1. it's a constant expression or not, 2. it's type should be integer type 3. should be non-negative
               let analyzed_expr = self.expression(expr).handle_with(
                 self,
                 ae::Expression::new_error_node(QualifiedType::int()),
@@ -173,8 +175,19 @@ impl<'session> Analyzer<'session> {
 
               if analyzed_expr.qualified_type().is_scalar() {
                 if analyzed_expr.is_integer_constant() {
-                  // let folded = analyzed_expr.fold_unchecked();
-                  todo!()
+                  ArraySize::Constant(
+                    analyzed_expr
+                      .fold(&self.session.diagnosis)
+                      .destructure()
+                      .0
+                      // .map_err(|e| e.into_with(span))
+                      // .handle_with(
+                      //   self,
+                      //   ae::Expression::new_error_node(QualifiedType::int()),
+                      // )
+                      .try_into()
+                      .handle_with(self, 0),
+                  )
                 } else {
                   not_implemented_feature!("VLA not supported yet");
                 }
@@ -251,29 +264,29 @@ impl<'session> Analyzer<'session> {
     parameters: Vec<pd::Parameter>,
   ) -> Vec<QualifiedType> {
     parameters
-      .into_iter()
-      .map(|parameter| {
-        let pd::Parameter {
-          declarator,
-          declspecs,
-          span: _,
-        } = parameter;
-        let (_, storage, base_type) = self
-          .parse_declspecs(declspecs)
-          .shall_ok("Failed to parse declspecs for parameter");
-        contract_assert!(
+            .into_iter()
+            .map(|parameter| {
+                let pd::Parameter {
+                    declarator,
+                    declspecs,
+                    span: _,
+                } = parameter;
+                let (_, storage, base_type) = self
+                    .parse_declspecs(declspecs)
+                    .shall_ok("Failed to parse declspecs for parameter");
+                contract_assert!(
           storage.is_none(),
           "parameter cannot have storage class specifier; this should be handled in parser.
           also, `register` is currently unimplemented"
         );
-        let pd::Declarator {
-          modifiers,
-          name: _,
-          span: _,
-        } = declarator;
-        self.apply_modifiers_for_varty(base_type, modifiers)
-      })
-      .collect()
+                let pd::Declarator {
+                    modifiers,
+                    name: _,
+                    span: _,
+                } = declarator;
+                self.apply_modifiers_for_varty(base_type, modifiers)
+            })
+            .collect()
   }
 
   fn parse_parameters(
@@ -281,37 +294,37 @@ impl<'session> Analyzer<'session> {
     parameters: Vec<pd::Parameter>,
   ) -> DeclRes<Vec<ad::Parameter>> {
     parameters
-      .into_iter()
-      .map(|parameter| {
-        let pd::Parameter {
-          declarator,
-          declspecs,
-          span,
-        } = parameter;
-        let (_, storage, base_type) = self
-          .parse_declspecs(declspecs)
-          .shall_ok("Failed to parse declspecs for parameter");
-        contract_assert!(
+            .into_iter()
+            .map(|parameter| {
+                let pd::Parameter {
+                    declarator,
+                    declspecs,
+                    span,
+                } = parameter;
+                let (_, storage, base_type) = self
+                    .parse_declspecs(declspecs)
+                    .shall_ok("Failed to parse declspecs for parameter");
+                contract_assert!(
           storage.is_none(),
           "parameter cannot have storage class specifier; this should be handled in parser.
           also, `register` is currently unimplemented"
         );
-        let pd::Declarator {
-          modifiers,
-          name,
-          span: _,
-        } = declarator;
-        let qualified_type =
-          self.apply_modifiers_for_varty(base_type, modifiers);
-        let symbol = Symbol::new_ref(Symbol::new(
-          qualified_type,
-          Storage::Automatic,
-          name.unwrap_or_else(Self::unnamed_placeholder),
-          VarDeclKind::Declaration,
-        ));
-        Ok(ad::Parameter::new(symbol, span))
-      })
-      .collect()
+                let pd::Declarator {
+                    modifiers,
+                    name,
+                    span: _,
+                } = declarator;
+                let qualified_type =
+                    self.apply_modifiers_for_varty(base_type, modifiers);
+                let symbol = Symbol::new_ref(Symbol::new(
+                    qualified_type,
+                    Storage::Automatic,
+                    name.unwrap_or_else(Self::unnamed_placeholder),
+                    VarDeclKind::Declaration,
+                ));
+                Ok(ad::Parameter::new(symbol, span))
+            })
+            .collect()
   }
 
   fn parse_declspecs(
@@ -507,8 +520,8 @@ impl<'session> Analyzer<'session> {
       ad::Function::new(symbol, parameters, function_specifier, None, span);
 
     match body {
-      Some(body) => match self.current_function {
-        Some(_) => contract_violation!(
+            Some(body) => match self.current_function {
+                Some(_) => contract_violation!(
           "nested function definition is not allowed; 
           this should be handled in parser: current function {}, new function {}
           
@@ -517,10 +530,10 @@ impl<'session> Analyzer<'session> {
           self.current_function.as_ref().unwrap().symbol.borrow().name,
           function.symbol.borrow().name
         ),
-        None => self.function_with_body(body, function),
-      },
-      None => Ok(function),
-    }
+                None => self.function_with_body(body, function),
+            },
+            None => Ok(function),
+        }
   }
 
   fn function_with_body(
@@ -601,7 +614,10 @@ impl<'session> Analyzer<'session> {
         pd::Initializer::Expression(expression) => self
           .expression(*expression)
           .map(|expr| Some(ad::Initializer::Scalar(expr)))
-          .unwrap_or(None),
+          .unwrap_or_else(|e| {
+            self.add_diag(e);
+            None
+          }),
         pd::Initializer::List(_) => {
           not_implemented_feature!("initializer list");
         },
@@ -790,7 +806,7 @@ impl<'session> Analyzer<'session> {
         let pe::UnprocessedType {
           declspecs,
           declarator,
-        } = unprocessed_type;
+        } = *unprocessed_type;
         let qualified_type = {
           let (_, _, base_type) =
             self.parse_declspecs(declspecs).shall_ok("sizeof type");
@@ -1258,6 +1274,20 @@ impl<'session> Analyzer<'session> {
     let left = left.lvalue_conversion().decay();
     let right = right.lvalue_conversion().decay();
 
+    if !left.unqualified_type().is_arithmetic()
+      || !right.unqualified_type().is_arithmetic()
+    {
+      return Err(
+        NonArithmeticInBinaryOp(
+          left.to_string(),
+          right.to_string(),
+          operator.clone(),
+        )
+        .into_with(Severity::Error)
+        .into_with(span),
+      );
+    }
+
     let (lhs, rhs, result_type) =
       ae::Expression::usual_arithmetic_conversion(left, right)?;
 
@@ -1616,26 +1646,22 @@ impl<'session> Analyzer<'session> {
 
   fn casestmt(&mut self, case: ps::Case) -> StmtRes<astmt::Case> {
     let ps::Case { body, value, span } = case;
-    let analyzed_value = match self.expression(value) {
-      Ok(val) if val.is_integer_constant() => val,
-      Ok(val) => {
-        self.add_error(
-          ExprNotConstant(format!(
-            "Integer constant expression must have integer type, found '{}'",
-            val.qualified_type()
-          )),
-          span,
-        );
-        val
-      },
-      Err(e) => {
-        self.add_diag(e);
-        ae::Expression::new_error_node(QualifiedType::int())
-      },
-    };
+    let analyzed_value = self
+      .expression(value)
+      .handle_with(self, ae::Expression::new_error_node(QualifiedType::int()));
     let analyzed_body = self.statements(body);
 
-    Ok(astmt::Case::new(analyzed_value, analyzed_body, span))
+    let c = analyzed_value.fold(&self.session.diagnosis).destructure().0;
+
+    Ok(astmt::Case::new(
+      if let ae::RawExpr::Constant(constant) = c.raw_expr() {
+        constant.constant.clone()
+      } else {
+        contract_violation!("constant folding did not yield a constant")
+      },
+      analyzed_body,
+      span,
+    ))
   }
 
   fn defaultstmt(&mut self, default: ps::Default) -> StmtRes<astmt::Default> {
@@ -1725,7 +1751,6 @@ impl<'session> Analyzer<'session> {
 }
 
 mod test {
-
   #[test]
   fn oneplusone() {
     use super::*;

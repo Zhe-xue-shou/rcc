@@ -3,7 +3,7 @@ use ::rc_utils::Dummy;
 use crate::common::SourceSpan;
 
 #[derive(Debug)]
-pub enum RawStmt<StmtTy, DeclTy, ExprTy> {
+pub enum RawStmt<StmtTy, DeclTy, ExprTy, ExprCaseTy = ExprTy> {
   Empty,
   Return(RawReturn<ExprTy>),
   // here only vardef, funcdef only permitted in top-level declarations hence it's handled there
@@ -14,7 +14,7 @@ pub enum RawStmt<StmtTy, DeclTy, ExprTy> {
   While(RawWhile<StmtTy, ExprTy>),
   For(RawFor<StmtTy, ExprTy>),
   DoWhile(RawDoWhile<StmtTy, ExprTy>),
-  Switch(RawSwitch<StmtTy, ExprTy>),
+  Switch(RawSwitch<StmtTy, ExprTy, ExprCaseTy>),
   Goto(RawGoto),
   Label(RawLabel<StmtTy>),
   Break(RawBreak),
@@ -24,6 +24,9 @@ pub enum RawStmt<StmtTy, DeclTy, ExprTy> {
 #[macro_export(local_inner_macros)]
 macro_rules! type_alias_stmt {
   ($stmtty:ident,$declty:ident,$exprty:ident) => {
+    $crate::type_alias_stmt!($stmtty, $declty, $exprty, $exprty);
+  };
+  ($stmtty:ident,$declty:ident,$exprty:ident,$exprcasety:ident) => {
     #[allow(dead_code)]
     pub type RawStmt = $crate::blueprints::RawStmt<$stmtty, $declty, $exprty>;
     pub type Return = $crate::blueprints::RawReturn<$exprty>;
@@ -31,8 +34,9 @@ macro_rules! type_alias_stmt {
     pub type While = $crate::blueprints::RawWhile<$stmtty, $exprty>;
     pub type DoWhile = $crate::blueprints::RawDoWhile<$stmtty, $exprty>;
     pub type For = $crate::blueprints::RawFor<$stmtty, $exprty>;
-    pub type Switch = $crate::blueprints::RawSwitch<$stmtty, $exprty>;
-    pub type Case = $crate::blueprints::RawCase<$stmtty, $exprty>;
+    pub type Switch =
+      $crate::blueprints::RawSwitch<$stmtty, $exprty, $exprcasety>;
+    pub type Case = $crate::blueprints::RawCase<$stmtty, $exprcasety>;
     pub type Default = $crate::blueprints::RawDefault<$stmtty>;
     pub type Label = $crate::blueprints::RawLabel<$stmtty>;
     pub type Goto = $crate::blueprints::RawGoto;
@@ -83,16 +87,19 @@ pub struct RawFor<StmtTy, ExprTy> {
 }
 
 #[derive(Debug)]
-pub struct RawSwitch<StmtTy, ExprTy> {
+pub struct RawSwitch<StmtTy, ExprTy, ExprCaseTy = ExprTy> {
   pub condition: ExprTy,
-  pub cases: Vec<RawCase<StmtTy, ExprTy>>,
+  pub cases: Vec<RawCase<StmtTy, ExprCaseTy>>,
   pub default: Option<RawDefault<StmtTy>>,
   pub tag: String,
   pub span: SourceSpan,
 }
 #[derive(Debug)]
-pub struct RawCase<StmtTy, ExprTy> {
-  pub value: ExprTy, // Must be constant integer expression
+pub struct RawCase<StmtTy, ExprCaseTy> {
+  /// [`Expression`](crate::parser::expression::Expression) in parser,
+  /// [`ConstantLiteral`](crate::types::Constant) in analyzer
+  /// and IT SHALL ONLY be [`Constant::Int`](crate::types::Constant::Int)
+  pub value: ExprCaseTy,
   pub body: Vec<StmtTy>,
   pub span: SourceSpan,
 }
@@ -154,10 +161,10 @@ impl<StmtTy> ::core::default::Default for RawCompound<StmtTy> {
   }
 }
 
-impl<StmtTy, ExprTy> RawSwitch<StmtTy, ExprTy> {
+impl<StmtTy, ExprTy, ExprCaseTy> RawSwitch<StmtTy, ExprTy, ExprCaseTy> {
   pub fn new(
     condition: ExprTy,
-    cases: Vec<RawCase<StmtTy, ExprTy>>,
+    cases: Vec<RawCase<StmtTy, ExprCaseTy>>,
     default: Option<RawDefault<StmtTy>>,
     tag: String,
     span: SourceSpan,
@@ -182,8 +189,8 @@ impl<StmtTy> RawLabel<StmtTy> {
   }
 }
 
-impl<StmtTy, ExprTy> RawCase<StmtTy, ExprTy> {
-  pub fn new(value: ExprTy, body: Vec<StmtTy>, span: SourceSpan) -> Self {
+impl<StmtTy, ExprCaseTy> RawCase<StmtTy, ExprCaseTy> {
+  pub fn new(value: ExprCaseTy, body: Vec<StmtTy>, span: SourceSpan) -> Self {
     Self { value, body, span }
   }
 }
@@ -414,7 +421,9 @@ mod fmt {
     }
   }
 
-  impl<StmtTy: Display, ExprTy: Display> Display for RawCase<StmtTy, ExprTy> {
+  impl<StmtTy: Display, ExprCaseTy: Display> Display
+    for RawCase<StmtTy, ExprCaseTy>
+  {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       write!(
         f,
@@ -431,7 +440,9 @@ mod fmt {
     }
   }
 
-  impl<StmtTy: Display, ExprTy: Display> Display for RawSwitch<StmtTy, ExprTy> {
+  impl<StmtTy: Display, ExprTy: Display, ExprCaseTy: Display> Display
+    for RawSwitch<StmtTy, ExprTy, ExprCaseTy>
+  {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       write!(f, "switch ({}) {{\n", self.condition)?;
       for case in &self.cases {

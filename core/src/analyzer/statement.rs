@@ -1,7 +1,10 @@
 use ::rc_utils::Dummy;
 
 use crate::{
-  analyzer::{declaration::ExternalDeclaration, expression::Expression},
+  analyzer::{
+    declaration::ExternalDeclaration,
+    expression::{ConstantLiteral, Expression},
+  },
   type_alias_stmt,
 };
 // no additional info like that one we do in Expression?
@@ -24,7 +27,7 @@ pub enum Statement {
   Continue(Continue),
 }
 
-type_alias_stmt!(Statement, ExternalDeclaration, Expression);
+type_alias_stmt!(Statement, ExternalDeclaration, Expression, ConstantLiteral);
 
 impl Dummy for Statement {
   fn dummy() -> Self {

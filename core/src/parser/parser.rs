@@ -1365,6 +1365,23 @@ impl<'session> Parser<'session> {
         Keyword::Sizeof => self.next_sizeof(),
         Keyword::Alignof => todo!(),
         Keyword::Alignas => todo!(),
+        Keyword::True => Expression::Constant(
+          ConstantLiteral::Bool(true).into_with(SourceSpan {
+            end: self.peek_loc().end,
+            ..location
+          }),
+        ),
+        Keyword::False => Expression::Constant(
+          ConstantLiteral::Bool(false).into_with(SourceSpan {
+            end: self.peek_loc().end,
+            ..location
+          }),
+        ),
+        Keyword::Nullptr =>
+          Expression::Constant(ConstantLiteral::Nullptr.into_with(SourceSpan {
+            end: self.peek_loc().end,
+            ..location
+          })),
 
         _ => {
           self.add_error(
@@ -1400,11 +1417,13 @@ impl<'session> Parser<'session> {
             self.parse_declarator::<{ DeclaratorType::Abstract }, false>();
           self.recoverable_get::<{ RightParen }>();
           Expression::SizeOf(
-            SizeOfKind::Type(UnprocessedType::new(declspecs, declarator))
-              .into_with(SourceSpan {
-                end: self.peek_loc().end,
-                ..location
-              }),
+            SizeOfKind::Type(
+              UnprocessedType::new(declspecs, declarator).into(),
+            )
+            .into_with(SourceSpan {
+              end: self.peek_loc().end,
+              ..location
+            }),
           )
         },
         None => {

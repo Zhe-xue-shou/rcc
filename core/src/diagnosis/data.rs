@@ -16,6 +16,7 @@ impl Meta {
   }
 }
 impl IntoWith<SourceSpan, Diag> for Meta {
+  #[inline]
   fn into_with(self, span: SourceSpan) -> Diag {
     Diag::new(span, self.severity, self.data)
   }
@@ -32,7 +33,7 @@ use ::thiserror::Error;
 
 use crate::{
   common::{Keyword, Literal, Operator, SourceManager, SourceSpan, Storage},
-  types::{QualifiedType, Qualifiers},
+  types::{Constant, QualifiedType, Qualifiers},
 };
 
 /// Custom message. would be printed as-is.
@@ -184,6 +185,8 @@ pub enum Data {
     "Function declarations without prototypes(e.g., int main()) are deprecated and removed in C23. Please provide a prototype (e.g., int main(void)) rather than leaving it empty."
   )]
   DeprecatedFunctionNoProto,
+  #[error("Arithmetic overflow in operation '{2}' between '{0}' and '{1}'")]
+  ArithmeticOpOverflow(Constant, Constant, Operator),
   #[error(
     "C standard pre C23 does not allow declaration after label, if/else, while, do-while, for, and switch statements(e.g.`while(cond) int i = 0;` is invalid). If it's intended, please use surrounding braces to form a block."
   )]
@@ -200,6 +203,7 @@ static_assert!(
 );
 
 impl IntoWith<Severity, Meta> for Data {
+  #[inline]
   fn into_with(self, severity: Severity) -> Meta {
     Meta::new(severity, self)
   }
@@ -213,6 +217,7 @@ fn format_expected(expected: &Option<Literal>) -> String {
 }
 
 impl Diag {
+  #[inline]
   pub fn new(span: SourceSpan, severity: Severity, data: Data) -> Self {
     Self {
       metadata: Meta::new(severity, data),

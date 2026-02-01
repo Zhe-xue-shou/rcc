@@ -85,6 +85,21 @@ macro_rules! type_alias_expr {
         ::rc_utils::interconvert!($extra, RawExpr);
       )*
 
+      ::rc_utils::make_trio_for!(Constant, RawExpr);
+      ::rc_utils::make_trio_for!(Unary, RawExpr);
+      ::rc_utils::make_trio_for!(Binary, RawExpr);
+      ::rc_utils::make_trio_for!(Call, RawExpr);
+      ::rc_utils::make_trio_for!(Paren, RawExpr);
+      ::rc_utils::make_trio_for!(MemberAccess, RawExpr);
+      ::rc_utils::make_trio_for!(Ternary, RawExpr);
+      ::rc_utils::make_trio_for!(SizeOf, RawExpr);
+      ::rc_utils::make_trio_for!(CStyleCast, RawExpr);
+      ::rc_utils::make_trio_for!(ArraySubscript, RawExpr);
+      ::rc_utils::make_trio_for!(CompoundLiteral, RawExpr);
+      $(
+        ::rc_utils::make_trio_for!($extra, RawExpr);
+      )*
+
       impl From<ConstantLiteral> for RawExpr {
         fn from(constant: ConstantLiteral) -> Self {
           RawExpr::Constant(constant.into())
@@ -136,6 +151,12 @@ macro_rules! type_alias_expr {
         }
       }
     }
+
+    ::rc_utils::static_assert!(
+      ::std::mem::size_of::<RawExpr>() <= 64,
+      "RawExpr size exceeds 64 bytes",
+    );
+
   };
 }
 #[derive(Debug)]
@@ -182,7 +203,7 @@ pub struct RawTernary<ExprTy> {
 }
 #[derive(Debug)]
 pub enum RawSizeOfKind<ExprTy, TypeTy> {
-  Type(TypeTy), // ignore for now
+  Type(Box<TypeTy>), // ignore for now
   Expression(Box<ExprTy>),
 }
 
@@ -194,7 +215,7 @@ pub struct RawSizeOf<ExprTy, TypeTy> {
 
 #[derive(Debug)]
 pub struct RawCStyleCast<ExprTy> {
-  pub target_type: QualifiedType,
+  pub target_type: Box<QualifiedType>,
   pub expr: Box<ExprTy>,
   pub span: SourceSpan,
 }
@@ -206,7 +227,7 @@ pub struct RawArraySubscript<ExprTy> {
 }
 #[derive(Debug)]
 pub struct RawCompoundLiteral {
-  pub target_type: QualifiedType,
+  pub target_type: Box<QualifiedType>,
   // pub initializer: Initializer,
   pub span: SourceSpan,
 }

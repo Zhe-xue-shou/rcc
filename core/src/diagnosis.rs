@@ -1,7 +1,6 @@
 mod data;
-mod error;
-mod warning;
 
+use ::rc_utils::Dummy;
 use ::std::cell::{Ref, RefCell};
 
 pub use self::data::{Data as DiagData, Diag, Meta as DiagMeta, Severity};
@@ -27,18 +26,14 @@ pub trait Diagnosis {
   }
 }
 
-pub fn operational() -> OperationalDiag {
-  OperationalDiag::default()
-}
-
 #[derive(Default, Debug)]
 
-pub struct OperationalDiag {
+pub struct Operational {
   warnings: RefCell<Vec<Diag>>,
   errors: RefCell<Vec<Diag>>,
 }
 
-impl Diagnosis for OperationalDiag {
+impl Diagnosis for Operational {
   #[inline]
   fn has_errors(&self) -> bool {
     !self.errors.borrow().is_empty()
@@ -75,7 +70,61 @@ impl Diagnosis for OperationalDiag {
       .push(Diag::new(span, Severity::Warning, data));
   }
 }
+
+pub struct NoOp {
+  /// rust strict rules w.r.t. thread safety(!Sync)
+  /// and lifetime issues makes it difficult to just create a dummmy noop struct.
+  idk: RefCell<Vec<Diag>>,
+}
+impl ::std::default::Default for NoOp {
+  #[inline]
+  fn default() -> Self {
+    Self {
+      idk: RefCell::new(Vec::with_capacity(0)),
+    }
+  }
+}
+
+impl NoOp {
+  #[inline]
+  pub fn new() -> Self {
+    Self::default()
+  }
+}
+impl Dummy for NoOp {
+  #[inline]
+  fn dummy() -> Self {
+    Self::new()
+  }
+}
+impl Diagnosis for NoOp {
+  #[inline]
+  fn has_errors(&self) -> bool {
+    false
+  }
+
+  #[inline]
+  fn has_warnings(&self) -> bool {
+    false
+  }
+
+  #[inline]
+  fn errors(&self) -> Ref<'_, Vec<Diag>> {
+    self.idk.borrow()
+  }
+
+  #[inline]
+  fn warnings(&self) -> Ref<'_, Vec<Diag>> {
+    self.idk.borrow()
+  }
+
+  #[inline]
+  fn add_error(&self, _error: DiagData, _span: SourceSpan) {}
+
+  #[inline]
+  fn add_warning(&self, _warning: DiagData, _span: SourceSpan) {}
+}
 #[derive(Default, Debug)]
 pub struct Session {
-  pub diagnosis: OperationalDiag,
+  pub diagnosis: Operational,
 }

@@ -166,10 +166,10 @@ static const volatile int **const *const* volatile
   }
   #[test]
   fn t3() {
-    let s = "int *arr[10];";
+    let s = "int a = 1111111111111ULL;";
     let mut source_manager = SourceManager::default();
     source_manager.add_string(s.into());
-    pipeline(&mut source_manager, Stage::Parse, false);
+    pipeline(&mut source_manager, Stage::Analyze, true);
   }
   fn test_str(source: &str) {
     let mut source_manager = SourceManager::default();

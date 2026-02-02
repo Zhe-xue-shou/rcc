@@ -66,16 +66,17 @@ impl Token {
     }
   }
 
+  /// transform `[tab:lex.diagraph]` alternative tokens into their operator equivalents
   pub fn transform_alternative(self) -> Self {
     match self.literal {
       Literal::Keyword(ref keyword) => match keyword {
-        Keyword::And => Self::operator(Operator::And, self.location),
-        Keyword::Or => Self::operator(Operator::Or, self.location),
-        Keyword::Not => Self::operator(Operator::Not, self.location),
-        Keyword::Xor => Self::operator(Operator::Caret, self.location),
-        Keyword::Bitand => Self::operator(Operator::Ampersand, self.location),
-        Keyword::Bitor => Self::operator(Operator::Pipe, self.location),
-        Keyword::Compl => Self::operator(Operator::Tilde, self.location),
+        And => Self::operator(Operator::And, self.location),
+        Or => Self::operator(Operator::Or, self.location),
+        Not => Self::operator(Operator::Not, self.location),
+        Xor => Self::operator(Operator::Caret, self.location),
+        Bitand => Self::operator(Operator::Ampersand, self.location),
+        Bitor => Self::operator(Operator::Pipe, self.location),
+        Compl => Self::operator(Operator::Tilde, self.location),
         _ => self,
       },
       _ => self,

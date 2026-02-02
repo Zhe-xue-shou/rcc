@@ -8,7 +8,7 @@ use crate::{
 #[macro_export(local_inner_macros)]
 macro_rules! type_alias_expr {
   ($exprty:ident,$typety:ident $(, $extra:ident)*) => {
-    /// likely a sophisticated version of the Two-Level Types
+    /// likely a sophisticated version of the Two-Level Types described in
     /// [this article](https://blog.ezyang.com/2013/05/the-ast-typing-problem/),
     /// I probably used the Parametric Polymorphism to "tie the knot" of recursion.
     #[derive(Debug)]

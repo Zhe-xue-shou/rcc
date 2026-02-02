@@ -207,6 +207,18 @@ impl QualifiedType {
   pub const fn int() -> Self {
     Self::new_unqualified(Type::int())
   }
+
+  pub const fn float() -> Self {
+    Self::new_unqualified(Type::float())
+  }
+
+  pub const fn nullptr() -> Self {
+    Self::new_unqualified(Type::nullptr())
+  }
+
+  pub const fn char() -> Self {
+    Self::new_unqualified(Type::char())
+  }
 }
 impl Pointer {
   pub fn new(pointee: Box<QualifiedType>) -> Self {
@@ -372,7 +384,8 @@ impl Type {
       _ => false,
     }
   }
-
+}
+impl Type {
   pub const fn void() -> Self {
     Type::Primitive(Primitive::Void)
   }
@@ -385,8 +398,16 @@ impl Type {
     Type::Primitive(Primitive::Int)
   }
 
+  pub const fn float() -> Self {
+    Type::Primitive(Primitive::Float)
+  }
+
   pub const fn nullptr() -> Self {
     Type::Primitive(Primitive::Nullptr)
+  }
+
+  pub const fn char() -> Self {
+    Type::Primitive(Primitive::Char)
   }
 }
 impl QualifiedType {

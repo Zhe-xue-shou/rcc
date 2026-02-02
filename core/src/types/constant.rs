@@ -1,6 +1,18 @@
+use ::rc_utils::IntoWith;
+
 use super::{QualifiedType, Type};
 use crate::diagnosis::{DiagData, DiagMeta, Severity};
 
+/// This class is **mixed**.
+///
+/// In lexer, it only represents numbers.
+/// In parser and later stages, it represents all kinds of constant values.
+///
+/// Also in later stage, it has a redundant variant tag -- like a discriminated union;
+///
+/// it's not needed since the type system can represent the type of the constant -- an indiscriminated union would be sufficient.
+///
+/// TODO: move StringLiteral and Nullptr out, so that it did not need [`Drop`].
 #[derive(Debug, PartialEq, Clone)]
 pub enum Constant {
   Char(i8),
@@ -40,6 +52,9 @@ impl Constant {
     // unsupported
     "wb", "WB", // _BitInt
     "uwb", "uWB", "Uwb", "UWB", // unsigned _BitInt
+    // msvc extensions
+    "i8", "i16", "i32", "i64", // signed int
+    "ui8", "ui16", "ui32", "ui64", // unsigned int
   ];
 
   /// parse a numeric literal with optional suffix, if fails, return an error message and the default value of the Constant
@@ -47,143 +62,81 @@ impl Constant {
     num: &str,
     suffix: Option<&str>,
     is_floating: bool,
-  ) -> (Self, Option<String>) {
+  ) -> (Self, Option<DiagMeta>) {
+    macro_rules! conv {
+      ($t:ty, $variant:ident) => {
+        match num.parse::<$t>() {
+          Ok(v) => (Constant::$variant(v), None),
+          Err(e) => (
+            Constant::$variant(Default::default()),
+            Some(
+              DiagData::InvalidNumberFormat(e.to_string())
+                .into_with(Severity::Error),
+            ),
+          ),
+        }
+      };
+      ($t:ty, $variant:ident, $cast:ty) => {
+        match num.parse::<$t>() {
+          Ok(v) => (Constant::$variant(v as $cast), None),
+          Err(e) => (
+            Constant::$variant(Default::default()),
+            Some(
+              DiagData::InvalidNumberFormat(e.to_string())
+                .into_with(Severity::Error),
+            ),
+          ),
+        }
+      };
+    }
     match (suffix, is_floating) {
-      (None, false) => {
-        // default to int
-        match num.parse::<i32>() {
-          Ok(i) => (Constant::Int(i), None),
-          Err(e) => (
-            Constant::Int(0),
-            Some(format!("Failed to parse integer literal {}: {}", num, e)),
+      // default to int
+      (None, false) => conv!(i32, Int),
+      // default to double
+      (None, true) => conv!(f64, Double),
+      // integer with suffix
+      (Some(suf), false) => match suf {
+        "u" | "U" => conv!(u32, UInt),
+        "l" | "L" => conv!(i64, LongLong),
+        "ll" | "LL" => conv!(i64, LongLong),
+        "ul" | "uL" | "Ul" | "UL" | "lu" | "lU" | "Lu" | "LU" =>
+          conv!(u64, ULongLong),
+        "ull" | "uLL" | "Ull" | "ULL" | "llu" | "llU" | "LLu" | "LLU" =>
+          conv!(u64, ULongLong),
+        "z" | "Z" => conv!(isize, LongLong, i64),
+        "uz" | "uZ" | "Uz" | "UZ" | "zu" | "zU" | "Zu" | "ZU" =>
+          conv!(usize, ULongLong, u64),
+        _ => (
+          Constant::Int(Default::default()),
+          Some(
+            DiagData::InvalidNumberFormat(format!(
+              "unsupported integer literal suffix: {}",
+              suf
+            ))
+            .into_with(Severity::Error),
           ),
-        }
+        ),
       },
-      (None, true) => {
-        // default to double
-        match num.parse::<f64>() {
-          Ok(f) => (Constant::Double(f), None),
-          Err(e) => (
-            Constant::Double(0.0),
-            Some(format!("Failed to parse floating literal {}: {}", num, e)),
+      // floating with suffix
+      (Some(suf), true) => match suf {
+        "f" | "F" => conv!(f32, Float),
+        "l" | "L" => conv!(f64, Double),
+        _ => (
+          Constant::Double(Default::default()),
+          Some(
+            DiagData::InvalidNumberFormat(format!(
+              "unsupported floating literal suffix: {}",
+              suf
+            ))
+            .into_with(Severity::Error),
           ),
-        }
-      },
-      (Some(suf), false) => {
-        // integer with suffix
-        match suf {
-          "u" | "U" => match num.parse::<u32>() {
-            Ok(u) => (Constant::UInt(u), None),
-            Err(e) => (
-              Constant::UInt(0),
-              Some(format!(
-                "Failed to parse unsigned integer literal {}: {}",
-                num, e
-              )),
-            ),
-          },
-          "l" | "L" => match num.parse::<i64>() {
-            Ok(i) => (Constant::LongLong(i), None),
-            Err(e) => (
-              Constant::LongLong(0),
-              Some(format!(
-                "Failed to parse long long integer literal {}: {}",
-                num, e
-              )),
-            ),
-          },
-          "ll" | "LL" => match num.parse::<i64>() {
-            Ok(i) => (Constant::LongLong(i), None),
-            Err(e) => (
-              Constant::LongLong(0),
-              Some(format!(
-                "Failed to parse long long integer literal {}: {}",
-                num, e
-              )),
-            ),
-          },
-          "ul" | "uL" | "Ul" | "UL" | "lu" | "lU" | "Lu" | "LU" => {
-            match num.parse::<u64>() {
-              Ok(u) => (Constant::ULongLong(u), None),
-              Err(e) => (
-                Constant::ULongLong(0),
-                Some(format!(
-                  "Failed to parse unsigned long long integer literal {}: {}",
-                  num, e
-                )),
-              ),
-            }
-          },
-          "ull" | "uLL" | "Ull" | "ULL" | "llu" | "llU" | "LLu" | "LLU" =>
-            match num.parse::<u64>() {
-              Ok(u) => (Constant::ULongLong(u), None),
-              Err(e) => (
-                Constant::ULongLong(0),
-                Some(format!(
-                  "Failed to parse unsigned long long integer literal {}: {}",
-                  num, e
-                )),
-              ),
-            },
-          "z" | "Z" => match num.parse::<isize>() {
-            Ok(i) => (Constant::LongLong(i as i64), None),
-            Err(e) => (
-              Constant::LongLong(0),
-              Some(format!(
-                "Failed to parse size_t integer literal {}: {}",
-                num, e
-              )),
-            ),
-          },
-          "uz" | "uZ" | "Uz" | "UZ" | "zu" | "zU" | "Zu" | "ZU" => {
-            match num.parse::<usize>() {
-              Ok(u) => (Constant::ULongLong(u as u64), None),
-              Err(e) => (
-                Constant::ULongLong(0),
-                Some(format!(
-                  "Failed to parse unsigned size_t integer literal {}: {}",
-                  num, e
-                )),
-              ),
-            }
-          },
-          _ => (
-            Constant::Int(0),
-            Some(format!("unsupported integer literal suffix: {}", suf)),
-          ),
-        }
-      },
-      (Some(suf), true) => {
-        // floating with suffix
-        match suf {
-          "f" | "F" => match num.parse::<f32>() {
-            Ok(f) => (Constant::Float(f), None),
-            Err(e) => (
-              Constant::Float(0.0),
-              Some(format!("Failed to parse float literal {}: {}", num, e)),
-            ),
-          },
-          "l" | "L" => match num.parse::<f64>() {
-            Ok(f) => (Constant::Double(f), None),
-            Err(e) => (
-              Constant::Double(0.0),
-              Some(format!(
-                "Failed to parse long double literal {}: {}",
-                num, e
-              )),
-            ),
-          },
-          _ => (
-            Constant::Double(0.0),
-            Some(format!("unsupported floating literal suffix: {}", suf)),
-          ),
-        }
+        ),
       },
     }
   }
 
   pub fn unqualified_type(&self) -> Type {
-    use super::{Array, ArraySize, Primitive::*, Qualifiers};
+    use super::{Array, ArraySize, Primitive::*};
 
     match self {
       Self::Char(_) => Char.into(),
@@ -202,7 +155,7 @@ impl Constant {
       // in C++ it's const char[N]
       // ^^^ verified by clangd's AST
       Self::StringLiteral(str) => Array::new(
-        QualifiedType::new(Qualifiers::empty(), Char.into()).into(),
+        QualifiedType::char().into(),
         // this is wrong for multi-byte characters, but let's ignore that for now
         ArraySize::Constant(str.len() + 1 /* null terminator */),
       )

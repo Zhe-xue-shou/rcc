@@ -90,6 +90,7 @@ macro_rules! make_trio_for {
 }
 
 #[macro_export]
+#[cfg(debug_assertions)]
 macro_rules! breakpoint {
   () => {
     $crate::breakpoint!("");
@@ -106,6 +107,13 @@ macro_rules! breakpoint {
     _ = stdout().flush();
     _ = stderr().flush();
   }};
+}
+
+#[macro_export]
+#[cfg(not(debug_assertions))]
+macro_rules! breakpoint {
+  () => {{}};
+  ($($arg:tt)*) => {{}};
 }
 
 #[macro_export]

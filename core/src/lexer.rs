@@ -1,3 +1,4 @@
+use ::rc_utils::IntoWith;
 use ::std::{
   iter::Peekable,
   str::{Chars, FromStr},
@@ -159,7 +160,7 @@ impl<'session, 'source> Lexer<'session, 'source> {
         if self.peek().is_ascii_hexdigit() {
           Some(self.lex_number(start, true))
         } else {
-          self.lex_compound_op(start, Dot, &[("...", Ellipsis)])
+          self.lex_compound_operator(start, Dot, &[("...", Ellipsis)])
         },
 
       // comments/division
@@ -181,18 +182,18 @@ impl<'session, 'source> Lexer<'session, 'source> {
       },
 
       // multi-character operators
-      '+' => self.lex_compound_op(
+      '+' => self.lex_compound_operator(
         start,
         Plus,
         &[("++", PlusPlus), ("+=", PlusAssign)],
       ),
-      '-' => self.lex_compound_op(
+      '-' => self.lex_compound_operator(
         start,
         Minus,
         &[("--", MinusMinus), ("-=", MinusAssign), ("->", Arrow)],
       ),
-      '*' => self.lex_compound_op(start, Star, &[("*=", StarAssign)]),
-      '%' => self.lex_compound_op(
+      '*' => self.lex_compound_operator(start, Star, &[("*=", StarAssign)]),
+      '%' => self.lex_compound_operator(
         start,
         Percent,
         &[
@@ -205,9 +206,9 @@ impl<'session, 'source> Lexer<'session, 'source> {
           ("%:", Hash),
         ],
       ),
-      '=' => self.lex_compound_op(start, Assign, &[("==", EqualEqual)]),
-      '!' => self.lex_compound_op(start, Not, &[("!=", NotEqual)]),
-      '<' => self.lex_compound_op(
+      '=' => self.lex_compound_operator(start, Assign, &[("==", EqualEqual)]),
+      '!' => self.lex_compound_operator(start, Not, &[("!=", NotEqual)]),
+      '<' => self.lex_compound_operator(
         start,
         Less,
         &[
@@ -219,7 +220,7 @@ impl<'session, 'source> Lexer<'session, 'source> {
           ("<:", LeftBracket),
         ],
       ),
-      '>' => self.lex_compound_op(
+      '>' => self.lex_compound_operator(
         start,
         Greater,
         &[
@@ -228,15 +229,18 @@ impl<'session, 'source> Lexer<'session, 'source> {
           (">=", GreaterEqual),
         ],
       ),
-      '&' => self.lex_compound_op(
+      '&' => self.lex_compound_operator(
         start,
         Ampersand,
         &[("&&", And), ("&=", AmpersandAssign)],
       ),
-      '|' =>
-        self.lex_compound_op(start, Pipe, &[("||", Or), ("|=", PipeAssign)]),
-      '^' => self.lex_compound_op(start, Caret, &[("^=", CaretAssign)]),
-      ':' => self.lex_compound_op(
+      '|' => self.lex_compound_operator(
+        start,
+        Pipe,
+        &[("||", Or), ("|=", PipeAssign)],
+      ),
+      '^' => self.lex_compound_operator(start, Caret, &[("^=", CaretAssign)]),
+      ':' => self.lex_compound_operator(
         start,
         Colon,
         &[
@@ -245,12 +249,18 @@ impl<'session, 'source> Lexer<'session, 'source> {
           (":>", RightBracket),
         ],
       ),
-      '[' =>
-        self.lex_compound_op(start, LeftBracket, &[("[[", DoubleLeftBracket)]),
-      ']' =>
-        self.lex_compound_op(start, RightBracket, &[("]]", DoubleRightBracket)]),
+      '[' => self.lex_compound_operator(
+        start,
+        LeftBracket,
+        &[("[[", DoubleLeftBracket)],
+      ),
+      ']' => self.lex_compound_operator(
+        start,
+        RightBracket,
+        &[("]]", DoubleRightBracket)],
+      ),
 
-      '#' => self.lex_compound_op(start, Hash, &[("##", HashHash)]),
+      '#' => self.lex_compound_operator(start, Hash, &[("##", HashHash)]),
 
       // single-character operators
       ',' => Some(Token::operator(Comma, self.span(start))),
@@ -434,7 +444,7 @@ impl<'session, 'source> Lexer<'session, 'source> {
       self
         .session
         .diagnosis
-        .add_error(InvalidNumberFormat(e), self.span(start));
+        .add_diag(e.into_with(self.span(start)));
     }
 
     Token::number(constant, self.span(start))
@@ -488,7 +498,7 @@ impl<'session, 'source> Lexer<'session, 'source> {
     }
   }
 
-  fn lex_compound_op(
+  fn lex_compound_operator(
     &mut self,
     start: usize,
     default: Operator,
@@ -500,12 +510,6 @@ impl<'session, 'source> Lexer<'session, 'source> {
     );
     // note: called after consuming the first character already.
     for (pattern, op) in patterns {
-      // debug_assert!(
-      //   self.peek_n(pattern.chars().count() - 1) != '\0',
-      //   "should not match past end of input
-      //   (if this happens, simply continue to the next pattern;
-      //   but here I assert to catch logic errors)"
-      // );
       debug_assert!(
         pattern.chars().count() >= 2,
         "compound operator pattern should be >= 2 chars"

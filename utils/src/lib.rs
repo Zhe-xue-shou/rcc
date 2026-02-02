@@ -12,6 +12,7 @@ pub type shared_ptr<T> = Rc<RefCell<T>>;
 #[allow(non_camel_case_types)]
 pub type weak_ptr<T> = Weak<RefCell<T>>;
 
+/// A handy trait for converting between types with additional context.
 pub trait IntoWith<With, To> {
   fn into_with(self, with: With) -> To;
 }
@@ -44,7 +45,7 @@ pub trait TryFromWith<With, From>: Sized {
 /// - use [`Dummy`] to create placeholder
 ///   expressions/statements (just returns an empty node)
 ///   to indicate errors during semantic analysis.
-/// - [`SourceSpan`] to represent an invalid source location,
+/// - [`SourceSpan`](rc_core::common::source_info::Span) to represent an invalid source location,
 ///   ususally for unconstructed spans/nodes, or representing a error node's location.
 ///
 pub trait Dummy {

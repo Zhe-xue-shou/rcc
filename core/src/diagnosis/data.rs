@@ -187,6 +187,8 @@ pub enum Data {
   DeprecatedFunctionNoProto,
   #[error("Arithmetic overflow in operation '{2}' between '{0}' and '{1}'")]
   ArithmeticOpOverflow(Constant, Constant, Operator),
+  #[error("Division by zero")]
+  DivideByZero,
   #[error(
     "C standard pre C23 does not allow declaration after label, if/else, while, do-while, for, and switch statements(e.g.`while(cond) int i = 0;` is invalid). If it's intended, please use surrounding braces to form a block."
   )]
@@ -212,7 +214,7 @@ impl IntoWith<Severity, Meta> for Data {
 fn format_expected(expected: &Option<Literal>) -> String {
   match expected {
     Some(exp) => format!(", expected '{}'", exp),
-    None => String::new(),
+    None => String::with_capacity(0),
   }
 }
 

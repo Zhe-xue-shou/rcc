@@ -1,6 +1,8 @@
 use ::rc_utils::{Dummy, IntoWith};
+
+use self::ValueCategory::{LValue, RValue};
 use crate::{
-  common::{Operator, OperatorCategory, SourceSpan, SymbolRef},
+  common::{Operator, OperatorCategory, SourceSpan, Storage, SymbolRef},
   diagnosis::Diag,
   type_alias_expr,
   types::{
@@ -9,7 +11,7 @@ use crate::{
   },
 };
 
-type_alias_expr! {Expression, QualifiedType, Variable, ImplicitCast, Assignment}
+type_alias_expr! {Expression, QualifiedType, Variable ImplicitCast Assignment}
 #[derive(Debug, Clone, Copy, ::strum_macros::Display, PartialEq)]
 pub enum ValueCategory {
   #[strum(serialize = "lvalue")]
@@ -19,8 +21,6 @@ pub enum ValueCategory {
   #[strum(serialize = "rvalue")]
   RValue,
 }
-use ValueCategory::{LValue, RValue};
-use crate::common::Storage;
 
 #[derive(Debug)]
 pub struct Expression {
@@ -59,7 +59,7 @@ impl Expression {
 
   pub fn new_error_node(expr_type: QualifiedType) -> Self {
     Self {
-      raw_expr: RawExpr::Empty,
+      raw_expr: RawExpr::Empty(Empty::default()),
       expr_type,
       value_category: RValue,
     }
@@ -87,6 +87,10 @@ impl Expression {
 
   pub(super) fn destructure(self) -> (RawExpr, QualifiedType, ValueCategory) {
     (self.raw_expr, self.expr_type, self.value_category)
+  }
+
+  pub(super) fn into_raw(self) -> RawExpr {
+    self.raw_expr
   }
 }
 impl TryFrom<Expression> for usize {
@@ -205,7 +209,7 @@ impl Expression {
 impl ::core::default::Default for Expression {
   fn default() -> Self {
     Self {
-      raw_expr: RawExpr::Empty,
+      raw_expr: RawExpr::Empty(Empty::default()),
       expr_type: Type::void().into(),
       value_category: RValue,
     }
@@ -405,9 +409,9 @@ mod test {
       RValue,
     );
     let promoted_expr =
-        Expression::usual_arithmetic_conversion(int_expr, float_expr)
-            .unwrap()
-            .2;
+      Expression::usual_arithmetic_conversion(int_expr, float_expr)
+        .unwrap()
+        .2;
     // type shall be
     println!("Promoted expression: {:#?}", promoted_expr);
   }

@@ -185,8 +185,14 @@ pub enum Data {
     "Function declarations without prototypes(e.g., int main()) are deprecated and removed in C23. Please provide a prototype (e.g., int main(void)) rather than leaving it empty."
   )]
   DeprecatedFunctionNoProto,
+  #[error("Applying unary operator '{0}' may cause overflow on constant '{1}'")]
+  ArithmeticUnaryOpOverflow(Constant, Operator),
   #[error("Arithmetic overflow in operation '{2}' between '{0}' and '{1}'")]
-  ArithmeticOpOverflow(Constant, Constant, Operator),
+  ArithmeticBinOpOverflow(Constant, Constant, Operator),
+  #[error("Possible data loss in implicit cast from '{0}' to '{1}'")]
+  CastDown(Box<QualifiedType>, Box<QualifiedType>),
+  #[error("Operation '{2}' between '{0}' and '{1}' results in NaN")]
+  NotANumber(Constant, Constant, Operator),
   #[error("Division by zero")]
   DivideByZero,
   #[error(

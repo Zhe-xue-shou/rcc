@@ -1,7 +1,10 @@
 use ::rc_utils::IntoWith;
 
 use super::{QualifiedType, Type};
-use crate::diagnosis::{DiagData, DiagMeta, Severity};
+use crate::{
+  blueprints::Placeholder,
+  diagnosis::{DiagData, DiagMeta, Severity},
+};
 
 /// This class is **mixed**.
 ///
@@ -27,7 +30,140 @@ pub enum Constant {
   Double(f64),
   Bool(bool),
   StringLiteral(String),
-  Nullptr,
+  Nullptr(Placeholder),
+}
+/// usage:
+///
+/// ```rust
+/// let x: underlying_type_of!(Int) = 42; // x is i32
+/// let y: underlying_type_of!(Int) = x + 1; // y is i32
+/// let res = <underlying_type_of!(Int)>::overflowing_add(x, y); // res is (i32, bool)
+/// ```
+#[macro_export]
+macro_rules! underlying_type_of {
+  (Char) => {
+    i8
+  };
+  (Short) => {
+    i16
+  };
+  (Int) => {
+    i32
+  };
+  (LongLong) => {
+    i64
+  };
+  (UChar) => {
+    u8
+  };
+  (UShort) => {
+    u16
+  };
+  (UInt) => {
+    u32
+  };
+  (ULongLong) => {
+    u64
+  };
+  (Float) => {
+    f32
+  };
+  (Double) => {
+    f64
+  };
+  (Bool) => {
+    bool
+  };
+  (StringLiteral) => {
+    String
+  };
+  (Nullptr) => {
+    ()
+  };
+}
+/// usage:
+///
+/// ```rust
+/// let x: signed_underlying_type_of!(UInt) = -1; // x is i32
+/// let y: signed_underlying_type_of!(Int) = -2; // y is i32
+/// let res = x + y; // res is i32
+/// ```
+#[macro_export]
+macro_rules! signed_underlying_type_of {
+  (UChar) => {
+    i16
+  };
+  (UShort) => {
+    i32
+  };
+  (UInt) => {
+    i64
+  };
+  (ULongLong) => {
+    i128
+  };
+  ($t:tt) => {
+    underlying_type_of!($t)
+  };
+}
+/// Returns the unsigned version of the underlying type.
+///
+/// If the type has no unsigned version or is already unsigned, returns the underlying type itself.
+#[macro_export]
+macro_rules! unsigned_underlying_type_of {
+  (Char) => {
+    u8
+  };
+  (Short) => {
+    u16
+  };
+  (Int) => {
+    u32
+  };
+  (LongLong) => {
+    u64
+  };
+  ($t:tt) => {
+    underlying_type_of!($t)
+  };
+}
+
+#[macro_export]
+macro_rules! signed_variant_of {
+  (UChar) => {
+    Char
+  };
+  (UShort) => {
+    Short
+  };
+  (UInt) => {
+    Int
+  };
+  (ULongLong) => {
+    LongLong
+  };
+  ($t:tt) => {
+    $t
+  };
+}
+
+#[macro_export]
+macro_rules! unsigned_variant_of {
+  (Char) => {
+    UChar
+  };
+  (Short) => {
+    UShort
+  };
+  (Int) => {
+    UInt
+  };
+  (LongLong) => {
+    ULongLong
+  };
+  ($t:tt) => {
+    $t
+  };
 }
 
 impl Constant {
@@ -150,7 +286,7 @@ impl Constant {
       Self::Float(_) => Float.into(),
       Self::Double(_) => Double.into(),
       Self::Bool(_) => Bool.into(),
-      Self::Nullptr => Nullptr.into(),
+      Self::Nullptr(_) => Nullptr.into(),
       // in C, char[N] is the type of string literal - although it's stored in read-only memory
       // in C++ it's const char[N]
       // ^^^ verified by clangd's AST
@@ -202,13 +338,13 @@ impl Constant {
       Self::Float(f) => *f == 0.0,
       Self::Double(d) => *d == 0.0,
       Self::Bool(b) => !*b,
-      Self::Nullptr => true,
+      Self::Nullptr(_) => true,
       Self::StringLiteral(s) => s.is_empty(),
     }
   }
 
   pub fn is_nullptr(&self) -> bool {
-    matches!(self, Self::Nullptr)
+    matches!(self, Self::Nullptr(_))
   }
 }
 
@@ -226,7 +362,7 @@ impl TryFrom<Constant> for usize {
       Constant::UInt(u) => Ok(u as Self),
       Constant::ULongLong(u) => Ok(u as Self),
       Constant::Bool(b) => Ok(if b { 1 } else { 0 }),
-      Constant::Nullptr => Ok(0),
+      Constant::Nullptr(_) => Ok(0),
       _ => Err(DiagMeta::new(
         Severity::Error,
         DiagData::InvalidConversion(

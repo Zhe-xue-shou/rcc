@@ -3,9 +3,7 @@ use ::rc_utils::{
 };
 
 use crate::{
-  analyzer::{
-    declaration as ad, expression as ae, folding::Folding, statement as astmt,
-  },
+  analyzer::{declaration as ad, expression as ae, statement as astmt},
   common::{
     Environment, Operator, OperatorCategory, SourceSpan, Storage, Symbol,
     VarDeclKind,
@@ -177,8 +175,7 @@ impl<'session> Analyzer<'session> {
                 if analyzed_expr.is_integer_constant() {
                   ArraySize::Constant(
                     analyzed_expr
-                      .fold(&self.session.diagnosis)
-                      .destructure()
+                      .try_fold(&self.session.diagnosis)
                       .0
                       // .map_err(|e| e.into_with(span))
                       // .handle_with(
@@ -346,6 +343,7 @@ impl<'session> Analyzer<'session> {
 
   fn get_type(&self, mut type_specifiers: Vec<pd::TypeSpecifier>) -> TypeRes {
     assert!(!type_specifiers.is_empty());
+    assert!(type_specifiers.len() <= 5); // unsigned long long int complex (integer complex not in standard) is the max
     type_specifiers.sort_by_key(|s| s.sort_key());
     type TS = pd::TypeSpecifier;
     // 6.7.3.1
@@ -434,7 +432,7 @@ impl<'session> Analyzer<'session> {
         }
       },
       // skip _BitInt, _Decimal32, _Decimal64, _Decimal128 here
-      _ => not_implemented_feature!("union, struct, enum, typeof, etc."),
+      _ => not_implemented_feature!("{:#?}", type_specifiers.as_slice()),
     }
   }
 }
@@ -1278,13 +1276,9 @@ impl<'session> Analyzer<'session> {
       || !right.unqualified_type().is_arithmetic()
     {
       return Err(
-        NonArithmeticInBinaryOp(
-          left.to_string(),
-          right.to_string(),
-          operator.clone(),
-        )
-        .into_with(Severity::Error)
-        .into_with(span),
+        NonArithmeticInBinaryOp(left.to_string(), right.to_string(), operator)
+          .into_with(Severity::Error)
+          .into_with(span),
       );
     }
 
@@ -1317,7 +1311,7 @@ impl<'session> Analyzer<'session> {
         NonIntegerInBitwiseBinaryOp(
           left.to_string(),
           right.to_string(),
-          operator.clone(),
+          operator,
         ),
         span,
       );
@@ -1651,7 +1645,7 @@ impl<'session> Analyzer<'session> {
       .handle_with(self, ae::Expression::new_error_node(QualifiedType::int()));
     let analyzed_body = self.statements(body);
 
-    let c = analyzed_value.fold(&self.session.diagnosis).destructure().0;
+    let c = analyzed_value.try_fold(&self.session.diagnosis).0;
 
     Ok(astmt::Case::new(
       if let ae::RawExpr::Constant(constant) = c.raw_expr() {

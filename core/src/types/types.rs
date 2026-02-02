@@ -1,5 +1,5 @@
 use ::once_cell::sync::Lazy;
-use ::rc_utils::{IntoWith, interconvert, make_trio_for};
+use ::rc_utils::{IntoWith, make_trio_for};
 use ::std::str::FromStr;
 use ::strum_macros::{Display, EnumString, IntoStaticStr};
 
@@ -7,6 +7,7 @@ use super::{Compatibility, TypeInfo};
 use crate::diagnosis::{DiagData::*, DiagMeta, Severity};
 
 #[derive(Debug, Clone, PartialEq)]
+#[enum_dispatch::enum_dispatch]
 pub enum Type {
   Primitive(Primitive),
   Array(Array),
@@ -314,14 +315,14 @@ impl Enum {
     self.underlying_type
   }
 }
-
-interconvert!(Primitive, Type);
-interconvert!(Array, Type);
-interconvert!(Pointer, Type);
-interconvert!(FunctionProto, Type);
-interconvert!(Enum, Type);
-interconvert!(Record, Type);
-interconvert!(Union, Type);
+// // enum_dispatch replaces these.
+// interconvert!(Primitive, Type);
+// interconvert!(Array, Type);
+// interconvert!(Pointer, Type);
+// interconvert!(FunctionProto, Type);
+// interconvert!(Enum, Type);
+// interconvert!(Record, Type);
+// interconvert!(Union, Type);
 
 make_trio_for!(Primitive, Type);
 make_trio_for!(Array, Type);
@@ -374,6 +375,13 @@ impl Type {
   pub fn is_integer(&self) -> bool {
     match self {
       Type::Primitive(p) => p.is_integer(),
+      _ => false,
+    }
+  }
+
+  pub fn is_floating_point(&self) -> bool {
+    match self {
+      Type::Primitive(p) => p.is_floating_point(),
       _ => false,
     }
   }

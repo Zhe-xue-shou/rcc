@@ -1,10 +1,12 @@
 use ::rc_utils::Dummy;
 
+use super::Placeholder as Empty;
 use crate::common::SourceSpan;
 
+#[::enum_dispatch::enum_dispatch]
 #[derive(Debug)]
 pub enum RawStmt<StmtTy, DeclTy, ExprTy, ExprCaseTy = ExprTy> {
-  Empty,
+  Empty(Empty),
   Return(RawReturn<ExprTy>),
   // here only vardef, funcdef only permitted in top-level declarations hence it's handled there
   Declaration(DeclTy),
@@ -29,6 +31,8 @@ macro_rules! type_alias_stmt {
   ($stmtty:ident,$declty:ident,$exprty:ident,$exprcasety:ident) => {
     #[allow(dead_code)]
     pub type RawStmt = $crate::blueprints::RawStmt<$stmtty, $declty, $exprty>;
+    #[allow(dead_code)]
+    pub type Empty = $crate::blueprints::Placeholder;
     pub type Return = $crate::blueprints::RawReturn<$exprty>;
     pub type If = $crate::blueprints::RawIf<$stmtty, $exprty>;
     pub type While = $crate::blueprints::RawWhile<$stmtty, $exprty>;
@@ -307,7 +311,7 @@ mod fmt {
   {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       match self {
-        RawStmt::Empty => write!(f, ";"),
+        RawStmt::Empty(_) => write!(f, ";"),
         RawStmt::Return(ret) => write!(f, "{}", ret),
         RawStmt::If(if_stmt) => write!(f, "{}", if_stmt),
         RawStmt::Declaration(decl) => write!(f, "{}", decl),

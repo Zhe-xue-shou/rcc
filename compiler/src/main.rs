@@ -166,7 +166,7 @@ static const volatile int **const *const* volatile
   }
   #[test]
   fn t3() {
-    let s = "int a = 1111111111111ULL;";
+    let s = "unsigned a = -1U;";
     let mut source_manager = SourceManager::default();
     source_manager.add_string(s.into());
     pipeline(&mut source_manager, Stage::Analyze, true);

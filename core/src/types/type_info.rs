@@ -1,8 +1,9 @@
 use super::{
   Array, ArraySize, Enum, FunctionProto, Pointer, Primitive, Primitive::*,
-  QualifiedType, Record, Type, Union,
+  QualifiedType, Record, Union,
 };
 #[allow(unused)]
+#[::enum_dispatch::enum_dispatch(Type)]
 pub trait TypeInfo {
   fn size(&self) -> usize;
   fn is_scalar(&self) -> bool;
@@ -19,6 +20,7 @@ impl TypeInfo for QualifiedType {
     self.unqualified_type().is_scalar()
   }
 }
+#[allow(unused)]
 macro_rules! dispatch_down {
   ($name:ident, $ty:ty) => {
     fn $name(&self) -> $ty {
@@ -34,11 +36,12 @@ macro_rules! dispatch_down {
     }
   };
 }
-impl TypeInfo for Type {
-  dispatch_down!(size, usize);
+// // enum_dispatch replaces these.
+// impl TypeInfo for Type {
+//   dispatch_down!(size, usize);
 
-  dispatch_down!(is_scalar, bool);
-}
+//   dispatch_down!(is_scalar, bool);
+// }
 impl TypeInfo for Primitive {
   fn size(&self) -> usize {
     // x86_64 sizes

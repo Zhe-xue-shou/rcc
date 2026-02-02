@@ -17,8 +17,8 @@ use crate::{
       TypeSpecifier, VarDef,
     },
     expression::{
-      Binary, Call, ConstantLiteral, Expression, Paren, SizeOfKind, Ternary,
-      Unary, UnprocessedType, Variable,
+      Binary, Call, ConstantLiteral, Empty, Expression, Paren, SizeOfKind,
+      Ternary, Unary, UnprocessedType, Variable,
     },
     statement::{
       Break, Case, Compound, Continue, Default, DoWhile, For, Goto, If, Label,
@@ -205,6 +205,15 @@ impl<'session> Parser<'session> {
       self.must_get_op::<OP>();
     }
   }
+
+  /// end-location.
+  #[inline(always)]
+  fn eloc(&self, location: SourceSpan) -> SourceSpan {
+    SourceSpan {
+      end: self.peek_loc().end,
+      ..location
+    }
+  }
 }
 /// diagnostic functions
 impl<'session> Parser<'session> {
@@ -285,13 +294,7 @@ impl<'session> Parser<'session> {
         let qualifier = self.parse_qualifier();
         // qualifiers is a bitfield
         if qualifiers.contains(qualifier) {
-          self.add_warning(
-            RedundantQualifier(qualifier),
-            SourceSpan {
-              end: self.peek_loc().end,
-              ..location
-            },
-          );
+          self.add_warning(RedundantQualifier(qualifier), self.eloc(location));
         } else {
           qualifiers |= qualifier;
         }
@@ -301,19 +304,13 @@ impl<'session> Parser<'session> {
           Some(ref existing_storage) if existing_storage == storage_class => {
             self.add_warning(
               RedundantStorageSpecs(storage_class),
-              SourceSpan {
-                end: self.peek_loc().end,
-                ..location
-              },
+              self.eloc(location),
             );
           },
           Some(ref existing_storage) => {
             self.add_error(
               StorageSpecsUnmergeable(*existing_storage, storage_class),
-              SourceSpan {
-                end: self.peek_loc().end,
-                ..location
-              },
+              self.eloc(location),
             );
           },
           None => {
@@ -321,15 +318,18 @@ impl<'session> Parser<'session> {
           },
         }
         self.get(); // get the storage class
-      // 1. it's a keyword type specifier
-      // 2. it's an identifier and we already have some type specifier -- break
+      // it's a bit tricky to parse type specifiers here
       } else if let Some(specifier) = self.parse_type_specifier() {
-        if !type_specifiers.is_empty() {
-          // already have some type specifier
+        if type_specifiers.is_empty() && !specifier.is_builtin() {
+          type_specifiers.push(specifier);
+          self.get();
           break;
+        } else if !specifier.is_builtin() {
+          break;
+        } else {
+          type_specifiers.push(specifier);
+          self.get();
         }
-        type_specifiers.push(specifier);
-        self.get();
       } else if let Some(kw) = self.parse_function_specifier() {
         function_specifiers |= kw;
         self.get();
@@ -339,13 +339,7 @@ impl<'session> Parser<'session> {
     }
 
     if type_specifiers.is_empty() {
-      self.add_error(
-        MissingTypeSpecifier,
-        SourceSpan {
-          end: self.peek_loc().end,
-          ..location
-        },
-      );
+      self.add_error(MissingTypeSpecifier, self.eloc(location));
       type_specifiers.push(TypeSpecifier::Int);
     }
 
@@ -354,10 +348,7 @@ impl<'session> Parser<'session> {
       qualifiers,
       type_specifiers,
       function_specifiers,
-      SourceSpan {
-        end: self.peek_loc().end,
-        ..location
-      },
+      self.eloc(location),
     )
   }
 
@@ -398,10 +389,7 @@ impl<'session> Parser<'session> {
           if TYPE == DeclaratorType::Named {
             self.add_error(
               MissingIdentifier("Expect identifier in declarator".to_string()),
-              SourceSpan {
-                end: self.peek_loc().end,
-                ..location
-              },
+              self.eloc(location),
             );
             if AGGRESSIVE {
               self.get();
@@ -432,14 +420,7 @@ impl<'session> Parser<'session> {
       }
     }
     modifiers.extend(pointers.into_iter().rev());
-    Declarator::new(
-      name,
-      modifiers,
-      SourceSpan {
-        end: self.peek_loc().end,
-        ..location
-      },
-    )
+    Declarator::new(name, modifiers, self.eloc(location))
   }
 
   fn parse_array_declarator(&mut self) -> ArrayModifier {
@@ -450,10 +431,7 @@ impl<'session> Parser<'session> {
         Qualifiers::empty(),
         false,
         None,
-        SourceSpan {
-          end: self.peek_loc().end,
-          ..location
-        },
+        self.eloc(location),
       );
     }
     let mut is_static = false;
@@ -490,23 +468,9 @@ impl<'session> Parser<'session> {
       Some(expr)
     };
     if is_static && bound.is_none() {
-      self.add_error(
-        StaticArrayWithoutBound,
-        SourceSpan {
-          end: self.peek_loc().end,
-          ..location
-        },
-      );
+      self.add_error(StaticArrayWithoutBound, self.eloc(location));
     }
-    ArrayModifier::new(
-      qualifiers,
-      is_static,
-      bound,
-      SourceSpan {
-        end: self.peek_loc().end,
-        ..location
-      },
-    )
+    ArrayModifier::new(qualifiers, is_static, bound, self.eloc(location))
   }
 
   /// parse function parameter list, use [`Parser::parse_argument_list`] for function call.
@@ -542,22 +506,13 @@ impl<'session> Parser<'session> {
         if let Some(storage) = &declspecs.storage_class
           && storage != Storage::Register
         {
-          self.add_error(
-            ExtraneousStorageSpecs(*storage),
-            SourceSpan {
-              end: self.peek_loc().end,
-              ..location
-            },
-          );
+          self.add_error(ExtraneousStorageSpecs(*storage), self.eloc(location));
           declspecs.storage_class = None;
         }
         parameters.push(Parameter::new(
           declspecs,
           declarator,
-          SourceSpan {
-            end: self.peek_loc().end,
-            ..location
-          },
+          self.eloc(location),
         ));
 
         match self.peek_lit() {
@@ -631,10 +586,7 @@ impl<'session> Parser<'session> {
           ExtraneousComma(
             "Trailing comma in argument list is not allowed in C.",
           ),
-          SourceSpan {
-            end: self.peek_loc().end,
-            ..location
-          },
+          self.eloc(location),
         );
         break;
       }
@@ -686,10 +638,7 @@ impl<'session> Parser<'session> {
         ExprNotConstant(
           "Case label must have a constant expression".to_string(),
         ),
-        SourceSpan {
-          end: self.peek_loc().end,
-          ..location
-        },
+        self.eloc(location),
       );
       self.must_get_op::<{ Colon }>();
       Expression::Empty
@@ -701,14 +650,7 @@ impl<'session> Parser<'session> {
     // if it's a compound statement, we need to extract all statements until the next case/default or right brace
     // else, multiple statements until next case/default
     let body = self.parse_case_and_default_body();
-    Case::new(
-      expression,
-      body,
-      SourceSpan {
-        end: self.peek_loc().end,
-        ..location
-      },
-    )
+    Case::new(expression, body, self.eloc(location))
   }
 
   fn parse_default(&mut self) -> Default {
@@ -716,13 +658,7 @@ impl<'session> Parser<'session> {
     self.must_get_key::<{ Keyword::Default }>();
     self.recoverable_get::<{ Colon }>();
     let body = self.parse_case_and_default_body();
-    Default::new(
-      body,
-      SourceSpan {
-        end: self.peek_loc().end,
-        ..location
-      },
-    )
+    Default::new(body, self.eloc(location))
   }
 }
 /// declarations
@@ -758,10 +694,7 @@ impl<'session> Parser<'session> {
       declspecs,
       declarator,
       initializer.map(|init_expr| Initializer::Expression(init_expr.into())),
-      SourceSpan {
-        end: self.peek_loc().end,
-        ..location
-      },
+      self.eloc(location),
     )
   }
 
@@ -802,16 +735,8 @@ impl<'session> Parser<'session> {
         self.add_warning(EmptyTypedef, declarator.span);
       }
       self.must_get_op::<{ Semicolon }>();
-      return VarDef::new(
-        declspecs,
-        declarator,
-        None,
-        SourceSpan {
-          end: self.peek_loc().end,
-          ..location
-        },
-      )
-      .into();
+      return VarDef::new(declspecs, declarator, None, self.eloc(location))
+        .into();
     }
     let declaration =
       if matches!(declarator.modifiers.first(), Some(Modifier::Function(_))) {
@@ -821,16 +746,7 @@ impl<'session> Parser<'session> {
         }
         let (declspecs, declarator, body) =
           self.next_function_body(declspecs, declarator);
-        Function::new(
-          declspecs,
-          declarator,
-          body,
-          SourceSpan {
-            end: self.peek_loc().end,
-            ..location
-          },
-        )
-        .into()
+        Function::new(declspecs, declarator, body, self.eloc(location)).into()
       } else {
         // `int;` is allowed although useless
         self.next_vardef(declspecs, declarator).into()
@@ -870,13 +786,7 @@ impl<'session> Parser<'session> {
     }
     self.typedefs.pop_scope();
     self.must_get_op::<{ RightBrace }>();
-    Compound::new(
-      block.statements,
-      SourceSpan {
-        end: self.peek_loc().end,
-        ..location
-      },
-    )
+    Compound::new(block.statements, self.eloc(location))
   }
 
   fn next_return(&mut self) -> Return {
@@ -890,13 +800,7 @@ impl<'session> Parser<'session> {
 
     assert_eq!(self.peek_lit(), Literal::Operator(Semicolon));
     self.must_get_op::<{ Semicolon }>();
-    Return::new(
-      expression,
-      SourceSpan {
-        end: self.peek_loc().end,
-        ..location
-      },
-    )
+    Return::new(expression, self.eloc(location))
   }
 
   fn next_if(&mut self) -> If {
@@ -917,10 +821,7 @@ impl<'session> Parser<'session> {
       condition,
       then_branch.into(),
       else_branch.map(Box::new),
-      SourceSpan {
-        end: self.peek_loc().end,
-        ..location
-      },
+      self.eloc(location),
     )
   }
 
@@ -937,10 +838,7 @@ impl<'session> Parser<'session> {
       condition,
       body.into(),
       self.loop_labels.last().unwrap().clone(),
-      SourceSpan {
-        end: self.peek_loc().end,
-        ..location
-      },
+      self.eloc(location),
     );
     self.loop_labels.pop();
     while_stmt
@@ -962,10 +860,7 @@ impl<'session> Parser<'session> {
       Box::new(body),
       condition,
       self.loop_labels.last().unwrap().clone(),
-      SourceSpan {
-        end: self.peek_loc().end,
-        ..location
-      },
+      self.eloc(location),
     );
     self.loop_labels.pop();
     dowhile_stmt
@@ -977,10 +872,7 @@ impl<'session> Parser<'session> {
     if self.peek_lit() != LeftParen {
       self.add_error(
         MissingOpenParen(self.peek_prev_lit().clone()),
-        SourceSpan {
-          end: self.peek_loc().end,
-          ..location
-        },
+        self.eloc(location),
       );
       panic!() // workaound
     } else {
@@ -999,10 +891,7 @@ impl<'session> Parser<'session> {
                   "Variable declared in for loop without initializer"
                     .to_string(),
                 ),
-                SourceSpan {
-                  end: self.peek_loc().end,
-                  ..location
-                },
+                self.eloc(location),
               );
             }
             Some(Statement::Declaration(vardef.into()))
@@ -1014,10 +903,7 @@ impl<'session> Parser<'session> {
                 "Expect variable declaration or expression in for initializer"
                   .to_string(),
               ),
-              SourceSpan {
-                end: self.peek_loc().end,
-                ..location
-              },
+              self.eloc(location),
             );
             None
           },
@@ -1055,10 +941,7 @@ impl<'session> Parser<'session> {
           .last()
           .expect("invariant: loop_labels should not be empty")
           .clone(),
-        SourceSpan {
-          end: self.peek_loc().end,
-          ..location
-        },
+        self.eloc(location),
       );
       self.loop_labels.pop();
       for_stmt
@@ -1108,10 +991,7 @@ impl<'session> Parser<'session> {
         .last()
         .expect("invariant: loop_labels should not be empty")
         .clone(),
-      SourceSpan {
-        end: self.peek_loc().end,
-        ..location
-      },
+      self.eloc(location),
     );
     self.loop_labels.pop();
     switch_stmt
@@ -1167,15 +1047,7 @@ impl<'session> Parser<'session> {
       let statement = self.next_statement();
       self.ios_c_strict_check_for_decl(&statement);
       // todo: label validity check, here or in semantic analysis?
-      Label::new(
-        ident,
-        statement,
-        SourceSpan {
-          end: self.peek_loc().end,
-          ..location
-        },
-      )
-      .into()
+      Label::new(ident, statement, self.eloc(location)).into()
     }
   }
 
@@ -1186,22 +1058,9 @@ impl<'session> Parser<'session> {
       let name = ident.to_string();
       self.get(); // consume ident
       self.recoverable_get::<{ Semicolon }>();
-      Goto::new(
-        name,
-        SourceSpan {
-          end: self.peek_loc().end,
-          ..location
-        },
-      )
-      .into()
+      Goto::new(name, self.eloc(location)).into()
     } else {
-      self.add_error(
-        MissingLabelAfterGoto,
-        SourceSpan {
-          end: self.peek_loc().end,
-          ..location
-        },
-      );
+      self.add_error(MissingLabelAfterGoto, self.eloc(location));
       // assume the label is missing, continue parsing
       self.silent_get_if::<{ Semicolon }>();
       Statement::Empty()
@@ -1223,10 +1082,7 @@ impl<'session> Parser<'session> {
     let location = *self.peek_loc();
     self.must_get_key::<{ Keyword::Break }>();
     self.recoverable_get::<{ Semicolon }>();
-    let newloc = SourceSpan {
-      end: self.peek_loc().end,
-      ..location
-    };
+    let newloc = self.eloc(location);
     match self.loop_labels.last() {
       Some(label) => Break::new(label.to_string(), newloc),
       None => {
@@ -1255,10 +1111,7 @@ impl<'session> Parser<'session> {
         break;
       }
     }
-    let newloc = SourceSpan {
-      end: self.peek_loc().end,
-      ..location
-    };
+    let newloc = self.eloc(location);
     match found_label {
       Some(label) => Continue::new(label, newloc),
       None => {
@@ -1281,25 +1134,17 @@ impl<'session> Parser<'session> {
     let literal = self.peek_prev_lit();
     match literal {
       Literal::Number(num) =>
-        Expression::Constant(num.clone().into_with(SourceSpan {
-          end: self.peek_loc().end,
-          ..location
-        })),
+        Expression::Constant(num.clone().into_with(self.eloc(location))),
       Literal::String(str) => Expression::Constant(
-        ConstantLiteral::StringLiteral(str.clone()).into_with(SourceSpan {
-          end: self.peek_loc().end,
-          ..location
-        }),
+        ConstantLiteral::StringLiteral(str.clone())
+          .into_with(self.eloc(location)),
       ),
       Literal::Operator(op) =>
         if op.unary() {
           Unary::new(
-            op.clone(),
+            *op,
             self.next_expression(Operator::DEFAULT),
-            SourceSpan {
-              end: self.peek_loc().end,
-              ..location
-            },
+            self.eloc(location),
           )
           .into()
         } else if op == LeftParen {
@@ -1309,54 +1154,26 @@ impl<'session> Parser<'session> {
           } else {
             self.add_error(
               MissingCloseParen(self.peek_lit().clone()),
-              SourceSpan {
-                end: self.peek_loc().end,
-                ..location
-              },
+              self.eloc(location),
             );
           }
-          Paren::new(
-            expr,
-            SourceSpan {
-              end: self.peek_loc().end,
-              ..location
-            },
-          )
-          .into()
+          Paren::new(expr, self.eloc(location)).into()
         } else {
           self.add_error(
-            UnexpectedCharacter(op.clone().into(), None),
-            SourceSpan {
-              end: self.peek_loc().end,
-              ..location
-            },
+            UnexpectedCharacter((*op).into(), None),
+            self.eloc(location),
           );
           self.get();
-          Expression::Constant(ConstantLiteral::Int(0).into_with(SourceSpan {
-            end: self.peek_loc().end,
-            ..location
-          }))
+          Expression::Constant(
+            ConstantLiteral::Int(0).into_with(self.eloc(location)),
+          )
         },
       Literal::Identifier(ident) => {
-        let ident_expr = Variable::new(
-          ident.to_string(),
-          SourceSpan {
-            end: self.peek_loc().end,
-            ..location
-          },
-        )
-        .into();
+        let ident_expr =
+          Variable::new(ident.to_string(), self.eloc(location)).into();
         if self.peek_lit() == LeftParen {
           let arguments = self.parse_argument_list();
-          Call::new(
-            ident_expr,
-            arguments,
-            SourceSpan {
-              end: self.peek_loc().end,
-              ..location
-            },
-          )
-          .into()
+          Call::new(ident_expr, arguments, self.eloc(location)).into()
         } else {
           ident_expr
         }
@@ -1366,35 +1183,24 @@ impl<'session> Parser<'session> {
         Keyword::Alignof => todo!(),
         Keyword::Alignas => todo!(),
         Keyword::True => Expression::Constant(
-          ConstantLiteral::Bool(true).into_with(SourceSpan {
-            end: self.peek_loc().end,
-            ..location
-          }),
+          ConstantLiteral::Bool(true).into_with(self.eloc(location)),
         ),
         Keyword::False => Expression::Constant(
-          ConstantLiteral::Bool(false).into_with(SourceSpan {
-            end: self.peek_loc().end,
-            ..location
-          }),
+          ConstantLiteral::Bool(false).into_with(self.eloc(location)),
         ),
-        Keyword::Nullptr =>
-          Expression::Constant(ConstantLiteral::Nullptr.into_with(SourceSpan {
-            end: self.peek_loc().end,
-            ..location
-          })),
+        Keyword::Nullptr => Expression::Constant(
+          ConstantLiteral::Nullptr(Empty::default())
+            .into_with(self.eloc(location)),
+        ),
 
         _ => {
           self.add_error(
             UnexpectedCharacter(keyword.clone().into(), None),
-            SourceSpan {
-              end: self.peek_loc().end,
-              ..location
-            },
+            self.eloc(location),
           );
-          Expression::Constant(ConstantLiteral::Int(0).into_with(SourceSpan {
-            end: self.peek_loc().end,
-            ..location
-          }))
+          Expression::Constant(
+            ConstantLiteral::Int(0).into_with(self.eloc(location)),
+          )
         },
       },
     }
@@ -1420,32 +1226,23 @@ impl<'session> Parser<'session> {
             SizeOfKind::Type(
               UnprocessedType::new(declspecs, declarator).into(),
             )
-            .into_with(SourceSpan {
-              end: self.peek_loc().end,
-              ..location
-            }),
+            .into_with(self.eloc(location)),
           )
         },
         None => {
           // expression
           let expr = self.next_expression(Operator::DEFAULT);
           self.recoverable_get::<{ RightParen }>();
-          Expression::SizeOf(SizeOfKind::Expression(expr.into()).into_with(
-            SourceSpan {
-              end: self.peek_loc().end,
-              ..location
-            },
-          ))
+          Expression::SizeOf(
+            SizeOfKind::Expression(expr.into()).into_with(self.eloc(location)),
+          )
         },
       }
     } else {
       let expr = self.next_expression(Operator::DEFAULT);
-      Expression::SizeOf(SizeOfKind::Expression(expr.into()).into_with(
-        SourceSpan {
-          end: self.peek_loc().end,
-          ..location
-        },
-      ))
+      Expression::SizeOf(
+        SizeOfKind::Expression(expr.into()).into_with(self.eloc(location)),
+      )
     }
   }
 
@@ -1455,7 +1252,7 @@ impl<'session> Parser<'session> {
     loop {
       if let Literal::Operator(op) = self.peek_lit() {
         if op.binary() && op.precedence() >= lmin_precedence {
-          let operator = op.clone();
+          let operator = *op;
           self.get(); // operator
           let right = self.next_expression(
             if operator.category() == OperatorCategory::Assignment {
@@ -1468,10 +1265,7 @@ impl<'session> Parser<'session> {
             operator,
             current,
             right,
-            SourceSpan {
-              end: self.peek_loc().end,
-              ..location
-            },
+            self.eloc(location),
           )
           .into();
           continue;
@@ -1484,10 +1278,7 @@ impl<'session> Parser<'session> {
             current,
             then_branch,
             else_branch,
-            SourceSpan {
-              end: self.peek_loc().end,
-              ..location
-            },
+            self.eloc(location),
           )
           .into();
           continue;

@@ -126,6 +126,18 @@ impl TypeSpecifier {
       TypeSpecifier::Enum(_) => 15,
     }
   }
+
+  /// builtin type specifier(i.e., keyword types) can combine with each other,
+  /// typedef-ed type, struct, union, enum cannot.
+  pub fn is_builtin(&self) -> bool {
+    !matches!(
+      self,
+      TypeSpecifier::Typedef(_)
+        | TypeSpecifier::Struct(_)
+        | TypeSpecifier::Union(_)
+        | TypeSpecifier::Enum(_)
+    )
+  }
 }
 /// declaration-specifiers:
 ///    - declaration-specifier attribute-specifier-sequence_opt (don't care)
@@ -429,7 +441,10 @@ mod fmt {
 
   use ::std::fmt::Display;
 
-  use super::{ArrayModifier, DeclSpecs, Declaration, Declarator, EnumSpecifier, Function, FunctionSignature, Modifier, Program, Struct, TypeSpecifier, VarDef};
+  use super::{
+    ArrayModifier, DeclSpecs, Declaration, Declarator, EnumSpecifier, Function,
+    FunctionSignature, Modifier, Program, Struct, TypeSpecifier, VarDef,
+  };
 
   impl Display for Declaration {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -504,13 +519,14 @@ mod fmt {
             }
           )
         },
-        Modifier::Array(array_modifier) => <ArrayModifier as Display>::fmt(array_modifier, f),
+        Modifier::Array(array_modifier) =>
+          <ArrayModifier as Display>::fmt(array_modifier, f),
         Modifier::Function(function_signature) =>
           <FunctionSignature as Display>::fmt(function_signature, f),
       }
     }
   }
-  
+
   impl Display for ArrayModifier {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
       write!(f, "[")?;

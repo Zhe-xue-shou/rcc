@@ -44,7 +44,7 @@ int main(int argc, char **argv) { //
   CONST_INT(INT) = (10);
   static int y = sizeof x;
   switch (x) {
-  case +0:
+  case 3 / 5:
   case 2147483647 + 1:
     y = y + 1;
     x = x + 1;
@@ -56,6 +56,7 @@ int main(int argc, char **argv) { //
     y = y + i;
     continue;
   }
+  int a = 2 && 3;
   return f(2, 3);
 }
 
@@ -64,7 +65,11 @@ int f(int i, int j) {
 label:
   k = k + 1;
   int *(ptr_to_k) = &k;
+  // ptr_to_k = ptr_to_k + 1;
   float a = 1.0;
+  unsigned int u1 = 10U;
+  unsigned int u2 = 20U;
+  unsigned int res = u1 - u2;
   typedef int (*FUNC_PTR)(int, int);
   goto label;
   return k;

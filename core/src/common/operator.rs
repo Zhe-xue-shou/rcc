@@ -1,6 +1,7 @@
 #[derive(
   Debug,
   Clone,
+  Copy,
   ::strum_macros::Display,
   ::strum_macros::EnumString,
   PartialEq,
@@ -221,12 +222,20 @@ impl Operator {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Category {
+  /// applies to integral, floating-point, and pointer types
   Logical,
+  /// integer op integer
   Bitwise,
+  /// integer op unsigned integer
   BitShift,
+  /// all
   Arithmetic,
+  /// all
   Relational,
+
+  /// hmm...
   Assignment,
+  /// ditto...
   Comma,
 }
 impl Operator {

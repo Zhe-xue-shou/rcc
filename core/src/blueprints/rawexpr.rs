@@ -7,13 +7,14 @@ use crate::{
 
 #[macro_export(local_inner_macros)]
 macro_rules! type_alias_expr {
-  ($exprty:ident,$typety:ident $(, $extra:ident)*) => {
+  ($exprty:ident, $typety:ident, $($extra:ident)*) => {
     /// likely a sophisticated version of the Two-Level Types described in
     /// [this article](https://blog.ezyang.com/2013/05/the-ast-typing-problem/),
     /// I probably used the Parametric Polymorphism to "tie the knot" of recursion.
+    #[::enum_dispatch::enum_dispatch]
     #[derive(Debug)]
     pub enum RawExpr {
-      Empty, // no-op for error recovery; for empty expr should use Option<ExprTy> instead
+      Empty(Empty), // no-op for error recovery; for empty expr should use Option<ExprTy> instead
       Constant(Constant),
       Unary(Unary),
       Binary(Binary),
@@ -30,6 +31,7 @@ macro_rules! type_alias_expr {
         $extra($extra),
       )*
     }
+    pub type Empty = $crate::blueprints::Placeholder;
     /// exists to avoid name clash with `Constant` in this module; this is a design mistake
     pub type ConstantLiteral = $crate::types::Constant;
     /// type or expression
@@ -58,7 +60,7 @@ macro_rules! type_alias_expr {
             RawExpr::Ternary(t) => <Ternary as Display>::fmt(t, f),
             RawExpr::Call(call) => <Call as Display>::fmt(call, f),
             RawExpr::Paren(p) => <Paren as Display>::fmt(p, f),
-            RawExpr::Empty => ::std::write!(f, "<noop>"),
+            RawExpr::Empty(_) => ::std::write!(f, "<noop>"),
             $(
               RawExpr::$extra(inner) => <$extra as Display>::fmt(inner, f),
             )*
@@ -70,6 +72,7 @@ macro_rules! type_alias_expr {
     mod cvtrawexpr {
       use super::*;
 
+      ::rc_utils::interconvert!(Empty, RawExpr);
       ::rc_utils::interconvert!(Constant, RawExpr);
       ::rc_utils::interconvert!(Unary, RawExpr);
       ::rc_utils::interconvert!(Binary, RawExpr);
@@ -85,6 +88,7 @@ macro_rules! type_alias_expr {
         ::rc_utils::interconvert!($extra, RawExpr);
       )*
 
+      ::rc_utils::make_trio_for!(Empty, RawExpr);
       ::rc_utils::make_trio_for!(Constant, RawExpr);
       ::rc_utils::make_trio_for!(Unary, RawExpr);
       ::rc_utils::make_trio_for!(Binary, RawExpr);
@@ -132,7 +136,7 @@ macro_rules! type_alias_expr {
       impl RawExpr {
         pub fn span(&self) -> SourceSpan {
           match self {
-            RawExpr::Empty => SourceSpan::dummy(),
+            RawExpr::Empty(_) => SourceSpan::dummy(),
             RawExpr::Constant(c) => c.span,
             RawExpr::Unary(u) => u.span,
             RawExpr::Binary(b) => b.span,

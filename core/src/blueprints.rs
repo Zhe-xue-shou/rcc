@@ -14,3 +14,6 @@ pub use self::{
     RawFor, RawGoto, RawIf, RawLabel, RawReturn, RawStmt, RawSwitch, RawWhile,
   },
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct Placeholder;

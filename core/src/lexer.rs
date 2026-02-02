@@ -518,7 +518,7 @@ impl<'session, 'source> Lexer<'session, 'source> {
       // so compare pattern[1..] against peek(0..).
       if self.matches_ahead(pattern.chars().skip(1)) {
         self.advance_n(pattern.chars().count() - 1);
-        return Some(Token::operator(op.clone(), self.span(start)));
+        return Some(Token::operator(*op, self.span(start)));
       }
     }
     Some(Token::operator(default, self.span(start)))

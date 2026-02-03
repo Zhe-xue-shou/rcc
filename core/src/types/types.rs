@@ -1,6 +1,6 @@
 use ::once_cell::sync::Lazy;
 use ::rc_utils::{IntoWith, make_trio_for};
-use ::std::str::FromStr;
+use ::std::{rc::Rc, str::FromStr};
 use ::strum_macros::{Display, EnumString, IntoStaticStr};
 
 use super::{Compatibility, TypeInfo};
@@ -94,7 +94,7 @@ pub enum Primitive {
 #[derive(Debug, Clone, PartialEq)]
 pub struct QualifiedType {
   qualifiers: Qualifiers,
-  unqualified_type: Type,
+  unqualified_type: Rc<Type>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -183,42 +183,49 @@ pub struct Enum {
 }
 
 impl QualifiedType {
-  pub fn new(qualifiers: Qualifiers, unqualified_type: Type) -> Self {
+  pub fn new(qualifiers: Qualifiers, unqualified_type: Rc<Type>) -> Self {
     Self {
       qualifiers,
       unqualified_type,
     }
   }
 
-  pub const fn new_unqualified(unqualified_type: Type) -> Self {
+  pub const fn new_unqualified(unqualified_type: Rc<Type>) -> Self {
     Self {
       qualifiers: Qualifiers::empty(),
       unqualified_type,
     }
   }
 
-  pub const fn void() -> Self {
-    Self::new_unqualified(Type::void())
+  pub fn void() -> Self {
+    Self::new_unqualified(Type::void().into())
   }
 
-  pub const fn bool() -> Self {
-    Self::new_unqualified(Type::bool())
+  pub fn bool() -> Self {
+    Self::new_unqualified(Type::bool().into())
   }
 
-  pub const fn int() -> Self {
-    Self::new_unqualified(Type::int())
+  pub fn int() -> Self {
+    Self::new_unqualified(Type::int().into())
   }
 
-  pub const fn float() -> Self {
-    Self::new_unqualified(Type::float())
+  pub fn float() -> Self {
+    Self::new_unqualified(Type::float().into())
   }
 
-  pub const fn nullptr() -> Self {
-    Self::new_unqualified(Type::nullptr())
+  pub fn nullptr() -> Self {
+    Self::new_unqualified(Type::nullptr().into())
   }
 
-  pub const fn char() -> Self {
-    Self::new_unqualified(Type::char())
+  pub fn char() -> Self {
+    Self::new_unqualified(Type::char().into())
+  }
+}
+impl std::ops::Deref for QualifiedType {
+  type Target = Type;
+
+  fn deref(&self) -> &Self::Target {
+    &self.unqualified_type
   }
 }
 impl Pointer {
@@ -336,7 +343,7 @@ macro_rules! to_qualified_type {
   ($ty:ty) => {
     impl From<$ty> for QualifiedType {
       fn from(value: $ty) -> Self {
-        QualifiedType::new_unqualified(Type::from(value))
+        QualifiedType::new_unqualified(Type::from(value).into())
       }
     }
 
@@ -441,12 +448,12 @@ impl QualifiedType {
     &self.unqualified_type
   }
 
-  pub fn destructure(self) -> (Qualifiers, Type) {
+  pub fn destructure(self) -> (Qualifiers, Rc<Type>) {
     (self.qualifiers, self.unqualified_type)
   }
 }
 impl From<Type> for QualifiedType {
   fn from(value: Type) -> Self {
-    QualifiedType::new_unqualified(value)
+    QualifiedType::new_unqualified(value.into())
   }
 }

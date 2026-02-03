@@ -230,7 +230,8 @@ impl Compatibility for FunctionProto {
         Type::composite_unchecked(
           lparam.unqualified_type(),
           rparam.unqualified_type(),
-        ),
+        )
+        .into(),
       );
       parameter_types.push(param_type);
     }
@@ -346,7 +347,8 @@ impl Compatibility for QualifiedType {
 
     QualifiedType::new(
       *lhs.qualifiers() | *rhs.qualifiers(),
-      Type::composite_unchecked(lhs.unqualified_type(), rhs.unqualified_type()),
+      Type::composite_unchecked(lhs.unqualified_type(), rhs.unqualified_type())
+        .into(),
     )
   }
 }

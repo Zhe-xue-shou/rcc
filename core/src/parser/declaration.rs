@@ -1,4 +1,4 @@
-use ::rc_utils::{Dummy, interconvert};
+use ::rc_utils::interconvert;
 
 use crate::{
   common::{Keyword, Literal, SourceSpan, Storage},
@@ -327,17 +327,17 @@ impl Declarator {
     }
   }
 }
-impl ::core::default::Default for DeclSpecs {
-  fn default() -> Self {
-    Self {
-      function_specifiers: FunctionSpecifier::empty(),
-      storage_class: None,
-      qualifiers: Qualifiers::empty(),
-      type_specifiers: Vec::default(),
-      span: SourceSpan::dummy(),
-    }
-  }
-}
+// impl ::core::default::Default for DeclSpecs {
+//   fn default() -> Self {
+//     Self {
+//       function_specifiers: FunctionSpecifier::empty(),
+//       storage_class: None,
+//       qualifiers: Qualifiers::empty(),
+//       type_specifiers: Vec::default(),
+//       span: SourceSpan::default(),
+//     }
+//   }
+// }
 impl VarDef {
   pub fn new(
     declspecs: DeclSpecs,

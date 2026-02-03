@@ -1,9 +1,6 @@
-use ::rc_utils::Dummy;
-
 use super::Placeholder as Empty;
 use crate::common::SourceSpan;
 
-#[::enum_dispatch::enum_dispatch]
 #[derive(Debug)]
 pub enum RawStmt<StmtTy, DeclTy, ExprTy, ExprCaseTy = ExprTy> {
   Empty(Empty),
@@ -160,7 +157,7 @@ impl<StmtTy> ::core::default::Default for RawCompound<StmtTy> {
   fn default() -> Self {
     Self {
       statements: Vec::default(),
-      span: SourceSpan::dummy(),
+      span: SourceSpan::default(),
     }
   }
 }

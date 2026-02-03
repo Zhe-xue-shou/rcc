@@ -1,9 +1,13 @@
 use ::rc_utils::{
-  Dummy, IntoWith, contract_assert, contract_violation, not_implemented_feature,
+  IntoWith, contract_assert, contract_violation, not_implemented_feature,
 };
 
 use crate::{
-  analyzer::{declaration as ad, expression as ae, statement as astmt},
+  analyzer::{
+    declaration as ad,
+    expression::{self as ae, ConstantLiteral},
+    statement as astmt,
+  },
   common::{
     Environment, Operator, OperatorCategory, SourceSpan, Storage, Symbol,
     VarDeclKind,
@@ -87,16 +91,18 @@ impl<T> ImplHelper2<T, Analyzer<'_>> for Result<T, Diag> {
 
 #[allow(unused)]
 trait ImplHelper3<T, Listener> {
-  fn handle_or_dummy(self, context: &Listener) -> T;
+  fn handle_or_default(self, context: &Listener) -> T;
 }
 
-impl<T: Dummy> ImplHelper3<T, Analyzer<'_>> for Result<T, Diag> {
-  fn handle_or_dummy(self, context: &Analyzer) -> T {
+impl<T: ::std::default::Default> ImplHelper3<T, Analyzer<'_>>
+  for Result<T, Diag>
+{
+  fn handle_or_default(self, context: &Analyzer) -> T {
     match self {
       Ok(t) => t,
       Err(e) => {
         context.add_diag(e);
-        Dummy::dummy()
+        ::std::default::Default::default()
       },
     }
   }
@@ -158,7 +164,7 @@ impl<'session> Analyzer<'session> {
         pd::Modifier::Pointer(qualifiers) => {
           qualified_type = QualifiedType::new(
             qualifiers,
-            Pointer::new(qualified_type.into()).into(),
+            Type::Pointer(Pointer::new(qualified_type.into())).into(),
           );
         },
         pd::Modifier::Array(array_modifier) => {
@@ -172,21 +178,20 @@ impl<'session> Analyzer<'session> {
               );
 
               if analyzed_expr.qualified_type().is_scalar() {
-                if analyzed_expr.is_integer_constant() {
-                  ArraySize::Constant(
-                    analyzed_expr
-                      .try_fold(&self.session.diagnosis)
-                      .0
-                      // .map_err(|e| e.into_with(span))
-                      // .handle_with(
-                      //   self,
-                      //   ae::Expression::new_error_node(QualifiedType::int()),
-                      // )
-                      .try_into()
-                      .handle_with(self, 0),
-                  )
-                } else {
-                  not_implemented_feature!("VLA not supported yet");
+                match analyzed_expr.fold(&self.session.diagnosis) {
+                  super::folding::FoldingResult::Success(v) =>
+                    if v.is_integer_constant() {
+                      ArraySize::Constant(v.try_into().handle_with(self, 0))
+                    } else {
+                      self.add_error(
+                        NonIntegerInArraySubscript(v.to_string()),
+                        v.span(),
+                      );
+                      ArraySize::Constant(0)
+                    },
+                  super::folding::FoldingResult::Failure(_) => {
+                    todo!("VLA")
+                  },
                 }
               } else {
                 self.add_error(
@@ -656,8 +661,8 @@ impl<'session> Analyzer<'session> {
         return Err(
           IncompatibleType(
             name,
-            prev_symbol_ref.borrow().qualified_type.clone().into(),
-            vardef.symbol.borrow().qualified_type.clone().into(),
+            prev_symbol_ref.borrow().qualified_type.clone(),
+            vardef.symbol.borrow().qualified_type.clone(),
           )
           .into_with(Severity::Error)
           .into_with(span),
@@ -1515,9 +1520,9 @@ impl<'session> Analyzer<'session> {
       .and_then(|e| e.conditional_conversion())
       .handle_with(self, ae::Expression::new_error_node(QualifiedType::bool()));
     let analyzed_then_branch =
-      self.statement(*then_branch).handle_or_dummy(self).into();
+      self.statement(*then_branch).handle_or_default(self).into();
     let analyzed_else_branch = else_branch.map(|else_branch| {
-      self.statement(*else_branch).handle_or_dummy(self).into()
+      self.statement(*else_branch).handle_or_default(self).into()
     });
     Ok(astmt::If::new(
       analyzed_condition,
@@ -1538,7 +1543,7 @@ impl<'session> Analyzer<'session> {
       .expression(condition)
       .and_then(|e| e.conditional_conversion())
       .handle_with(self, ae::Expression::new_error_node(QualifiedType::bool()));
-    let analyzed_body = self.statement(*body).handle_or_dummy(self).into();
+    let analyzed_body = self.statement(*body).handle_or_default(self).into();
     Ok(astmt::While::new(
       analyzed_condition,
       analyzed_body,
@@ -1554,7 +1559,7 @@ impl<'session> Analyzer<'session> {
       tag: label,
       span,
     } = do_while;
-    let analyzed_body = self.statement(*body).handle_or_dummy(self).into();
+    let analyzed_body = self.statement(*body).handle_or_default(self).into();
     let analyzed_condition = self
       .expression(condition)
       .and_then(|e| e.conditional_conversion())
@@ -1577,7 +1582,7 @@ impl<'session> Analyzer<'session> {
       span,
     } = for_stmt;
     let analyzed_initializer = initializer
-      .map(|init| self.statement(*init).handle_or_dummy(self).into());
+      .map(|init| self.statement(*init).handle_or_default(self).into());
     let analyzed_condition = condition.map(|cond| {
       self.expression(cond).handle_with(
         self,
@@ -1585,8 +1590,8 @@ impl<'session> Analyzer<'session> {
       )
     });
     let analyzed_increment =
-      increment.map(|inc| self.expression(inc).handle_or_dummy(self));
-    let analyzed_body = self.statement(*body).handle_or_dummy(self).into();
+      increment.map(|inc| self.expression(inc).handle_or_default(self));
+    let analyzed_body = self.statement(*body).handle_or_default(self).into();
     Ok(astmt::For::new(
       analyzed_initializer,
       analyzed_condition,
@@ -1645,14 +1650,24 @@ impl<'session> Analyzer<'session> {
       .handle_with(self, ae::Expression::new_error_node(QualifiedType::int()));
     let analyzed_body = self.statements(body);
 
-    let c = analyzed_value.try_fold(&self.session.diagnosis).0;
-
     Ok(astmt::Case::new(
-      if let ae::RawExpr::Constant(constant) = c.raw_expr() {
-        constant.constant.clone()
-      } else {
-        contract_violation!("constant folding did not yield a constant")
-      },
+      analyzed_value
+        .fold(&self.session.diagnosis)
+        .transform(|expr| {
+          if let ae::RawExpr::Constant(constant) = expr.raw_expr() {
+            if constant.is_integer() {
+              constant.constant.clone()
+            } else {
+              self.add_error(
+                NonIntegerInCaseStmt(constant.constant.clone()),
+                expr.span(),
+              );
+              ConstantLiteral::Int(0)
+            }
+          } else {
+            contract_violation!("constant folding did not yield a constant")
+          }
+        }),
       analyzed_body,
       span,
     ))
@@ -1684,7 +1699,7 @@ impl<'session> Analyzer<'session> {
         {
           true => Ok(astmt::Label::new(
             name,
-            self.statement(*statement).handle_or_dummy(self),
+            self.statement(*statement).handle_or_default(self),
             span,
           )),
           false => Err(

@@ -1,6 +1,4 @@
 mod data;
-
-use ::rc_utils::Dummy;
 use ::std::cell::{Ref, RefCell};
 
 pub use self::data::{Data as DiagData, Diag, Meta as DiagMeta, Severity};
@@ -89,12 +87,6 @@ impl NoOp {
   #[inline]
   pub fn new() -> Self {
     Self::default()
-  }
-}
-impl Dummy for NoOp {
-  #[inline]
-  fn dummy() -> Self {
-    Self::new()
   }
 }
 impl Diagnosis for NoOp {

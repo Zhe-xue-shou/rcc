@@ -1,4 +1,4 @@
-use ::rc_utils::{Dummy, interconvert};
+use ::rc_utils::interconvert;
 
 use super::{declaration::Declaration, expression::Expression};
 use crate::type_alias_stmt;
@@ -41,8 +41,8 @@ impl Statement {
     RawStmt::new_loop_dummy_identifier(str)
   }
 }
-impl Dummy for Statement {
-  fn dummy() -> Self {
+impl ::std::default::Default for Statement {
+  fn default() -> Self {
     Self::Empty()
   }
 }

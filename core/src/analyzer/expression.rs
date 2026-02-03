@@ -1,4 +1,4 @@
-use ::rc_utils::{Dummy, IntoWith};
+use ::rc_utils::IntoWith;
 
 use self::ValueCategory::{LValue, RValue};
 use crate::{
@@ -87,10 +87,6 @@ impl Expression {
 
   pub(super) fn destructure(self) -> (RawExpr, QualifiedType, ValueCategory) {
     (self.raw_expr, self.expr_type, self.value_category)
-  }
-
-  pub(super) fn into_raw(self) -> RawExpr {
-    self.raw_expr
   }
 }
 impl TryFrom<Expression> for usize {
@@ -215,11 +211,7 @@ impl ::core::default::Default for Expression {
     }
   }
 }
-impl Dummy for Expression {
-  fn dummy() -> Self {
-    Self::default()
-  }
-}
+
 #[derive(Debug)]
 pub struct Variable {
   pub name: SymbolRef,
@@ -396,15 +388,20 @@ mod test {
 
   #[test]
   fn int_float() {
+    use ::rc_utils::Dummy;
+
     use super::*;
 
     let int_expr = Expression::new(
-      RawExpr::Constant(ConstantLiteral::Int(42).into()),
+      RawExpr::Constant(ConstantLiteral::Int(42).into_with(Dummy::dummy())),
       QualifiedType::int(),
       RValue,
     );
     let float_expr = Expression::new(
-      RawExpr::Constant(ConstantLiteral::Float(::std::f32::consts::PI).into()),
+      RawExpr::Constant(
+        ConstantLiteral::Float(::std::f32::consts::PI)
+          .into_with(Dummy::dummy()),
+      ),
       QualifiedType::float(),
       RValue,
     );

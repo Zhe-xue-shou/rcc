@@ -1,4 +1,4 @@
-use ::rc_utils::{Dummy, IntoWith};
+use ::rc_utils::IntoWith;
 
 use crate::{
   common::{Operator, SourceSpan},
@@ -11,7 +11,6 @@ macro_rules! type_alias_expr {
     /// likely a sophisticated version of the Two-Level Types described in
     /// [this article](https://blog.ezyang.com/2013/05/the-ast-typing-problem/),
     /// I probably used the Parametric Polymorphism to "tie the knot" of recursion.
-    #[::enum_dispatch::enum_dispatch]
     #[derive(Debug)]
     pub enum RawExpr {
       Empty(Empty), // no-op for error recovery; for empty expr should use Option<ExprTy> instead
@@ -104,21 +103,9 @@ macro_rules! type_alias_expr {
         ::rc_utils::make_trio_for!($extra, RawExpr);
       )*
 
-      impl From<ConstantLiteral> for RawExpr {
-        fn from(constant: ConstantLiteral) -> Self {
-          RawExpr::Constant(constant.into())
-        }
-      }
-
       impl ::rc_utils::IntoWith<SourceSpan, RawExpr> for ConstantLiteral {
         fn into_with(self, span: SourceSpan) -> RawExpr {
           RawExpr::Constant(self.into_with(span))
-        }
-      }
-
-      impl From<SizeOfKind> for RawExpr {
-        fn from(sizeof: SizeOfKind) -> Self {
-          RawExpr::SizeOf(sizeof.into())
         }
       }
 
@@ -132,11 +119,10 @@ macro_rules! type_alias_expr {
     mod getspan {
       use super::*;
       use $crate::common::SourceSpan;
-      use ::rc_utils::Dummy;
       impl RawExpr {
         pub fn span(&self) -> SourceSpan {
           match self {
-            RawExpr::Empty(_) => SourceSpan::dummy(),
+            RawExpr::Empty(_) => SourceSpan::default(),
             RawExpr::Constant(c) => c.span,
             RawExpr::Unary(u) => u.span,
             RawExpr::Binary(b) => b.span,
@@ -242,18 +228,11 @@ impl RawConstant {
   }
 }
 
-// impl deref for rawconstant to constant
-impl std::ops::Deref for RawConstant {
+impl ::std::ops::Deref for RawConstant {
   type Target = Constant;
 
   fn deref(&self) -> &Self::Target {
     &self.constant
-  }
-}
-
-impl From<Constant> for RawConstant {
-  fn from(constant: Constant) -> Self {
-    Self::new(constant, SourceSpan::dummy())
   }
 }
 
@@ -344,13 +323,6 @@ impl<ExprTy> RawTernary<ExprTy> {
 impl<ExprTy, TypeTy> RawSizeOf<ExprTy, TypeTy> {
   pub fn new(sizeof: RawSizeOfKind<ExprTy, TypeTy>, span: SourceSpan) -> Self {
     Self { sizeof, span }
-  }
-}
-impl<ExprTy, TypeTy> From<RawSizeOfKind<ExprTy, TypeTy>>
-  for RawSizeOf<ExprTy, TypeTy>
-{
-  fn from(sizeof: RawSizeOfKind<ExprTy, TypeTy>) -> Self {
-    Self::new(sizeof, SourceSpan::dummy())
   }
 }
 

@@ -152,7 +152,7 @@ pub enum Data {
   #[error(
     "Incompatible types in declaration of '{0}': '{1}' is not compatible with '{2}'"
   )]
-  IncompatibleType(Elem, Box<QualifiedType>, Box<QualifiedType>),
+  IncompatibleType(Elem, QualifiedType, QualifiedType),
   #[error("Incompatible pointer types '{0}' and '{1}'")]
   IncompatiblePointerTypes(Elem, Elem),
   #[error("Cannot merge storage classes '{0}' and '{1}'")]
@@ -161,6 +161,8 @@ pub enum Data {
   MainFunctionProtoMismatch(CustomMsgFixed),
   #[error("Discarding qualifiers '{0}' during conversion is not allowed")]
   DiscardingQualifiers(Qualifiers),
+  #[error("Case label expression '{0}' is not an integer")]
+  NonIntegerInCaseStmt(Constant),
   #[error("{0}")]
   InvalidConversion(CustomMessage),
   #[error("{0}")]

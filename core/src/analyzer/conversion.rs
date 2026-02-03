@@ -161,7 +161,7 @@ impl Expression {
     let pointer_type = Pointer::new(
       QualifiedType::new(
         Qualifiers::empty(),
-        Type::FunctionProto(function_type.clone()),
+        Type::FunctionProto(function_type.clone()).into(),
       )
       .into(),
     );

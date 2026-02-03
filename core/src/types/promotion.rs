@@ -158,9 +158,9 @@ impl Promotion for Type {
 }
 impl Promotion for QualifiedType {
   fn promote(self) -> (Self, CastType) {
-    let (qualifiers, promoted) = self.destructure();
-    let (promoted, cast_type) = promoted.promote();
+    let (qualifiers, unqualified_type) = self.destructure();
+    let (promoted, cast_type) = (*unqualified_type).clone().promote();
 
-    (Self::new(qualifiers, promoted), cast_type)
+    (Self::new(qualifiers, promoted.into()), cast_type)
   }
 }

@@ -1,4 +1,4 @@
-use ::rc_utils::Dummy;
+use ::rc_utils::{Dummy, IntoWith};
 
 use crate::{
   analyzer::expression::{Binary, ConstantLiteral, Expression},
@@ -11,8 +11,14 @@ impl Expression {
     Self::new_rvalue(
       Binary::new(
         Operator::Plus,
-        Self::new_rvalue(ConstantLiteral::Int(1).into(), QualifiedType::int()),
-        Self::new_rvalue(ConstantLiteral::Int(1).into(), QualifiedType::int()),
+        Self::new_rvalue(
+          ConstantLiteral::Int(1).into_with(Dummy::dummy()),
+          QualifiedType::int(),
+        ),
+        Self::new_rvalue(
+          ConstantLiteral::Int(1).into_with(Dummy::dummy()),
+          QualifiedType::int(),
+        ),
         SourceSpan::dummy(),
       )
       .into(),

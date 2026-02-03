@@ -1,4 +1,4 @@
-use ::rc_utils::Dummy;
+use ::rc_utils::{Dummy, IntoWith};
 
 use crate::{
   common::{Operator, SourceSpan},
@@ -9,8 +9,10 @@ impl Expression {
   pub fn oneplusone() -> Self {
     Self::Binary(Binary {
       operator: Operator::Plus,
-      left: Self::Constant(ConstantLiteral::Int(1).into()).into(),
-      right: Self::Constant(ConstantLiteral::Int(1).into()).into(),
+      left: Self::Constant(ConstantLiteral::Int(1).into_with(Dummy::dummy()))
+        .into(),
+      right: Self::Constant(ConstantLiteral::Int(1).into_with(Dummy::dummy()))
+        .into(),
       span: SourceSpan::dummy(),
     })
   }

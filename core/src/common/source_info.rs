@@ -1,4 +1,4 @@
-use ::rc_utils::{DisplayWith, Dummy, static_assert};
+use ::rc_utils::{DisplayWith, static_assert};
 use ::std::path::PathBuf;
 
 pub trait Display<'a, DisplayHelperType: ::std::fmt::Display>:
@@ -40,9 +40,17 @@ impl Span {
     }
   }
 }
+#[cfg(debug_assertions)]
+use ::rc_utils::Dummy;
+#[cfg(debug_assertions)]
 impl Dummy for Span {
-  #[inline]
+  #[inline(always)]
+  #[track_caller]
   fn dummy() -> Self {
+    eprintln!(
+      "Dummy Span created from caller {}",
+      ::std::panic::Location::caller(),
+    );
     Self {
       file_index: Id::dummy(),
       start: Index::dummy(),

@@ -26,7 +26,7 @@ pub trait TryFromWith<With, From>: Sized {
   type Error;
   fn try_from_with(from: From, with: With) -> Result<Self, Self::Error>;
 }
-/// A trait for creating dummy instances of types.
+/// A trait for creating dummy instances of types during testing.
 ///
 /// This is useful for situations where a placeholder value is needed,
 /// such as during testing or when initializing data structures,
@@ -39,30 +39,26 @@ pub trait TryFromWith<With, From>: Sized {
 /// In other words, [`Dummy`] targets for ppl who read and write the code.
 ///
 /// Why not use [`Option<T>`] or [`Result<T, E>`]? -- there's no point
-/// to wrap every single type in Option or Result just to represent a dummy value.
-///
-/// Notable use case from myself:
-/// - use [`Dummy`] to create placeholder
-///   expressions/statements (just returns an empty node)
-///   to indicate errors during semantic analysis.
-/// - [`SourceSpan`](rc_core::common::source_info::Span) to represent an invalid source location,
-///   ususally for unconstructed spans/nodes, or representing a error node's location.
-///
+/// to wrap every single type in Option or Result just cater for unittest.
+#[cfg(debug_assertions)]
 pub trait Dummy {
   fn dummy() -> Self;
 }
+#[cfg(debug_assertions)]
 impl<T: Dummy> Dummy for shared_ptr<T> {
   fn dummy() -> Self {
     Rc::new(RefCell::new(T::dummy()))
   }
 }
 
+#[cfg(debug_assertions)]
 impl Dummy for u32 {
   #[inline]
   fn dummy() -> Self {
     u32::MAX
   }
 }
+#[cfg(debug_assertions)]
 impl Dummy for usize {
   #[inline]
   fn dummy() -> Self {

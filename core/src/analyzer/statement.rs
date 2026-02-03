@@ -1,5 +1,3 @@
-use ::rc_utils::Dummy;
-
 use crate::{
   analyzer::{
     declaration::ExternalDeclaration,
@@ -29,11 +27,12 @@ pub enum Statement {
 
 type_alias_stmt!(Statement, ExternalDeclaration, Expression, ConstantLiteral);
 
-impl Dummy for Statement {
-  fn dummy() -> Self {
-    Self::Empty()
+impl ::std::default::Default for Statement {
+  fn default() -> Self {
+    Statement::Empty()
   }
 }
+
 mod fmt {
   use ::std::fmt::Display;
 

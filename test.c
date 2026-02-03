@@ -44,7 +44,7 @@ int main(int argc, char **argv) { //
   CONST_INT(INT) = (10);
   static int y = sizeof x;
   switch (x) {
-  case 3 / 5:
+  case 3.0 / 5.0:
   case 2147483647 + 1:
     y = y + 1;
     x = x + 1;

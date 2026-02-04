@@ -29,11 +29,10 @@ pub enum Severity {
 }
 
 use ::rc_utils::{DisplayWith, IntoWith, static_assert};
-use ::thiserror::Error;
 
 use crate::{
   common::{Keyword, Literal, Operator, SourceManager, SourceSpan, Storage},
-  types::{Constant, QualifiedType, Qualifiers},
+  types::{Constant, QualifiedType, Qualifiers, Type},
 };
 
 /// Custom message. would be printed as-is.
@@ -46,7 +45,7 @@ type Elem = String;
 /// Plain error/warning/other diagnostic messages.
 ///
 /// TODO: reduce the size of this enum.
-#[derive(Debug, Error)]
+#[derive(Debug, ::thiserror::Error)]
 pub enum Data {
   #[error("Unexpected character '{}'{expected}", &.0.0, expected = format_expected(&.0.1))]
   UnexpectedCharacter(Box<(Literal, Option<Literal>)>),
@@ -107,7 +106,7 @@ pub enum Data {
   #[error("Local extern variable '{0}' cannot have initializer")]
   LocalExternVarWithInitializer(Elem),
   #[error("expression '{0}' is not callable")]
-  InvalidCallee(Elem),
+  InvalidCallee(Type),
   #[error("'{0}' is not a variable")]
   NotVariable(Elem),
   #[error("Variable '{0}' is not defined")]
@@ -192,6 +191,17 @@ pub enum Data {
     "Arithmetic overflow in operation '{}' between '{}' and '{}'", &.0.2, &.0.0, &.0.1
   )]
   ArithmeticBinOpOverflow(Box<(Constant, Constant, Operator)>),
+  #[error(
+    "'{}' is used in a logical operation, {}", &.0, if let Some(suggest) = &.1 {
+      format!(
+        "you may want to use '{}' instead",
+        suggest
+      )
+    } else {
+      "which may not be the operation you intended".to_string()
+    }
+  )]
+  LogicalOpMisuse(Operator /* got */, Option<Operator> /* suggest */),
   #[error("Possible data loss in implicit cast from '{0}' to '{1}'")]
   CastDown(QualifiedType, QualifiedType),
   #[error("Operation '{}' between '{}' and '{}' results in NaN", &.0.2, &.0.0, &.0.1)]

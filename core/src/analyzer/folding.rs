@@ -9,7 +9,7 @@ use super::expression::{
   ValueCategory, Variable,
 };
 use crate::{
-  common::{Floating, Integral, Operator, SourceSpan},
+  common::{Floating, Integral, Operator, OperatorCategory, SourceSpan},
   diagnosis::{DiagData::*, Diagnosis},
   types::{CastType, Compatibility, QualifiedType, Type, TypeInfo},
 };
@@ -47,6 +47,16 @@ impl<T> FoldingResult<T> {
       Self::Success(v) => FoldingResult::Success(f(v)),
       Self::Failure(v) => FoldingResult::Failure(f(v)),
     }
+  }
+
+  pub fn inspect_error<F>(self, f: F) -> Self
+  where
+    F: FnOnce(&T),
+  {
+    if let Self::Failure(v) = &self {
+      f(v)
+    }
+    self
   }
 
   pub fn unwrap(self) -> T {
@@ -206,44 +216,52 @@ impl Folding for Unary {
     );
 
     let folded_operand = self.operand.fold(diag)?;
+    use OperatorCategory::*;
 
     contract_assert!(
       folded_operand.raw_expr().is_constant(),
       "only implemented for constant var of constant eval"
     );
-
-    let raw_constant = match self.operator {
-      // unary `+` is no-op for arithmetic types
-      Operator::Plus => return Success(folded_operand),
-      // this happens after promotion, so no need to worry about smaller types
-      Operator::Minus => todo!(),
-      // match &folded_operand.raw_expr().as_constant_unchecked().constant {
-      //   // as-is!
-      //   _ => contract_violation!(
-      //     "the unary '-' applied to non-numeric constant or types that should be promoted: {:?}",
-      //     folded_operand.raw_expr().as_constant_unchecked().constant
-      //   ),
-      // },
-      Operator::Not => if folded_operand
-        .raw_expr()
-        .as_constant_unchecked()
-        .constant
-        .is_zero()
-      {
-        Success(Integral::from_bool(true))
-      } else {
-        Success(Integral::from_bool(false))
-      }
-      .map(|c: Integral| c.into()),
-      _ => todo!(),
-    };
-    raw_constant.map(|constant: CL| {
-      Expression::new(
-        constant.into_with(self.span),
-        target_type,
-        value_category,
-      )
-    })
+    match folded_operand.raw_expr().as_constant_unchecked().constant {
+      crate::types::Constant::Integral(operand) =>
+        Integral::handle_unary_op(self.operator, operand, self.span, diag)
+          .map(Into::into)
+          .map(|constant: CL| {
+            Expression::new(
+              constant.into_with(self.span),
+              target_type,
+              value_category,
+            )
+          }),
+      crate::types::Constant::Floating(operand) =>
+        match self.operator.category() {
+          Arithmetic => Floating::handle_unary_arith_op(
+            self.operator,
+            operand,
+            self.span,
+            diag,
+          )
+          .map(Into::into),
+          Logical => Floating::handle_unary_order_op(
+            self.operator,
+            operand,
+            self.span,
+            diag,
+          )
+          .map(Into::into),
+          _ => contract_violation!(
+            "not a unary operator or un-op but cannot be applied to floating!"
+          ),
+        }
+        .map(|constant: CL| {
+          Expression::new(
+            constant.into_with(self.span),
+            target_type,
+            value_category,
+          )
+        }),
+      _ => unimplemented!(),
+    }
   }
 }
 
@@ -306,6 +324,8 @@ impl Folding for Binary {
       .into_constant()
       .expect("shall be constant")
       .constant;
+
+    use OperatorCategory::*;
     match (lhs, rhs) {
           (
             crate::types::Constant::Integral(lhs),
@@ -314,7 +334,13 @@ impl Folding for Binary {
           (
             crate::types::Constant::Floating(lhs),
             crate::types::Constant::Floating(rhs),
-          ) => Floating::handle_binary_op(self.operator, lhs, rhs, self.span, diag).map(Into::into),
+          ) => match self.operator.category() {
+              Logical | Relational => Floating::handle_binary_order_op(self.operator, lhs, rhs, self.span, diag).map(Into::into),
+              Arithmetic => Floating::handle_binary_arith_op(self.operator, lhs, rhs, self.span, diag).map(Into::into),
+              _ => contract_violation!(
+                "not a binary operator or bin-op but cannot be applied to floating!"
+              ),
+          }
           (
             crate::types::Constant::String(_),
             crate::types::Constant::String(_),
@@ -428,7 +454,7 @@ impl Folding for Paren {
     _value_category: ValueCategory,
     diag: &impl Diagnosis,
   ) -> FoldingResult<Expression> {
-    self.expr.fold(diag).map(|expr| expr)
+    self.expr.fold(diag)
   }
 }
 
@@ -484,12 +510,14 @@ impl Folding for ImplicitCast {
       ),
       PointerToIntegral => Failure(raw_expr),
       PointerToBoolean => Failure(raw_expr),
-      NullptrToIntegral => match target_type.unqualified_type() {
-        Type::Primitive(p) =>
-          Success(Integral::new(p.size(), 0, p.is_signed().into()).into()),
-        _ => contract_violation!("unreachable"),
-      }
-      .map(|c: CL| c.into_with(self.span)),
+      NullptrToIntegral =>
+        match target_type.unqualified_type() {
+          Type::Primitive(p) => Success(
+            Integral::new(0, p.size() as u8, p.is_signed().into()).into(),
+          ),
+          _ => contract_violation!("unreachable"),
+        }
+        .map(|c: CL| c.into_with(self.span)),
       NullptrToBoolean => Success(Integral::from_bool(false).into())
         .map(|c: CL| c.into_with(self.span)),
     }
@@ -526,10 +554,21 @@ impl Integral {
           Some(result) => Success(result),
           None => {
             diag.add_error(DivideByZero, span);
-            Failure(Integral::new(lhs.width(), 0, lhs.signedness()).into())
+            Failure(
+              Integral::new(0, lhs.width() as u8, lhs.signedness()).into(),
+            )
           },
         }
       }};
+    }
+    macro_rules! logical_misuse_warn {
+    ($op_sym:tt, $op_variant:ident, $suggest:ident) => {{
+        diag.add_warning(
+            LogicalOpMisuse($op_variant, $suggest.into()),
+            span,
+        );
+        Success(Self::from_bool(!lhs.is_zero() $op_sym !rhs.is_zero()))
+    }}
     }
     use Operator::*;
     match op {
@@ -540,8 +579,8 @@ impl Integral {
       Slash => div_zero!(checked_div),
       Percent => div_zero!(checked_rem),
 
-      And => Success(Self::from_bool(!lhs.is_zero() && !rhs.is_zero())),
-      Or => Success(Self::from_bool(!lhs.is_zero() || !rhs.is_zero())),
+      And => logical_misuse_warn!(&&, And, Ampersand),
+      Or => logical_misuse_warn!(||, Or, Pipe),
 
       Less => Success(Self::from_bool(lhs < rhs)),
       LessEqual => Success(Self::from_bool(lhs <= rhs)),
@@ -558,24 +597,140 @@ impl Integral {
       ),
     }
   }
+
+  pub fn handle_unary_op(
+    operator: Operator,
+    operand: Self,
+    _span: SourceSpan,
+    _diag: &impl Diagnosis,
+  ) -> FoldingResult<Self> {
+    debug_assert!(operator.unary());
+    use Operator::*;
+    match operator {
+      Plus => Success(operand),
+      Minus => Success(-operand),
+      Not => Success(Self::from_bool(operand.is_zero())),
+      Tilde => Success(!operand), // `!` is bitwise NOT here; rust does not have `~` operator
+      Star | Ampersand | PlusPlus | MinusMinus =>
+        contract_violation!("unary operator not applicable to integral!"),
+      _ => unreachable!(),
+    }
+  }
 }
 
 impl Floating {
-  pub fn handle_binary_op(
+  pub fn handle_binary_arith_op(
     op: Operator,
     lhs: Floating,
     rhs: Floating,
     span: SourceSpan,
     diag: &impl Diagnosis,
   ) -> FoldingResult<Self> {
+    use Operator::*;
     debug_assert!(
-      lhs.format() == rhs.format(),
-      "Mismatched floating formats in binary operation"
-    );
-    debug_assert!(
-      op.binary(),
+      op.binary() && op != Percent,
       "Tried to perform unary operation in binary op handler"
     );
-    todo!()
+    macro_rules! arith {
+      ($op:tt) => {{
+        let res = lhs $op rhs;
+        if lhs.is_finite() && rhs.is_finite() && res.is_infinite() {
+          diag.add_warning(
+            ArithmeticBinOpOverflow((lhs.into(), rhs.into(), op).into()),
+            span,
+          );
+        }
+        Success(res)
+      }};
+    }
+
+    match op {
+      Plus => arith!(+),
+      Minus => arith!(-),
+      Star => arith!(*),
+      Slash => arith!(/),
+      _ => contract_violation!(
+        "not a binary arithmetic operator but cannot be applied to floating! assignment op should be handled upstream, so does comma."
+      ),
+    }
+  }
+
+  pub fn handle_binary_order_op(
+    op: Operator,
+    lhs: Floating,
+    rhs: Floating,
+    span: SourceSpan,
+    diag: &impl Diagnosis,
+  ) -> FoldingResult<Integral> {
+    use OperatorCategory::*;
+    debug_assert!(
+      matches!(op.category(), Logical | Relational),
+      "Tried to perform unary operation in binary op handler"
+    );
+    macro_rules! logical_misuse_warn {
+    ($op_sym:tt, $op_variant:ident, $suggest:ident) => {{
+        diag.add_warning(
+            LogicalOpMisuse($op_variant, $suggest.into()),
+            span,
+        );
+        Success(Integral::from_bool(!lhs.is_zero() $op_sym !rhs.is_zero()))
+    }}
+    }
+    use Operator::*;
+    match op {
+      And => logical_misuse_warn!(&&, And, Ampersand),
+      Or => logical_misuse_warn!(||, Or, Pipe),
+
+      Less => Success(Integral::from_bool(lhs < rhs)),
+      LessEqual => Success(Integral::from_bool(lhs <= rhs)),
+      Greater => Success(Integral::from_bool(lhs > rhs)),
+      GreaterEqual => Success(Integral::from_bool(lhs >= rhs)),
+      EqualEqual => Success(Integral::from_bool(lhs == rhs)),
+      NotEqual => Success(Integral::from_bool(lhs != rhs)),
+      _ => contract_violation!(
+        "not a binary operator or bin-op but cannot be applied to floating! {op}"
+      ),
+    }
+  }
+
+  pub fn handle_unary_arith_op(
+    operator: Operator,
+    operand: Self,
+    _span: SourceSpan,
+    _diag: &impl Diagnosis,
+  ) -> FoldingResult<Self> {
+    debug_assert!(operator.unary());
+    use Operator::*;
+    match operator {
+      Plus => Success(operand),
+      Minus => Success(-operand),
+      Not | Tilde | Star | Ampersand | PlusPlus | MinusMinus =>
+        contract_violation!(
+          "unary operator not applicable to floating! should be handled upstream"
+        ),
+      _ => unreachable!(),
+    }
+  }
+
+  pub fn handle_unary_order_op(
+    operator: Operator,
+    operand: Self,
+    span: SourceSpan,
+    diag: &impl Diagnosis,
+  ) -> FoldingResult<Integral> {
+    debug_assert!(operator.unary());
+    use Operator::*;
+    match operator {
+      Not => {
+        diag.add_warning(LogicalOpMisuse(Not, None), span);
+        Success(Integral::from_bool(operand.is_zero()))
+      },
+      And | Or | Less | LessEqual | Greater | GreaterEqual | EqualEqual
+      | NotEqual | Star | Ampersand | PlusPlus | MinusMinus =>
+        contract_violation!(
+          "unary operator not applicable to floating! should be handled upstream"
+        ),
+      _ => unreachable!(),
+    }
   }
 }

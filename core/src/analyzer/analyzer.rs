@@ -20,7 +20,7 @@ use crate::{
   parser::{declaration as pd, expression as pe, statement as ps},
   types::{
     Array, ArraySize, Compatibility, FunctionProto, FunctionSpecifier, Pointer,
-    Primitive, QualifiedType, Type, TypeInfo,
+    Primitive, QualifiedType, Qualifiers, Type, TypeInfo,
   },
 };
 
@@ -624,7 +624,25 @@ impl<'session> Analyzer<'session> {
       Some(init) => match init {
         pd::Initializer::Expression(expression) => self
           .expression(*expression)
-          .map(|expr| Some(ad::Initializer::Scalar(expr)))
+          .map(|expr| {
+            Some(ad::Initializer::Scalar(
+              if qualified_type.qualifiers().contains(Qualifiers::Const) {
+                expr
+                  .fold(&self.session.diagnosis)
+                  .inspect_error(|e| {
+                    self.add_error(
+                      ExprNotConstant(format!(
+                        "Expression {e} cannot resolved to a constant value"
+                      )),
+                      e.span(),
+                    );
+                  })
+                  .unwrap()
+              } else {
+                expr
+              },
+            ))
+          })
           .unwrap_or_else(|e| {
             self.add_diag(e);
             None
@@ -666,15 +684,13 @@ impl<'session> Analyzer<'session> {
         &prev_symbol_ref.borrow().qualified_type,
         &vardef.symbol.borrow().qualified_type,
       ) {
-        return Err(
-          IncompatibleType(
-            name,
-            prev_symbol_ref.borrow().qualified_type.clone(),
-            vardef.symbol.borrow().qualified_type.clone(),
-          )
-          .into_with(Severity::Error)
-          .into_with(span),
-        );
+        do yeet IncompatibleType(
+          name,
+          prev_symbol_ref.borrow().qualified_type.clone(),
+          vardef.symbol.borrow().qualified_type.clone(),
+        )
+        .into_with(Severity::Error)
+        .into_with(span)
       }
       let prev_declkind = prev_symbol_ref.borrow().declkind;
       let new_declkind = vardef.symbol.borrow().declkind;
@@ -852,18 +868,14 @@ impl<'session> Analyzer<'session> {
       Type::Pointer(ptr) => match ptr.pointee.unqualified_type() {
         Type::FunctionProto(proto) => proto,
         _ =>
-          return Err(
-            InvalidCallee(ptr.pointee.unqualified_type().to_string())
-              .into_with(Severity::Error)
-              .into_with(span),
-          ),
-      },
-      _ =>
-        return Err(
-          InvalidCallee(analyzed_callee.unqualified_type().to_string())
+          do yeet InvalidCallee(ptr.pointee.unqualified_type().clone())
             .into_with(Severity::Error)
             .into_with(span),
-        ),
+      },
+      _ =>
+        do yeet InvalidCallee(analyzed_callee.unqualified_type().clone())
+          .into_with(Severity::Error)
+          .into_with(span),
     };
 
     let mut analyzed_arguments = Vec::new();
@@ -1166,11 +1178,9 @@ impl<'session> Analyzer<'session> {
     let operand = operand.lvalue_conversion().decay();
 
     if !operand.unqualified_type().is_pointer() {
-      return Err(
-        DerefNonPtr(operand.to_string())
-          .into_with(Severity::Error)
-          .into_with(span),
-      );
+      do yeet DerefNonPtr(operand.to_string())
+        .into_with(Severity::Error)
+        .into_with(span)
     }
 
     let pointee_type =
@@ -1293,11 +1303,13 @@ impl<'session> Analyzer<'session> {
     if !left.unqualified_type().is_arithmetic()
       || !right.unqualified_type().is_arithmetic()
     {
-      return Err(
-        NonArithmeticInBinaryOp(left.to_string(), right.to_string(), operator)
-          .into_with(Severity::Error)
-          .into_with(span),
-      );
+      do yeet NonArithmeticInBinaryOp(
+        left.to_string(),
+        right.to_string(),
+        operator,
+      )
+      .into_with(Severity::Error)
+      .into_with(span)
     }
 
     let (lhs, rhs, result_type) =
@@ -1360,12 +1372,9 @@ impl<'session> Analyzer<'session> {
     if !lhs.unqualified_type().is_integer()
       || !rhs.unqualified_type().is_integer()
     {
-      // return err_or_debugbreak!(); // error: bitshift operator requires integer operands
-      return Err(
-        NonIntegerInBitshiftOp(lhs.to_string(), rhs.to_string(), operator)
-          .into_with(Severity::Error)
-          .into_with(span),
-      );
+      do yeet NonIntegerInBitshiftOp(lhs.to_string(), rhs.to_string(), operator)
+        .into_with(Severity::Error)
+        .into_with(span)
     }
 
     let expr_type = lhs.qualified_type().clone();

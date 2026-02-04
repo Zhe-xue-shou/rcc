@@ -7,8 +7,7 @@ use crate::{
   common::SourceSpan,
   diagnosis::{Diag, DiagData::*, Severity},
   types::{
-    CastType, Compatibility, Pointer, Primitive, Promotion, QualifiedType,
-    Qualifiers, Type,
+    CastType, Compatibility, Pointer, Primitive, Promotion, QualifiedType, Type,
   },
 };
 
@@ -158,13 +157,9 @@ impl Expression {
       "function type should not have qualifiers: {:?}",
       self.qualified_type()
     );
-    let pointer_type = Pointer::new(
-      QualifiedType::new(
-        Qualifiers::empty(),
-        Type::FunctionProto(function_type.clone()).into(),
-      )
-      .into(),
-    );
+    let pointer_type = Pointer::new(QualifiedType::new_unqualified(
+      Type::FunctionProto(function_type.clone()).into(),
+    ));
     let span = self.span();
     Self::new_rvalue(
       ImplicitCast::new(self.into(), CastType::FunctionToPointerDecay, span)
@@ -211,7 +206,7 @@ impl Expression {
   ) -> Result<Self, Diag> {
     let span = self.span();
 
-    match (&target_type.unqualified_type(), &self.unqualified_type()) {
+    match (target_type.unqualified_type(), self.unqualified_type()) {
       //  the left operand has [...] arithmetic type, and the right operand has arithmetic type;
       (Type::Primitive(left), Type::Primitive(right))
         if left.is_arithmetic() && right.is_arithmetic() =>
@@ -234,13 +229,11 @@ impl Expression {
         // can add qualifiers, but cannot remove them
         // error if removing qualifiers (const, volatile, etc.)
         if !lhs.pointee.qualifiers().contains(*rhs.pointee.qualifiers()) {
-          return Err(
-            DiscardingQualifiers(
-              *rhs.pointee.qualifiers() - *lhs.pointee.qualifiers(),
-            )
-            .into_with(Severity::Error)
-            .into_with(span),
-          );
+          do yeet DiscardingQualifiers(
+            *rhs.pointee.qualifiers() - *lhs.pointee.qualifiers(),
+          )
+          .into_with(Severity::Error)
+          .into_with(span)
         }
 
         if lhs
@@ -378,18 +371,15 @@ impl Expression {
           Primitive::common_type(l, r),
         _ => {
           let lhs_span = lhs.span();
-          return Err(
-            InvalidConversion(
-              "usual arithmetic conversion only applies to arithmetic types"
-                .to_string(),
-            )
-            .into_with(Severity::Error)
-            .into_with(SourceSpan {
-              file_index: lhs_span.file_index,
-              start: lhs_span.start,
-              end: rhs.span().end,
-            }),
-          );
+          do yeet InvalidConversion(
+            "usual arithmetic conversion only applies to arithmetic types"
+              .to_string(),
+          )
+          .into_with(Severity::Error)
+          .into_with(SourceSpan {
+            end: rhs.span().end,
+            ..lhs_span
+          })
         },
       };
 

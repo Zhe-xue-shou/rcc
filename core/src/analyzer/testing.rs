@@ -2,7 +2,7 @@ use ::rc_utils::{Dummy, IntoWith};
 
 use crate::{
   analyzer::expression::{Binary, ConstantLiteral, Expression},
-  common::{Integral, Operator, SourceSpan},
+  common::{Operator, SourceSpan},
   types::QualifiedType,
 };
 
@@ -12,13 +12,11 @@ impl Expression {
       Binary::new(
         Operator::Plus,
         Self::new_rvalue(
-          ConstantLiteral::Integral(Integral::from_int(1))
-            .into_with(Dummy::dummy()),
+          ConstantLiteral::Integral(1.into()).into_with(Dummy::dummy()),
           QualifiedType::int(),
         ),
         Self::new_rvalue(
-          ConstantLiteral::Integral(Integral::from_int(1))
-            .into_with(Dummy::dummy()),
+          ConstantLiteral::Integral(1.into()).into_with(Dummy::dummy()),
           QualifiedType::int(),
         ),
         SourceSpan::dummy(),

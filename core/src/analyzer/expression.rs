@@ -379,12 +379,10 @@ mod test {
     use ::rc_utils::{Dummy, IntoWith};
 
     use super::*;
-    use crate::common::Integral;
 
     let int_expr = Expression::new(
       RawExpr::Constant(
-        ConstantLiteral::Integral(Integral::from_int(42))
-          .into_with(Dummy::dummy()),
+        ConstantLiteral::Integral(42.into()).into_with(Dummy::dummy()),
       ),
       QualifiedType::int(),
       RValue,

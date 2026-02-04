@@ -130,9 +130,10 @@ impl Compatibility for Pointer {
     if !Self::compatible(lhs, rhs) {
       None
     } else {
-      Some(Self::new(
-        QualifiedType::composite_unchecked(&lhs.pointee, &rhs.pointee).into(),
-      ))
+      Some(Self::new(QualifiedType::composite_unchecked(
+        &lhs.pointee,
+        &rhs.pointee,
+      )))
     }
   }
 
@@ -140,9 +141,10 @@ impl Compatibility for Pointer {
   where
     Self: Sized,
   {
-    Self::new(
-      QualifiedType::composite_unchecked(&lhs.pointee, &rhs.pointee).into(),
-    )
+    Self::new(QualifiedType::composite_unchecked(
+      &lhs.pointee,
+      &rhs.pointee,
+    ))
   }
 }
 
@@ -235,7 +237,7 @@ impl Compatibility for FunctionProto {
       );
       parameter_types.push(param_type);
     }
-    Self::new(return_type.into(), parameter_types, lhs.is_variadic)
+    Self::new(return_type, parameter_types, lhs.is_variadic)
   }
 }
 
@@ -384,7 +386,7 @@ impl Compatibility for Array {
       &rhs.element_type,
     );
     Self::new(
-      element_type.into(),
+      element_type,
       ArraySize::composite_unchecked(&lhs.size, &rhs.size),
     )
   }

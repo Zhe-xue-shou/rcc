@@ -1,9 +1,9 @@
+use ::rc_utils::static_dispatch;
+
 use super::{
   Array, ArraySize, Enum, FunctionProto, Pointer, Primitive, Primitive::*,
-  QualifiedType, Record, Union,
+  QualifiedType, Record, Type, Union,
 };
-#[allow(unused)]
-#[::enum_dispatch::enum_dispatch(Type)]
 pub trait TypeInfo {
   fn size(&self) -> usize;
   fn is_scalar(&self) -> bool;
@@ -20,29 +20,25 @@ impl TypeInfo for QualifiedType {
     self.unqualified_type().is_scalar()
   }
 }
-#[allow(unused)]
-macro_rules! dispatch_down {
-  ($name:ident, $ty:ty) => {
-    fn $name(&self) -> $ty {
-      match self {
-        Type::Primitive(p) => p.$name(),
-        Type::Pointer(p) => p.$name(),
-        Type::Enum(e) => e.$name(),
-        Type::Record(r) => r.$name(),
-        Type::Union(u) => u.$name(),
-        Type::Array(a) => a.$name(),
-        Type::FunctionProto(f) => f.$name(),
-      }
-    }
-  };
-}
-// // enum_dispatch replaces these.
-// impl TypeInfo for Type {
-//   dispatch_down!(size, usize);
+impl TypeInfo for Type {
+  #[inline]
+  fn size(&self) -> usize {
+    static_dispatch!(
+      self.size(),
+      Primitive Array Pointer FunctionProto Enum Record Union
+    )
+  }
 
-//   dispatch_down!(is_scalar, bool);
-// }
+  #[inline]
+  fn is_scalar(&self) -> bool {
+    static_dispatch!(
+      self.is_scalar(),
+      Primitive Array Pointer FunctionProto Enum Record Union
+    )
+  }
+}
 impl TypeInfo for Primitive {
+  /// integral size should be aligned with method `Primitive::integer_width()`.
   fn size(&self) -> usize {
     // x86_64 sizes
     match self {

@@ -164,7 +164,7 @@ impl<'session> Analyzer<'session> {
         pd::Modifier::Pointer(qualifiers) => {
           qualified_type = QualifiedType::new(
             qualifiers,
-            Type::Pointer(Pointer::new(qualified_type.into())).into(),
+            Type::Pointer(Pointer::new(qualified_type)).into(),
           );
         },
         pd::Modifier::Array(array_modifier) => {
@@ -184,7 +184,7 @@ impl<'session> Analyzer<'session> {
                       ArraySize::Constant(
                         match v.raw_expr().as_constant_unchecked().constant {
                           ae::ConstantLiteral::Integral(integral) =>
-                            integral.to_u64() as usize,
+                            integral.to_builtin(),
                           ae::ConstantLiteral::Floating(_) => unreachable!(),
                           ae::ConstantLiteral::String(_) => unreachable!(),
                           ae::ConstantLiteral::Nullptr(_) => 0,
@@ -211,7 +211,7 @@ impl<'session> Analyzer<'session> {
             },
           };
           qualified_type = Array {
-            element_type: qualified_type.into(),
+            element_type: qualified_type,
             size,
           }
           .into();
@@ -224,7 +224,7 @@ impl<'session> Analyzer<'session> {
           } = function_signature;
           let analyzed_parameter_types = self.parse_parameter_types(parameters);
           qualified_type = FunctionProto::new(
-            qualified_type.into(),
+            qualified_type,
             analyzed_parameter_types,
             is_variadic,
           )
@@ -264,7 +264,7 @@ impl<'session> Analyzer<'session> {
       .map(|param| param.symbol.borrow().qualified_type.clone())
       .collect::<Vec<QualifiedType>>();
     let functionproto =
-      FunctionProto::new(return_type.into(), parameter_types, is_variadic);
+      FunctionProto::new(return_type, parameter_types, is_variadic);
 
     Ok((functionproto.into(), parameters))
   }
@@ -513,17 +513,73 @@ impl<'session> Analyzer<'session> {
         self.add_diag(e.into_with(span));
       });
     }
+    use VarDeclKind::*;
 
-    let symbol = Symbol::new_ref(Symbol::new(
-      qualified_type,
-      storage,
-      name.clone(),
-      if body.is_some() {
-        VarDeclKind::Definition
-      } else {
-        VarDeclKind::Declaration
+    let declkind = if body.is_some() {
+      Definition
+    } else {
+      Declaration
+    };
+
+    let symbol = match self.environment.find(&name) {
+      None => Symbol::new_ref(Symbol::new(
+        qualified_type,
+        storage,
+        name.clone(),
+        declkind,
+      )),
+      Some(prev_symbol_ref) => {
+        let borrow = prev_symbol_ref.borrow();
+        if !QualifiedType::compatible(&borrow.qualified_type, &qualified_type) {
+          do yeet IncompatibleType(
+            name.clone(),
+            borrow.qualified_type.clone(),
+            qualified_type.clone(),
+          )
+          .into_with(Severity::Error)
+          .into_with(span)
+        }
+
+        let prev_declkind = borrow.declkind;
+
+        // SAFETY: drop borrow before borrow_mut
+        drop(borrow);
+
+        match (prev_declkind, declkind) {
+          (_, Declaration) | (Declaration, Definition) =>
+            if QualifiedType::compatible(
+              &prev_symbol_ref.borrow().qualified_type,
+              &qualified_type,
+            ) {
+              // TODO: nasty exceptions w.r.t. array compatibility in function params,
+              //       like `int f(int a[restrict 5])` vs `int f(int a[5])`,
+              //       even with `int f(int a[*])` and `int f(int a[restrict])`
+              let composite = QualifiedType::composite_unchecked(
+                &prev_symbol_ref.borrow().qualified_type,
+                &qualified_type,
+              );
+              let mut borrow_mut = prev_symbol_ref.borrow_mut();
+              borrow_mut.qualified_type = composite;
+              borrow_mut.declkind = VarDeclKind::merge(prev_declkind, declkind);
+              prev_symbol_ref.clone()
+            } else {
+              do yeet IncompatibleType(
+                name.clone(),
+                prev_symbol_ref.borrow().qualified_type.clone(),
+                qualified_type.clone(),
+              )
+              .into_with(Severity::Error)
+              .into_with(span)
+            },
+          (Definition, Definition) =>
+            do yeet FunctionAlreadyDefined(name)
+              .into_with(Severity::Error)
+              .into_with(span),
+          (Tentative, _) | (_, Tentative) =>
+            contract_violation!("function cannot be tentative"),
+        }
       },
-    ));
+    };
 
     self.environment.declare_symbol(name, symbol.clone());
 
@@ -620,40 +676,8 @@ impl<'session> Analyzer<'session> {
       .shall_ok("variable must have a name; it should be handled in parser");
     let qualified_type =
       self.apply_modifiers_for_varty(qualified_type, modifiers);
-    let initializer = match initializer {
-      Some(init) => match init {
-        pd::Initializer::Expression(expression) => self
-          .expression(*expression)
-          .map(|expr| {
-            Some(ad::Initializer::Scalar(
-              if qualified_type.qualifiers().contains(Qualifiers::Const) {
-                expr
-                  .fold(&self.session.diagnosis)
-                  .inspect_error(|e| {
-                    self.add_error(
-                      ExprNotConstant(format!(
-                        "Expression {e} cannot resolved to a constant value"
-                      )),
-                      e.span(),
-                    );
-                  })
-                  .unwrap()
-              } else {
-                expr
-              },
-            ))
-          })
-          .unwrap_or_else(|e| {
-            self.add_diag(e);
-            None
-          }),
-        pd::Initializer::List(_) => {
-          not_implemented_feature!("initializer list");
-        },
-      },
-      None => None,
-    };
-    // todo: check initializer type compatibility
+    let initializer = initializer
+      .and_then(|initializer| self.initializer(initializer, &qualified_type));
 
     let vardef = match self.environment.is_global() {
       true => self.global_vardef(
@@ -745,6 +769,48 @@ impl<'session> Analyzer<'session> {
     }
   }
 
+  fn initializer(
+    &self,
+    initializer: pd::Initializer,
+    target_type: &QualifiedType,
+  ) -> Option<ad::Initializer> {
+    match initializer {
+      pd::Initializer::Expression(expression) => self
+        .expression(*expression)
+        .map(|expr| {
+          expr
+            .assignment_conversion(target_type)
+            .handle_or_default(self)
+        })
+        .map(|expr| {
+          Some(ad::Initializer::Scalar(
+            if !target_type.qualifiers().contains(Qualifiers::Const) {
+              expr
+            } else {
+              expr
+                .fold(&self.session.diagnosis)
+                .inspect_error(|e| {
+                  self.add_error(
+                    ExprNotConstant(format!(
+                      "Expression {e} cannot resolved to a constant value"
+                    )),
+                    e.span(),
+                  );
+                })
+                .unwrap()
+            },
+          ))
+        })
+        .unwrap_or_else(|e| {
+          self.add_diag(e);
+          None
+        }),
+      pd::Initializer::List(_) => {
+        not_implemented_feature!("initializer list");
+      },
+    }
+  }
+
   fn global_vardef(
     &self,
     storage: Option<Storage>,
@@ -821,10 +887,7 @@ impl<'session> Analyzer<'session> {
         let size = analyzed_expr.unqualified_type().size();
         Ok(ae::Expression::new_rvalue(
           ae::RawExpr::Constant(
-            ae::ConstantLiteral::Integral(Integral::from_ulong_long(
-              size as u64,
-            ))
-            .into_with(SourceSpan {
+            ae::ConstantLiteral::Integral(size.into()).into_with(SourceSpan {
               end: analyzed_expr.span().end,
               ..sizeof.span
             }),
@@ -844,10 +907,8 @@ impl<'session> Analyzer<'session> {
         };
         Ok(ae::Expression::new_rvalue(
           ae::RawExpr::Constant(
-            ae::ConstantLiteral::Integral(Integral::from_ulong_long(
-              qualified_type.size() as u64,
-            ))
-            .into_with(sizeof.span),
+            ae::ConstantLiteral::Integral(qualified_type.size().into())
+              .into_with(sizeof.span),
           ),
           Primitive::ULongLong.into(),
         ))
@@ -868,12 +929,12 @@ impl<'session> Analyzer<'session> {
       Type::Pointer(ptr) => match ptr.pointee.unqualified_type() {
         Type::FunctionProto(proto) => proto,
         _ =>
-          do yeet InvalidCallee(ptr.pointee.unqualified_type().clone())
+          do yeet InvalidCallee(ptr.pointee.clone())
             .into_with(Severity::Error)
             .into_with(span),
       },
       _ =>
-        do yeet InvalidCallee(analyzed_callee.unqualified_type().clone())
+        do yeet InvalidCallee(analyzed_callee.qualified_type().clone())
           .into_with(Severity::Error)
           .into_with(span),
     };
@@ -888,7 +949,7 @@ impl<'session> Analyzer<'session> {
     {
       contract_violation!("argument count mismatch");
     }
-    let expr_type = function_proto.return_type.as_ref().clone();
+    let expr_type = function_proto.return_type.clone();
     // todo: type promotion, currently just match the exact/compatible types
     Ok(ae::Expression::new_rvalue(
       ae::Call::new(analyzed_callee, analyzed_arguments, span).into(),
@@ -1043,7 +1104,7 @@ impl<'session> Analyzer<'session> {
         if QualifiedType::compatible(left_pointee, right_pointee) {
           let qualified_type =
             QualifiedType::composite_unchecked(left_pointee, right_pointee);
-          let result_type = Pointer::new(qualified_type.into()).into();
+          let result_type = Pointer::new(qualified_type).into();
           Ok(ae::Expression::new_rvalue(
             ae::Ternary::new(condition, then_expr, else_expr, span).into(),
             result_type,
@@ -1158,7 +1219,7 @@ impl<'session> Analyzer<'session> {
       let pointee = operand.qualified_type().clone();
       Ok(ae::Expression::new_rvalue(
         ae::Unary::new(operator, operand, span).into(),
-        Pointer::new(pointee.into()).into(),
+        Pointer::new(pointee).into(),
       ))
     }
   }
@@ -1196,7 +1257,7 @@ impl<'session> Analyzer<'session> {
       // if it points to an object, the result is an lvalue designating the object.
       // If the operand has type "pointer to type", the result has type "type".
       // If an invalid value has been assigned to the pointer, the behavior is undefined.
-      let expr_type = pointee_type.as_ref().clone();
+      let expr_type = pointee_type.clone();
       Ok(ae::Expression::new_lvalue(
         ae::Unary::new(operator, operand, span).into(),
         expr_type,
@@ -1497,7 +1558,7 @@ impl<'session> Analyzer<'session> {
       .qualified_type
       .unqualified_type()
     {
-      Type::FunctionProto(proto) => proto.return_type.as_ref().clone(),
+      Type::FunctionProto(proto) => proto.return_type.clone(),
       _ => {
         contract_violation!("current function's type is not function proto")
       },

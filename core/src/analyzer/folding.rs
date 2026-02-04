@@ -20,6 +20,7 @@ pub enum FoldingResult<T> {
   Failure(T),
 }
 impl<T> ::std::ops::FromResidual for FoldingResult<T> {
+  #[inline]
   fn from_residual(residual: <Self as ::std::ops::Try>::Residual) -> Self {
     residual
   }
@@ -29,10 +30,12 @@ impl<T> ::std::ops::Try for FoldingResult<T> {
   type Output = T;
   type Residual = FoldingResult<T>;
 
+  #[inline]
   fn from_output(output: Self::Output) -> Self {
     Self::Success(output)
   }
 
+  #[inline]
   fn branch(self) -> ::std::ops::ControlFlow<Self::Residual, Self::Output> {
     match self {
       Self::Success(v) => ::std::ops::ControlFlow::Continue(v),
@@ -42,6 +45,7 @@ impl<T> ::std::ops::Try for FoldingResult<T> {
 }
 
 impl<T> FoldingResult<T> {
+  #[inline]
   fn map<U>(self, f: impl FnOnce(T) -> U) -> FoldingResult<U> {
     match self {
       Self::Success(v) => FoldingResult::Success(f(v)),
@@ -49,6 +53,7 @@ impl<T> FoldingResult<T> {
     }
   }
 
+  #[inline]
   pub fn inspect_error<F>(self, f: F) -> Self
   where
     F: FnOnce(&T),
@@ -59,12 +64,15 @@ impl<T> FoldingResult<T> {
     self
   }
 
+  /// This function **won't** panic, and always returns the inner value regardless of success or failure.
+  #[inline]
   pub fn unwrap(self) -> T {
     match self {
       Self::Failure(v) | Self::Success(v) => v,
     }
   }
 
+  #[inline]
   pub fn transform<U>(self, f: impl FnOnce(T) -> U) -> U {
     match self {
       Self::Success(v) | Self::Failure(v) => f(v),
@@ -411,9 +419,9 @@ impl Folding for SizeOf {
   ) -> FoldingResult<Expression> {
     match self.sizeof {
       SizeOfKind::Type(qualified_type) => if qualified_type.size() > 0 {
-        Success(Integral::from_ulong_long(qualified_type.size() as u64))
+        Success(Integral::from_uintptr(qualified_type.size()))
       } else {
-        Failure(Integral::from_ulong_long(0))
+        Failure(Integral::from_uintptr(0))
       }
       .map(Integral::into)
       .map(|constant: CL| {
@@ -471,6 +479,7 @@ impl Folding for ImplicitCast {
     use CastType::*;
     match self.cast_type {
       Noop | ToVoid | LValueToRValue | BitCast => Success(raw_expr),
+      PointerToIntegral | PointerToBoolean => Failure(raw_expr),
       ArrayToPointerDecay => todo!("address constant"),
       FunctionToPointerDecay => todo!("address constant"),
       NullptrToPointer => match target_type.unqualified_type() {
@@ -483,33 +492,69 @@ impl Folding for ImplicitCast {
             target_type.unqualified_type().as_primitive_unchecked();
           let expr_primitive =
             expr_type.unqualified_type().as_primitive_unchecked();
-          if target_primitive.integer_rank() < expr_primitive.integer_rank() {
+          if target_primitive.size() < expr_primitive.size() {
             diag.add_warning(
               CastDown(expr_type.clone(), target_type.clone()),
               self.span,
             )
           }
-          todo!("{c}")
-        },
+          Success(
+            c.constant
+              .as_integral_unchecked()
+              .cast(
+                target_primitive.size() as u8,
+                target_primitive.is_signed().into(),
+              )
+              .into(),
+          )
+        }
+        .map(|c: CL| c.into_with(self.span)),
         _ => contract_violation!("unreachable"),
       },
       // integral are promoted previously.
-      IntegralToFloating => {
-        todo!()
-      },
+      IntegralToFloating => Success(
+        raw_expr.into_constant_unchecked().constant.to_floating(
+          target_type
+            .unqualified_type()
+            .as_primitive_unchecked()
+            .floating_format(),
+        ),
+      )
+      .map(|c: CL| c.into_with(self.span)),
       IntegralToBoolean | FloatingToBoolean => Success(
         raw_expr
           .into_constant_unchecked()
+          .constant
           .to_boolean()
           .into_with(self.span),
       ),
-      FloatingCast => todo!(),
-      FloatingToIntegral => todo!(),
+      FloatingCast => Success(
+        raw_expr
+          .into_constant_unchecked()
+          .constant
+          .as_floating_unchecked()
+          .cast(
+            target_type
+              .unqualified_type()
+              .as_primitive_unchecked()
+              .floating_format(),
+          ),
+      )
+      .map(Into::into)
+      .map(|c: CL| c.into_with(self.span)),
+      FloatingToIntegral => Success(
+        raw_expr.into_constant_unchecked().constant.to_integral(
+          target_type.as_primitive_unchecked().integer_width(),
+          target_type
+            .as_primitive_unchecked()
+            .is_signed_integer()
+            .into(),
+        ),
+      )
+      .map(|c: CL| c.into_with(self.span)),
       IntegralToPointer => contract_violation!(
         "no such implicit cast in C -- only for explicit casts!"
       ),
-      PointerToIntegral => Failure(raw_expr),
-      PointerToBoolean => Failure(raw_expr),
       NullptrToIntegral =>
         match target_type.unqualified_type() {
           Type::Primitive(p) => Success(
@@ -733,4 +778,10 @@ impl Floating {
       _ => unreachable!(),
     }
   }
+}
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn t() {}
 }

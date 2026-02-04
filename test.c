@@ -56,7 +56,7 @@ int main(int argc, char **argv) { //
     y = y + i;
     continue;
   }
-  const int a = 2 && 3;
+  const int a = 2.0 / 3;
   return f(2, 3);
 }
 
@@ -83,4 +83,4 @@ int p(int a[static 10]) { return 0; }
 
 // Error: Second dimension mismatch
 void f2(int a[][5]);
-void f2(int a[][10]); // ERROR: 'int(*)[5]' vs 'int(*)[10]'
+void f2(int a[][5]); // ERROR: 'int(*)[5]' vs 'int(*)[10]'

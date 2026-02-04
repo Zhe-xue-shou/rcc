@@ -3,6 +3,7 @@
 use ::rc_utils::breakpoint;
 
 use super::{CastType, Primitive, Primitive::*, QualifiedType, Type};
+use crate::common::FloatFormat;
 pub trait Promotion {
   #[must_use]
   fn promote(self) -> (Self, CastType)
@@ -47,6 +48,22 @@ impl Primitive {
     }
   }
 
+  /// These value should be consistent with member function of `Integral::width`.
+  pub fn integer_width(&self) -> u8 {
+    match self {
+      Bool => 1,
+      Char | SChar | UChar => 8,
+      Short | UShort => 16,
+      Int | UInt => 32,
+      Long | ULong => 32,
+      LongLong | ULongLong => 64,
+      _ => {
+        breakpoint!();
+        panic!("Not an integer type");
+      },
+    }
+  }
+
   pub fn is_floating_point(&self) -> bool {
     matches!(self, Float | Double | LongDouble) || self.is_complex()
   }
@@ -56,6 +73,19 @@ impl Primitive {
       Float | ComplexFloat => 0x01,
       Double | ComplexDouble => 0x02,
       LongDouble | ComplexLongDouble => 0x04,
+      _ => {
+        breakpoint!();
+        panic!("Not a floating point type");
+      },
+    }
+  }
+
+  pub fn floating_format(&self) -> FloatFormat {
+    use FloatFormat::*;
+    match self {
+      Float | ComplexFloat => IEEE32,
+      Double | ComplexDouble => IEEE64,
+      LongDouble | ComplexLongDouble => IEEE64,
       _ => {
         breakpoint!();
         panic!("Not a floating point type");

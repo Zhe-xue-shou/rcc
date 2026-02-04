@@ -1,5 +1,5 @@
 use ::once_cell::sync::Lazy;
-use ::rc_utils::{IntoWith, make_trio_for};
+use ::rc_utils::{IntoWith, interconvert, make_trio_for};
 use ::std::{rc::Rc, str::FromStr};
 use ::strum_macros::{Display, EnumString, IntoStaticStr};
 
@@ -10,7 +10,6 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-#[enum_dispatch::enum_dispatch]
 pub enum Type {
   Primitive(Primitive),
   Array(Array),
@@ -102,7 +101,7 @@ pub struct QualifiedType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pointer {
-  pub pointee: Box<QualifiedType>,
+  pub pointee: QualifiedType,
 }
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,7 +125,7 @@ pub struct Array {
   /// Array itself cannot have qualifiers,
   /// hence the QualifiedType::qualifiers of the whole array should be empty,
   /// the actual element type's qualifiers are stored here.
-  pub element_type: Box<QualifiedType>,
+  pub element_type: QualifiedType,
   pub size: ArraySize,
   // These are not elem's, but the arraysize's. static is a hint for optimization;
   // pub qualifiers: Qualifiers,
@@ -147,7 +146,7 @@ pub struct Array {
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionProto {
-  pub return_type: Box<QualifiedType>,
+  pub return_type: QualifiedType,
   pub parameter_types: Vec<QualifiedType>,
   pub is_variadic: bool,
 }
@@ -232,7 +231,7 @@ impl ::std::ops::Deref for QualifiedType {
   }
 }
 impl Pointer {
-  pub fn new(pointee: Box<QualifiedType>) -> Self {
+  pub fn new(pointee: QualifiedType) -> Self {
     Self { pointee }
   }
 }
@@ -264,7 +263,7 @@ impl FunctionProto {
     Lazy::new(|| FunctionProto::new(Primitive::Int.into(), vec![], false));
 
   pub fn new(
-    return_type: Box<QualifiedType>,
+    return_type: QualifiedType,
     parameter_types: Vec<QualifiedType>,
     is_variadic: bool,
   ) -> Self {
@@ -303,7 +302,7 @@ impl FunctionProto {
 }
 
 impl Array {
-  pub fn new(element_type: Box<QualifiedType>, size: ArraySize) -> Self {
+  pub fn new(element_type: QualifiedType, size: ArraySize) -> Self {
     Self { element_type, size }
   }
 }
@@ -325,14 +324,13 @@ impl Enum {
     self.underlying_type
   }
 }
-// // enum_dispatch replaces these.
-// interconvert!(Primitive, Type);
-// interconvert!(Array, Type);
-// interconvert!(Pointer, Type);
-// interconvert!(FunctionProto, Type);
-// interconvert!(Enum, Type);
-// interconvert!(Record, Type);
-// interconvert!(Union, Type);
+interconvert!(Primitive, Type);
+interconvert!(Array, Type);
+interconvert!(Pointer, Type);
+interconvert!(FunctionProto, Type);
+interconvert!(Enum, Type);
+interconvert!(Record, Type);
+interconvert!(Union, Type);
 
 make_trio_for!(Primitive, Type);
 make_trio_for!(Array, Type);
@@ -434,9 +432,9 @@ impl Type {
 
   pub fn char_array(length: usize) -> Self {
     Type::Array(Array {
-      element_type: Box::new(QualifiedType::new_unqualified(
+      element_type: QualifiedType::new_unqualified(
         Type::Primitive(Primitive::Char).into(),
-      )),
+      ),
       size: ArraySize::Constant(length),
     })
   }
@@ -469,6 +467,7 @@ impl QualifiedType {
   }
 }
 impl From<Type> for QualifiedType {
+  #[inline]
   fn from(value: Type) -> Self {
     QualifiedType::new_unqualified(value.into())
   }

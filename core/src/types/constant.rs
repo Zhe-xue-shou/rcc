@@ -157,7 +157,7 @@ impl Constant {
     }
   }
 
-  pub fn to_boolean(&self) -> Constant {
+  pub fn to_boolean(self) -> Constant {
     match self {
       Self::Integral(integral) =>
         Constant::Integral(Integral::from_bool(!integral.is_zero())),
@@ -165,6 +165,25 @@ impl Constant {
         Constant::Integral(Integral::from_bool(!floating.is_zero())),
       Self::String(_) => Constant::Integral(Integral::from_bool(true)),
       Self::Nullptr(_) => Constant::Integral(Integral::from_bool(false)),
+    }
+  }
+
+  pub fn to_integral(self, width: u8, signedness: Signedness) -> Constant {
+    match self {
+      Self::Integral(integral) =>
+        Constant::Integral(integral.cast(width, signedness)),
+      Self::Floating(floating) =>
+        Constant::Integral(floating.to_integral(width, signedness)),
+      _ => unreachable!("handled elsewhere"),
+    }
+  }
+
+  pub fn to_floating(self, format: FloatFormat) -> Constant {
+    match self {
+      Self::Integral(integral) =>
+        Constant::Floating(integral.to_floating(format)),
+      Self::Floating(floating) => Constant::Floating(floating),
+      _ => unreachable!("handled elsewhere"),
     }
   }
 }

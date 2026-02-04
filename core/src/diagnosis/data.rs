@@ -1,4 +1,27 @@
+//! Diagnostic data structures.
+//!
+//! Diagnostic and their corresponding messages are separated
+//! in order to reduce the cyclic dependency and
+//! chain-operation (like .a().b()...) as much as possible.
+//!
+//! The main struct [`Diag`] contains a [`SourceSpan`] and [`Meta`].
+//! The [`Meta`] contains a [`Severity`] and [`Data`].
+//! The [`Data`] enum contains all the diagnostic messages.
+//!
+//! A [`Data`] can be easily converted into a [`Meta`] with a given [`Severity`], like
+//! ```rust
+//! use ::rc_utils::IntoWith;
+//! use ::rc_core::diagnosis::{Data, Meta, Severity};
+//! let data = Data::MissingIdentifier("after type specifier".to_string());
+//! let meta: Meta = data.into_with(Severity::Error);
+//! let diag = meta.into_with(Default::default()); // default span
+//! ```
+//!
+//! TODO: 1. make [`Data`] smaller. 2. consider alternatives of [`Dummy`] trait for testing.
+
 /// Diagnostic message with [`SourceSpan`].
+///
+/// See module documentation for details.
 #[derive(Debug)]
 pub struct Diag {
   pub(crate) metadata: Meta,
@@ -32,7 +55,7 @@ use ::rc_utils::{DisplayWith, IntoWith, static_assert};
 
 use crate::{
   common::{Keyword, Literal, Operator, SourceManager, SourceSpan, Storage},
-  types::{Constant, QualifiedType, Qualifiers, Type},
+  types::{Constant, QualifiedType, Qualifiers},
 };
 
 /// Custom message. would be printed as-is.
@@ -103,10 +126,12 @@ pub enum Data {
   FunctionSpecsInVariableDecl(Elem),
   #[error("Variable '{0}' already defined")]
   VariableAlreadyDefined(Elem),
+  #[error("Function '{0}' already defined")]
+  FunctionAlreadyDefined(Elem),
   #[error("Local extern variable '{0}' cannot have initializer")]
   LocalExternVarWithInitializer(Elem),
   #[error("expression '{0}' is not callable")]
-  InvalidCallee(Type),
+  InvalidCallee(QualifiedType),
   #[error("'{0}' is not a variable")]
   NotVariable(Elem),
   #[error("Variable '{0}' is not defined")]

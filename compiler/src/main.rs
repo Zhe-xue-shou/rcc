@@ -153,9 +153,8 @@ mod test {
   #[test]
   fn t1() {
     let s = r#"
-static const volatile int **const *const* volatile 
-    volatile_ptr_to_very_const_ptr_to_very_const_ptr;
-    int main(int argc, char **);
+void f2(int a[][5]);
+void f2(int a[][10]); // ERROR: 'int(*)[5]' vs 'int(*)[10]'
 "#;
     test_str(s);
   }
@@ -166,7 +165,7 @@ static const volatile int **const *const* volatile
   }
   #[test]
   fn t3() {
-    let s = "unsigned a = -1U;";
+    let s = "const unsigned a = 1.0/0.9;";
     let mut source_manager = SourceManager::default();
     source_manager.add_string(s.into());
     pipeline(&mut source_manager, Stage::Analyze, true);

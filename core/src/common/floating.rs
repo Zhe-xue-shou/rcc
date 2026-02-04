@@ -1,4 +1,6 @@
-use ::rc_utils::static_assert;
+use ::rc_utils::{
+  BuiltinFloat, NumTo, ToI128, ToU128, static_assert, underlying_type_of,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ::std::marker::ConstParamTy)]
 pub enum Format {
@@ -11,11 +13,9 @@ pub enum Format {
 
 use Format::*;
 
-type Underlying = u128;
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Floating {
-  bits: Underlying,
+  bits: u128,
   format: Format,
 }
 
@@ -27,8 +27,16 @@ static_assert!(
 impl ::std::fmt::Display for Floating {
   fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
     match self.format {
-      IEEE32 => write!(f, "{}", f32::from_bits(self.bits as u32)),
-      IEEE64 => write!(f, "{}", f64::from_bits(self.bits as u64)),
+      IEEE32 => write!(
+        f,
+        "{}",
+        f32::from_bits(self.bits as underlying_type_of!(f32))
+      ),
+      IEEE64 => write!(
+        f,
+        "{}",
+        f64::from_bits(self.bits as underlying_type_of!(f64))
+      ),
     }
   }
 }
@@ -49,55 +57,76 @@ impl Floating {
   pub fn is_zero(&self) -> bool {
     match self.format {
       // pos zero: 0x00000000, neg zero: 0x80000000
-      IEEE32 => (self.bits as u32 & 0x7FFF_FFFF) == 0,
-      IEEE64 => (self.bits as u64 & 0x7FFF_FFFF_FFFF_FFFF) == 0,
+      IEEE32 => (self.bits as underlying_type_of!(f32) & 0x7FFF_FFFF) == 0,
+      IEEE64 =>
+        (self.bits as underlying_type_of!(f64) & 0x7FFF_FFFF_FFFF_FFFF) == 0,
     }
   }
 
   pub fn is_infinite(&self) -> bool {
     match self.format {
       // Exponent all 1s, Fraction all 0s
-      IEEE32 => (self.bits as u32 & 0x7FFF_FFFF) == 0x7F80_0000,
+      IEEE32 =>
+        (self.bits as underlying_type_of!(f32) & 0x7FFF_FFFF) == 0x7F80_0000,
       IEEE64 =>
-        (self.bits as u64 & 0x7FFF_FFFF_FFFF_FFFF) == 0x7FF0_0000_0000_0000,
+        (self.bits as underlying_type_of!(f64) & 0x7FFF_FFFF_FFFF_FFFF)
+          == 0x7FF0_0000_0000_0000,
     }
   }
 
   pub fn is_nan(&self) -> bool {
     match self.format {
       // Exponent all 1s, Fraction non-zero
-      IEEE32 => (self.bits as u32 & 0x7FFF_FFFF) > 0x7F80_0000,
+      IEEE32 =>
+        (self.bits as underlying_type_of!(f32) & 0x7FFF_FFFF) > 0x7F80_0000,
       IEEE64 =>
-        (self.bits as u64 & 0x7FFF_FFFF_FFFF_FFFF) > 0x7FF0_0000_0000_0000,
+        (self.bits as underlying_type_of!(f64) & 0x7FFF_FFFF_FFFF_FFFF)
+          > 0x7FF0_0000_0000_0000,
     }
   }
 
   pub fn is_finite(&self) -> bool {
     match self.format {
       // Exponent is NOT all 1s
-      IEEE32 => (self.bits as u32 & 0x7F80_0000) != 0x7F80_0000,
+      IEEE32 =>
+        (self.bits as underlying_type_of!(f32) & 0x7F80_0000) != 0x7F80_0000,
       IEEE64 =>
-        (self.bits as u64 & 0x7FF0_0000_0000_0000) != 0x7FF0_0000_0000_0000,
+        (self.bits as underlying_type_of!(f64) & 0x7FF0_0000_0000_0000)
+          != 0x7FF0_0000_0000_0000,
+    }
+  }
+
+  pub fn cast(self, format: Format) -> Floating {
+    match (self.format, format) {
+      (IEEE32, IEEE64) => {
+        let f = f32::from_bits(self.bits as underlying_type_of!(f32));
+        Floating::from(f as f64)
+      },
+      (IEEE64, IEEE32) => {
+        let f = f64::from_bits(self.bits as underlying_type_of!(f64));
+        Floating::from(f as f32)
+      },
+      (IEEE32, IEEE32) | (IEEE64, IEEE64) => self,
     }
   }
 }
 
 impl From<f32> for Floating {
   fn from(val: f32) -> Self {
-    Floating::new(val.to_bits() as Underlying, IEEE32)
+    Floating::new(val.to_bits() as u128, IEEE32)
   }
 }
 
 impl From<f64> for Floating {
   fn from(val: f64) -> Self {
-    Floating::new(val.to_bits() as Underlying, IEEE64)
+    Floating::new(val.to_bits() as u128, IEEE64)
   }
 }
 
 impl ::std::default::Default for Floating {
   fn default() -> Self {
     Self {
-      bits: f64::default().to_bits() as Underlying,
+      bits: f64::default().to_bits() as u128,
       format: IEEE64,
     }
   }
@@ -105,11 +134,13 @@ impl ::std::default::Default for Floating {
 
 use ::std::ops::{Add, Div, Mul, Neg, Not, Sub};
 
+use super::{Integral, Signedness};
+
 macro_rules! impl_op {
   ($trait:ident, $method:ident, $op:tt) => {
     impl $trait for Floating {
       type Output = Self;
-
+      #[inline]
       fn $method(self, rhs: Self) -> Self::Output {
         debug_assert_eq!(
           self.format, rhs.format,
@@ -117,14 +148,16 @@ macro_rules! impl_op {
         );
         match self.format {
           IEEE32 => {
-            let lhs_f = f32::from_bits(self.bits as u32);
-            let rhs_f = f32::from_bits(rhs.bits as u32);
-            Floating::from(lhs_f $op rhs_f)
+            Floating::from(
+              f32::from_bits(self.bits as underlying_type_of!(f32))
+                $op f32::from_bits(rhs.bits as underlying_type_of!(f32)),
+            )
           },
           IEEE64 => {
-            let lhs_f = f64::from_bits(self.bits as u64);
-            let rhs_f = f64::from_bits(rhs.bits as u64);
-            Floating::from(lhs_f $op rhs_f)
+            Floating::from(
+              f64::from_bits(self.bits as underlying_type_of!(f64))
+                $op f64::from_bits(rhs.bits as underlying_type_of!(f64)),
+            )
           },
         }
       }
@@ -153,11 +186,11 @@ impl Neg for Floating {
   fn neg(self) -> Self::Output {
     match self.format {
       IEEE32 => {
-        let lhs_f = f32::from_bits(self.bits as u32);
+        let lhs_f = f32::from_bits(self.bits as underlying_type_of!(f32));
         Floating::from(-lhs_f)
       },
       IEEE64 => {
-        let lhs_f = f64::from_bits(self.bits as u64);
+        let lhs_f = f64::from_bits(self.bits as underlying_type_of!(f64));
         Floating::from(-lhs_f)
       },
     }
@@ -167,6 +200,7 @@ impl Neg for Floating {
 impl Not for Floating {
   type Output = bool;
 
+  #[inline(always)]
   fn not(self) -> Self::Output {
     self.is_zero()
   }
@@ -180,25 +214,66 @@ impl PartialOrd for Floating {
     );
     match self.format {
       IEEE32 => f32::partial_cmp(
-        &f32::from_bits(self.bits as u32),
-        &f32::from_bits(other.bits as u32),
+        &f32::from_bits(self.bits as underlying_type_of!(f32)),
+        &f32::from_bits(other.bits as underlying_type_of!(f32)),
       ),
       IEEE64 => f64::partial_cmp(
-        &f64::from_bits(self.bits as u64),
-        &f64::from_bits(other.bits as u64),
+        &f64::from_bits(self.bits as underlying_type_of!(f64)),
+        &f64::from_bits(other.bits as underlying_type_of!(f64)),
       ),
     }
   }
 }
 
-#[cfg(test)]
-mod tests {
-
-  use crate::common::Floating;
-
-  #[test]
-  fn test_f() {
-    let f = Floating::from(f32::INFINITY);
-    assert!(f.is_infinite());
+impl Integral {
+  #[inline]
+  pub fn to_floating(self, format: Format) -> Floating {
+    match format {
+      IEEE32 => Floating::from(self.to_builtin::<u32>() as f32),
+      IEEE64 => Floating::from(self.to_builtin::<u64>() as f64),
+    }
   }
+}
+
+impl Floating {
+  #[inline]
+  pub fn to_integral(self, width: u8, signedness: Signedness) -> Integral {
+    debug_assert!(width > 0 && width <= 128);
+    match (self.format, signedness) {
+      // Float to signed
+      (IEEE32, Signedness::Signed) => {
+        let f = f32::from_bits(self.bits.to());
+        // Clamp to target range to avoid UB
+        let clamped = clamp_float_to_signed(f, width);
+        Integral::from_signed(clamped, width)
+      },
+      (IEEE64, Signedness::Signed) => {
+        let f = f64::from_bits(self.bits.to());
+        let clamped = clamp_float_to_signed(f, width);
+        Integral::from_signed(clamped, width)
+      },
+      // Float to unsigned
+      (IEEE32, Signedness::Unsigned) => {
+        let f = f32::from_bits(self.bits.to());
+        let clamped = clamp_float_to_unsigned(f, width);
+        Integral::from_unsigned(clamped, width)
+      },
+      (IEEE64, Signedness::Unsigned) => {
+        let f = f64::from_bits(self.bits.to());
+        let clamped = clamp_float_to_unsigned(f, width);
+        Integral::from_unsigned(clamped, width)
+      },
+    }
+  }
+}
+
+/// Clamp a float to the range of a signed integer with given width.
+fn clamp_float_to_signed<F: ToI128 + BuiltinFloat>(f: F, width: u8) -> i128 {
+  f.to_i128()
+    .clamp(-(1i128 << (width - 1)), (1i128 << (width - 1)) - 1)
+}
+
+/// Clamp a float to the range of an unsigned integer with given width.
+fn clamp_float_to_unsigned<F: ToU128 + BuiltinFloat>(f: F, width: u8) -> u128 {
+  f.to_u128().clamp(0, (1u128 << width) - 1)
 }

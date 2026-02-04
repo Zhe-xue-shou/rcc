@@ -1,3 +1,5 @@
+#![feature(negative_impls)]
+#![feature(const_trait_impl)]
 mod macros;
 mod num_traits;
 
@@ -8,7 +10,7 @@ use ::std::{
 
 pub use self::num_traits::*;
 
-pub type SmallString = compact_str::CompactString;
+// pub type SmallString = compact_str::CompactString;
 /// as someone who came from C++, I'd more prefer to call it shared_ptr rather than Rc/RefCell or whatever. :p
 #[allow(non_camel_case_types)]
 pub type shared_ptr<T> = Rc<RefCell<T>>;

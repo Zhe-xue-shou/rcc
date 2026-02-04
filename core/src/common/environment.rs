@@ -47,6 +47,15 @@ pub enum VarDeclKind {
   /// if no complete definition is found, the tentative definition is treated as a complete definition uninitialized (initialized to zero)
   Tentative,
 }
+impl VarDeclKind {
+  pub fn merge(lhs: Self, rhs: Self) -> Self {
+    match (lhs, rhs) {
+      (Self::Tentative, Self::Tentative) => Self::Tentative,
+      (Self::Definition, _) | (_, Self::Definition) => Self::Definition,
+      _ => Self::Declaration,
+    }
+  }
+}
 #[derive(Debug)]
 pub struct Symbol {
   pub qualified_type: QualifiedType,
@@ -109,6 +118,7 @@ impl Environment {
     sym
   }
 
+  /// note: if the symbol already exists, it'll be updated.
   pub fn declare_symbol(
     &mut self,
     name: String,
@@ -274,7 +284,7 @@ impl<T> Scope<T> {
       "No scope to declare variable `{}` in",
       name
     );
-    current.unwrap().insert(name, val.clone());
+    _/* maybe old val, or None */ = current.unwrap().insert(name, val.clone());
     val
   }
 

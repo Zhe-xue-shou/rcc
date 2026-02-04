@@ -9,4 +9,4 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 paste = "1.0.15"
-compact_str = "0.9.0"
+# compact_str = "0.9.0"

@@ -1,3 +1,4 @@
+#![feature(const_trait_impl)]
 // do yeet expressions
 #![feature(yeet_expr)]
 // operator `?` overloading

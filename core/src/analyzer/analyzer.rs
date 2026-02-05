@@ -30,6 +30,7 @@ type DeclRes<T> = Result<T, Diag>;
 type StmtRes<T> = Result<T, Diag>;
 
 #[cold]
+#[inline(never)]
 fn shall_ok_failed(msg: &str, location: &std::panic::Location) -> ! {
   panic!(
     "Invariant at {}: {}.
@@ -71,7 +72,7 @@ impl<T> ImplHelper<T> for Option<T> {
     }
   }
 }
-#[allow(unused)]
+
 trait ImplHelper2<T, Listener> {
   fn handle_with(self, context: &Listener, default: T) -> T;
 }
@@ -89,7 +90,6 @@ impl<T> ImplHelper2<T, Analyzer<'_>> for Result<T, Diag> {
   }
 }
 
-#[allow(unused)]
 trait ImplHelper3<T, Listener> {
   fn handle_or_default(self, context: &Listener) -> T;
 }
@@ -345,10 +345,7 @@ impl<'session> Analyzer<'session> {
   ) -> Result<(FunctionSpecifier, Option<Storage>, QualifiedType), Diag> {
     let qualified_type = self
       .get_type(declspecs.type_specifiers)
-      .unwrap_or_else(|e| {
-        self.add_diag(e);
-        QualifiedType::int()
-      })
+      .handle_with(self, QualifiedType::int())
       .with_qualifiers(declspecs.qualifiers);
     let storage_class = declspecs.storage_class;
     let function_specifier = declspecs.function_specifiers;
@@ -681,8 +678,17 @@ impl<'session> Analyzer<'session> {
       .shall_ok("variable must have a name; it should be handled in parser");
     let qualified_type =
       self.apply_modifiers_for_varty(qualified_type, modifiers);
-    let initializer = initializer
-      .and_then(|initializer| self.initializer(initializer, &qualified_type));
+    let initializer = initializer.and_then(|initializer| {
+      self.initializer(
+        initializer,
+        &qualified_type,
+        self.environment.is_global()
+          || matches!(
+            storage,
+            Some(Storage::Constexpr | Storage::Static | Storage::ThreadLocal)
+          ),
+      )
+    });
 
     let vardef = match self.environment.is_global() {
       true => self.global_vardef(
@@ -778,6 +784,7 @@ impl<'session> Analyzer<'session> {
     &self,
     initializer: pd::Initializer,
     target_type: &QualifiedType,
+    requires_folding: bool,
   ) -> Option<ad::Initializer> {
     match initializer {
       pd::Initializer::Expression(expression) => self
@@ -788,23 +795,21 @@ impl<'session> Analyzer<'session> {
             .handle_or_default(self)
         })
         .map(|expr| {
-          Some(ad::Initializer::Scalar(
-            if !target_type.qualifiers().contains(Qualifiers::Const) {
-              expr
-            } else {
-              expr
-                .fold(&self.session.diagnosis)
-                .inspect_error(|e| {
-                  self.add_error(
-                    ExprNotConstant(format!(
-                      "Expression {e} cannot resolved to a constant value"
-                    )),
-                    e.span(),
-                  );
-                })
-                .unwrap()
-            },
-          ))
+          Some(ad::Initializer::Scalar(if !requires_folding {
+            expr
+          } else {
+            expr
+              .fold(&self.session.diagnosis)
+              .inspect_error(|e| {
+                self.add_error(
+                  ExprNotConstant(format!(
+                    "Expression {e} cannot resolved to a constant value"
+                  )),
+                  e.span(),
+                );
+              })
+              .unwrap()
+          }))
         })
         .unwrap_or_else(|e| {
           self.add_diag(e);
@@ -866,7 +871,7 @@ impl<'session> Analyzer<'session> {
 impl<'session> Analyzer<'session> {
   fn expression(&self, expression: pe::Expression) -> ExprRes {
     match expression {
-      pe::Expression::Empty(_) => Ok(ae::Expression::default()),
+      pe::Expression::Empty(_) => Ok(Default::default()),
       pe::Expression::Constant(constant) => self.constant(constant),
       pe::Expression::Unary(unary) => self.unary(unary),
       pe::Expression::Binary(binary) => self.binary(binary),
@@ -876,9 +881,12 @@ impl<'session> Analyzer<'session> {
       pe::Expression::Ternary(ternary) => self.ternary(ternary),
       pe::Expression::SizeOf(sizeof) => self.sizeof(sizeof),
       pe::Expression::CStyleCast(cast) => self.cast(cast),
-      pe::Expression::MemberAccess(_) => not_implemented_feature!(),
-      pe::Expression::ArraySubscript(_) => not_implemented_feature!(),
-      pe::Expression::CompoundLiteral(_) => not_implemented_feature!(),
+      pe::Expression::MemberAccess(member_access) =>
+        self.member_access(member_access),
+      pe::Expression::ArraySubscript(array_subscript) =>
+        self.array_subscript(array_subscript),
+      pe::Expression::CompoundLiteral(compound_literal) =>
+        self.compound_literal(compound_literal),
     }
   }
 
@@ -1013,6 +1021,7 @@ impl<'session> Analyzer<'session> {
     let pe::Unary {
       operator,
       operand: pe_expr,
+      kind,
       span,
     } = unary;
     let operand = self.expression(*pe_expr)?;
@@ -1023,9 +1032,8 @@ impl<'session> Analyzer<'session> {
       Operator::Tilde => self.tilde(operator, operand, span),
       Operator::Plus | Operator::Minus =>
         self.unary_arithmetic(operator, operand, span),
-      Operator::PlusPlus | Operator::MinusMinus => not_implemented_feature!(
-        "Unary ++ and -- operators are not implemented yet"
-      ),
+      Operator::PlusPlus | Operator::MinusMinus =>
+        self.ppmm(operator, operand, kind, span),
       _ => unreachable!("operator is not unary: {:#?}", operator),
     }
   }
@@ -1039,17 +1047,16 @@ impl<'session> Analyzer<'session> {
     } = binary;
     let left = self.expression(*pe_left)?;
     let right = self.expression(*pe_right)?;
+    use OperatorCategory::*;
     match operator.category() {
-      OperatorCategory::Assignment =>
-        self.assignment(operator, left, right, span),
-      OperatorCategory::Logical => self.logical(operator, left, right, span),
-      OperatorCategory::Relational =>
-        self.relational(operator, left, right, span),
-      OperatorCategory::Arithmetic =>
-        self.arithmetic(operator, left, right, span),
-      OperatorCategory::Bitwise => self.bitwise(operator, left, right, span),
-      OperatorCategory::BitShift => self.bitshift(operator, left, right, span),
-      OperatorCategory::Comma => self.comma(operator, left, right, span),
+      Assignment => self.assignment(operator, left, right, span),
+      Logical => self.logical(operator, left, right, span),
+      Relational => self.relational(operator, left, right, span),
+      Arithmetic => self.arithmetic(operator, left, right, span),
+      Bitwise => self.bitwise(operator, left, right, span),
+      BitShift => self.bitshift(operator, left, right, span),
+      Special => self.comma(operator, left, right, span),
+      Uncategorized => unreachable!("operator is not binary: {:#?}", operator),
     }
   }
 
@@ -1128,6 +1135,21 @@ impl<'session> Analyzer<'session> {
       _ => todo!(),
     }
   }
+
+  fn member_access(&self, _member_access: pe::MemberAccess) -> ExprRes {
+    todo!()
+  }
+
+  fn array_subscript(&self, _array_subscript: pe::ArraySubscript) -> ExprRes {
+    todo!()
+  }
+
+  fn compound_literal(
+    &self,
+    _compound_literal: pe::CompoundLiteral,
+  ) -> ExprRes {
+    todo!()
+  }
 }
 impl<'session> Analyzer<'session> {
   /// unary arithmetic operators: `+`, `-`
@@ -1150,7 +1172,44 @@ impl<'session> Analyzer<'session> {
       let converted_operand = operand.usual_arithmetic_conversion_unary()?;
       let expr_type = converted_operand.qualified_type().clone();
       Ok(ae::Expression::new_rvalue(
-        ae::Unary::new(operator, converted_operand, span).into(),
+        ae::Unary::prefix(operator, converted_operand, span).into(),
+        expr_type,
+      ))
+    }
+  }
+
+  /// i didnt came up with a better name...
+  fn ppmm(
+    &self,
+    operator: Operator,
+    operand: ae::Expression,
+    kind: ae::UnaryKind,
+    span: SourceSpan,
+  ) -> ExprRes {
+    assert!(matches!(
+      operator,
+      Operator::PlusPlus | Operator::MinusMinus
+    ));
+    let operand = operand.decay();
+    if operand.value_category() != ae::ValueCategory::LValue {
+      Err(
+        ExprNotAssignable(operand.to_string())
+          .into_with(Severity::Error)
+          .into_with(span),
+      )
+    } else if !operand.unqualified_type().is_arithmetic() {
+      Err(
+        NonArithmeticInUnaryOp(operator, operand.to_string())
+          .into_with(Severity::Error)
+          .into_with(span),
+      )
+    } else {
+      // checked version would assert and panic if the operand is lvalue.
+      let converted_operand =
+        operand.usual_arithmetic_conversion_unary_unchecked()?;
+      let expr_type = converted_operand.qualified_type().clone();
+      Ok(ae::Expression::new_rvalue(
+        ae::Unary::new(operator, converted_operand, kind, span).into(),
         expr_type,
       ))
     }
@@ -1179,7 +1238,7 @@ impl<'session> Analyzer<'session> {
       let converted_operand = operand.usual_arithmetic_conversion_unary()?;
       let expr_type = converted_operand.qualified_type().clone();
       Ok(ae::Expression::new_rvalue(
-        ae::Unary::new(operator, converted_operand, span).into(),
+        ae::Unary::prefix(operator, converted_operand, span).into(),
         expr_type,
       ))
     }
@@ -1197,7 +1256,7 @@ impl<'session> Analyzer<'session> {
 
     let converted_operand = operand.conditional_conversion()?;
     Ok(ae::Expression::new_rvalue(
-      ae::Unary::new(operator, converted_operand, span).into(),
+      ae::Unary::prefix(operator, converted_operand, span).into(),
       QualifiedType::bool(),
     ))
   }
@@ -1223,7 +1282,7 @@ impl<'session> Analyzer<'session> {
     } else {
       let pointee = operand.qualified_type().clone();
       Ok(ae::Expression::new_rvalue(
-        ae::Unary::new(operator, operand, span).into(),
+        ae::Unary::prefix(operator, operand, span).into(),
         Pointer::new(pointee).into(),
       ))
     }
@@ -1264,7 +1323,7 @@ impl<'session> Analyzer<'session> {
       // If an invalid value has been assigned to the pointer, the behavior is undefined.
       let expr_type = pointee_type.clone();
       Ok(ae::Expression::new_lvalue(
-        ae::Unary::new(operator, operand, span).into(),
+        ae::Unary::prefix(operator, operand, span).into(),
         expr_type,
       ))
     }
@@ -1279,11 +1338,6 @@ impl<'session> Analyzer<'session> {
     right: ae::Expression,
     span: SourceSpan,
   ) -> ExprRes {
-    assert_eq!(
-      operator,
-      Operator::Assign,
-      "compound assignment(e.g. +=, /=, etc) not implemented"
-    );
     if !left.is_modifiable_lvalue() {
       self.add_error(ExprNotAssignable(left.to_string()), span);
       return Ok(left);
@@ -1350,12 +1404,6 @@ impl<'session> Analyzer<'session> {
     todo!()
   }
 
-  /// usual arithmetic conversion: `+`, `-`, `*`, `/`, `%`
-  ///
-  /// 1. lvalue conversion, with the exception of arrays and functionproto\(handled inside the `lvalue_conversion`\)
-  /// 2. array and function decay
-  /// 3. promotions\(inside `usual_arithmetic_conversion`\)
-  /// 4. finally, the usual arithmetic conversion itself
   fn arithmetic(
     &self,
     operator: Operator,
@@ -1366,17 +1414,37 @@ impl<'session> Analyzer<'session> {
     let left = left.lvalue_conversion().decay();
     let right = right.lvalue_conversion().decay();
 
-    if !left.unqualified_type().is_arithmetic()
-      || !right.unqualified_type().is_arithmetic()
-    {
-      do yeet NonArithmeticInBinaryOp(
-        left.to_string(),
-        right.to_string(),
-        operator,
-      )
-      .into_with(Severity::Error)
-      .into_with(span)
+    match (left.unqualified_type(), right.unqualified_type()) {
+      (l, r) if l.is_pointer() || r.is_pointer() =>
+        self.pointer_arithematic(operator, left, right, span),
+      (l, r) if l.is_arithmetic() && r.is_arithmetic() =>
+        self.usual_arithmetic(operator, left, right, span),
+      // todo: enum constant..
+      _ => Err(
+        NonArithmeticInBinaryOp(left.to_string(), right.to_string(), operator)
+          .into_with(Severity::Error)
+          .into_with(span),
+      ),
     }
+  }
+
+  /// usual arithmetic conversion: `+`, `-`, `*`, `/`, `%`
+  ///
+  /// 1. lvalue conversion, with the exception of arrays and functionproto\(handled inside the `lvalue_conversion`\)
+  /// 2. array and function decay
+  /// 3. promotions\(inside `usual_arithmetic_conversion`\)
+  /// 4. finally, the usual arithmetic conversion itself
+  fn usual_arithmetic(
+    &self,
+    operator: Operator,
+    left: ae::Expression,
+    right: ae::Expression,
+    span: SourceSpan,
+  ) -> ExprRes {
+    debug_assert!(
+      left.unqualified_type().is_arithmetic()
+        && right.unqualified_type().is_arithmetic()
+    );
 
     let (lhs, rhs, result_type) =
       ae::Expression::usual_arithmetic_conversion(left, right)?;
@@ -1385,6 +1453,75 @@ impl<'session> Analyzer<'session> {
       ae::Binary::new(operator, lhs, rhs, span).into(),
       result_type,
     ))
+  }
+
+  fn pointer_arithematic(
+    &self,
+    operator: Operator,
+    left: ae::Expression,
+    right: ae::Expression,
+    span: SourceSpan,
+  ) -> ExprRes {
+    debug_assert!(
+      left.unqualified_type().is_pointer()
+        || right.unqualified_type().is_pointer()
+    );
+    match (left.unqualified_type(), right.unqualified_type()) {
+      // ptr - ptr -> intptr_t
+      (Type::Pointer(left_ptr), Type::Pointer(right_ptr))
+        if operator == Operator::Minus =>
+        match QualifiedType::compatible(&left_ptr.pointee, &right_ptr.pointee) {
+          true => Ok(ae::Expression::new_rvalue(
+            ae::Binary::new(operator, left, right, span).into(),
+            QualifiedType::intptr(), // no qual for pointer difference
+          )),
+          false => Err(
+            IncompatiblePointerTypes(
+              left_ptr.pointee.to_string(),
+              right_ptr.pointee.to_string(),
+            )
+            .into_with(Severity::Error)
+            .into_with(span),
+          ),
+        },
+      // int + ptr => ptr
+      (Type::Primitive(lhs), Type::Pointer(ptr))
+        if lhs.is_integer() && operator == Operator::Plus =>
+      {
+        todo!()
+      },
+      // ptr + int => ptr
+      (Type::Pointer(ptr), Type::Primitive(rhs))
+        if rhs.is_integer() && operator == Operator::Plus =>
+      {
+        todo!()
+      },
+      // ptr - int => ptr
+      (Type::Pointer(ptr), Type::Primitive(rhs))
+        if rhs.is_integer() && operator == Operator::Minus =>
+      {
+        todo!()
+      },
+      // relops
+      (Type::Pointer(left_ptr), Type::Pointer(right_ptr))
+        if matches!(
+          operator.category(),
+          OperatorCategory::Logical | OperatorCategory::Relational
+        ) =>
+        Ok(ae::Expression::new_rvalue(
+          ae::Binary::new(operator, left, right, span).into(),
+          QualifiedType::bool(),
+        )),
+      _ => Err(
+        InvalidOprand(
+          left.qualified_type().clone(),
+          right.qualified_type().clone(),
+          operator,
+        )
+        .into_with(Severity::Error)
+        .into_with(span),
+      ),
+    }
   }
 
   /// bitwise operators: `&`, `|`, `^`
@@ -1463,7 +1600,8 @@ impl<'session> Analyzer<'session> {
     // the result is the right expression, and the left is void converted, that's it. done.
     let expr_type = right.qualified_type().clone();
     Ok(ae::Expression::new_rvalue(
-      ae::Binary::new(operator, left.void_conversion(), right, span).into(),
+      ae::Binary::new(operator, left /* .void_conversion()*/, right, span)
+        .into(),
       expr_type,
     ))
   }

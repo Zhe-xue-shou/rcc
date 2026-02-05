@@ -391,7 +391,9 @@ impl Expression {
 
   /// used for unary `~`, `+` and `-`
   #[must_use]
-  fn usual_arithmetic_conversion_unary_unchecked(self) -> Result<Self, Diag> {
+  pub(super) fn usual_arithmetic_conversion_unary_unchecked(
+    self,
+  ) -> Result<Self, Diag> {
     let promoted = self.promote();
     match promoted.unqualified_type() {
       Type::Primitive(p) if p.is_arithmetic() => Ok(promoted),

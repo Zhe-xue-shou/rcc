@@ -302,7 +302,7 @@ impl Compatibility for QualifiedType {
       return true;
     }
     // 6.7.4.1.11: For two qualified types to be compatible, both shall have the identically qualified version of a compatible type.
-    if *lhs.qualifiers() != *rhs.qualifiers() {
+    if lhs.qualifiers() != rhs.qualifiers() {
       return false;
     }
     Compatibility::compatible(lhs.unqualified_type(), rhs.unqualified_type())

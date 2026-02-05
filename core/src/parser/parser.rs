@@ -1,10 +1,10 @@
-use ::rcc_utils::{IntoWith, contract_assert};
+use ::rcc_utils::{IntoWith, contract_assert, not_implemented_feature};
 
 use crate::{
   common::{
     Integral, Keyword, Literal,
     Operator::{self, *},
-    OperatorCategory, SourceSpan, Storage, Token, UnitScope,
+    SourceSpan, Storage, Token, UnitScope,
   },
   diagnosis::{
     DiagData::{self, *},
@@ -17,8 +17,8 @@ use crate::{
       TypeSpecifier, VarDef,
     },
     expression::{
-      Binary, Call, ConstantLiteral, Empty, Expression, Paren, SizeOfKind,
-      Ternary, Unary, UnprocessedType, Variable,
+      ArraySubscript, Binary, Call, ConstantLiteral, Empty, Expression, Paren,
+      SizeOfKind, Ternary, Unary, UnprocessedType, Variable,
     },
     statement::{
       Break, Case, Compound, Continue, Default, DoWhile, For, Goto, If, Label,
@@ -473,7 +473,7 @@ impl<'session> Parser<'session> {
     ArrayModifier::new(qualifiers, is_static, bound, self.eloc(location))
   }
 
-  /// parse function parameter list, use [`Parser::parse_argument_list`] for function call.
+  /// parse function parameter list, use [`Parser::_parse_argument_list`] for function call.
   fn parse_function_params(&mut self) -> FunctionSignature {
     // (functionnoproto type, deprecated in C23) a function declaration without a parameter list
     //  or function body provides no information about that function’s parameters
@@ -565,12 +565,11 @@ impl<'session> Parser<'session> {
     }
   }
 
-  /// parse argument list in **function call**, not function declaration.
+  /// parse argument list, assuming the left paren has been consumed.
   ///
-  /// for function declaration, use [`Parser::parse_function_params`].
-  fn parse_argument_list(&mut self) -> Vec<Expression> {
+  /// does **NOT** consume the right paren -- caller should check and consume it.
+  fn parse_argument_list_inner(&mut self) -> Vec<Expression> {
     let location = *self.peek_loc();
-    self.must_get_op::<{ LeftParen }>();
     let mut arguments = Vec::new();
 
     while self.peek_lit() != RightParen {
@@ -591,6 +590,15 @@ impl<'session> Parser<'session> {
         break;
       }
     }
+    arguments
+  }
+
+  /// parse argument list in **function call**, not function declaration.
+  ///
+  /// for function declaration, use [`Parser::parse_function_params`].
+  fn _parse_argument_list(&mut self) -> Vec<Expression> {
+    self.must_get_op::<{ LeftParen }>();
+    let arguments = self.parse_argument_list_inner();
     self.must_get_op::<{ RightParen }>();
     arguments
   }
@@ -1139,81 +1147,76 @@ impl<'session> Parser<'session> {
 impl<'session> Parser<'session> {
   fn next_factor(&mut self) -> Expression {
     let location = *self.peek_loc();
-    self.get();
-    let literal = self.peek_prev_lit();
-    match literal {
-      Literal::Number(num) =>
-        Expression::Constant(num.clone().into_with(self.eloc(location))),
-      Literal::String(str) => Expression::Constant(
-        ConstantLiteral::String(str.clone()).into_with(self.eloc(location)),
-      ),
-      Literal::Operator(op) =>
-        if op.unary() {
-          Unary::new(
-            *op,
-            self.next_expression(Operator::DEFAULT),
-            self.eloc(location),
-          )
-          .into()
-        } else if op == LeftParen {
-          let expr = self.next_expression(Operator::DEFAULT);
-          if self.peek_lit() == RightParen {
-            self.get();
-          } else {
+    match self.peek_lit().clone() {
+      Literal::Operator(op) if op.unary() => {
+        self.get();
+        let ((), r_bp) = op.prefix_binding_power();
+        let rhs = self.next_expression(r_bp);
+        Unary::prefix(op, rhs, self.eloc(location)).into()
+      },
+      Literal::Operator(LeftParen) => {
+        self.must_get_op::<{ LeftParen }>();
+        let expr = self.next_expression(Operator::DEFAULT);
+        self.recoverable_get::<{ RightParen }>();
+        Paren::new(expr, self.eloc(location)).into()
+      },
+      Literal::Number(num) => {
+        self.get();
+        Expression::Constant(num.into_with(self.eloc(location)))
+      },
+      Literal::String(str) => {
+        self.get();
+        Expression::Constant(
+          ConstantLiteral::String(str.clone()).into_with(self.eloc(location)),
+        )
+      },
+      Literal::Identifier(ident) => {
+        self.get();
+        Variable::new(ident.to_string(), self.eloc(location)).into()
+      },
+      Literal::Keyword(keyword) => {
+        self.get();
+        match keyword {
+          Keyword::Sizeof => {
+            self.cursor -= 1;
+            self.next_sizeof()
+          },
+          Keyword::Alignof | Keyword::Alignas => not_implemented_feature!(
+            "alignof/alignas operator are currently not implemented!"
+          ),
+          bool_constant @ (Keyword::True | Keyword::False) =>
+            Expression::Constant(
+              ConstantLiteral::Integral(
+                (bool_constant == Keyword::True).into(),
+              )
+              .into_with(self.eloc(location)),
+            ),
+          Keyword::Nullptr => Expression::Constant(
+            ConstantLiteral::Nullptr(Empty::default())
+              .into_with(self.eloc(location)),
+          ),
+          _ => {
             self.add_error(
-              MissingCloseParen(self.peek_lit().clone()),
+              UnexpectedCharacter((keyword.clone().into(), None).into()),
               self.eloc(location),
             );
-          }
-          Paren::new(expr, self.eloc(location)).into()
-        } else {
-          self.add_error(
-            UnexpectedCharacter(((*op).into(), None).into()),
-            self.eloc(location),
-          );
-          self.get();
-          Expression::Constant(
-            ConstantLiteral::Integral(Integral::default())
-              .into_with(self.eloc(location)),
-          )
-        },
-      Literal::Identifier(ident) => {
-        let ident_expr =
-          Variable::new(ident.to_string(), self.eloc(location)).into();
-        if self.peek_lit() == LeftParen {
-          let arguments = self.parse_argument_list();
-          Call::new(ident_expr, arguments, self.eloc(location)).into()
-        } else {
-          ident_expr
+            Expression::Constant(
+              ConstantLiteral::Integral(Integral::default())
+                .into_with(self.eloc(location)),
+            )
+          },
         }
       },
-      Literal::Keyword(keyword) => match keyword {
-        Keyword::Sizeof => self.next_sizeof(),
-        Keyword::Alignof => todo!(),
-        Keyword::Alignas => todo!(),
-        Keyword::True => Expression::Constant(
-          ConstantLiteral::Integral(Integral::from_bool(true))
+      Literal::Operator(op) => {
+        self.add_error(
+          UnexpectedCharacter((op.into(), None).into()),
+          self.eloc(location),
+        );
+        self.get();
+        Expression::Constant(
+          ConstantLiteral::Integral(Integral::default())
             .into_with(self.eloc(location)),
-        ),
-        Keyword::False => Expression::Constant(
-          ConstantLiteral::Integral(Integral::from_bool(false))
-            .into_with(self.eloc(location)),
-        ),
-        Keyword::Nullptr => Expression::Constant(
-          ConstantLiteral::Nullptr(Empty::default())
-            .into_with(self.eloc(location)),
-        ),
-
-        _ => {
-          self.add_error(
-            UnexpectedCharacter((keyword.clone().into(), None).into()),
-            self.eloc(location),
-          );
-          Expression::Constant(
-            ConstantLiteral::Integral(Integral::default())
-              .into_with(self.eloc(location)),
-          )
-        },
+        )
       },
     }
   }
@@ -1257,42 +1260,81 @@ impl<'session> Parser<'session> {
       )
     }
   }
-
-  fn next_expression(&mut self, lmin_precedence: u8) -> Expression {
+}
+impl<'session> Parser<'session> {
+  /// I refactored the expression parser to use **Pratt Parsing** technique instead of
+  /// the previous precedence climbing method.
+  ///
+  /// In short, Pratt parsing was built
+  /// on top precedence climbing and instead of using a single precedence value to
+  /// decide whether to continue parsing or not, it uses two binding power values:
+  /// **left binding power** and **right binding power**.
+  ///
+  /// The left binding power is much like the precedence value in precedence climbing,
+  /// whereas the right binding power is used to decide how far to parse the right-hand side,
+  /// such as in the case of right-associative operators -- which would be tricky to implement
+  /// using precedence climbing. Both methods reduce the complexity of recursive descent parsing.
+  ///
+  /// [rustc](https://github.com/rust-lang/rust-analyzer/blob/master/crates/parser/src/grammar/expressions.rs#L246)
+  /// also uses Pratt parsing for its expression parser(it's far more complicated than this one tho).
+  ///
+  /// For more information, read the excellent blog post by
+  /// [Matklad](https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html).
+  fn next_expression(&mut self, min_bp: u8) -> Expression {
     let location = *self.peek_loc();
-    let mut current = self.next_factor();
+    let mut lhs = self.next_factor();
+
     loop {
-      if let Literal::Operator(op) = self.peek_lit() {
-        if op.binary() && op.precedence() >= lmin_precedence {
-          let operator = *op;
-          self.get(); // operator
-          let right = self.next_expression(
-            if operator.category() == OperatorCategory::Assignment {
-              operator.precedence()
-            } else {
-              operator.precedence() + 1
-            },
-          );
-          current =
-            Binary::new(operator, current, right, self.eloc(location)).into();
-          continue;
-        } else if op == Question {
-          self.must_get_op::<{ Question }>();
+      let op = match self.peek_lit() {
+        Literal::Operator(Semicolon) | Literal::Operator(EOF) => break,
+        Literal::Operator(op) => *op,
+        _ => break,
+      };
+
+      if let Some((l_bp, ())) = op.postfix_binding_power() {
+        if l_bp < min_bp {
+          break;
+        }
+        self.get();
+        lhs = match op {
+          LeftBracket => {
+            let rhs = self.next_expression(Operator::DEFAULT);
+            self.recoverable_get::<{ RightBracket }>();
+            ArraySubscript::new(lhs, rhs, self.eloc(location)).into()
+          },
+          LeftParen => {
+            let arguments = self.parse_argument_list_inner();
+            self.recoverable_get::<{ RightParen }>();
+            Call::new(lhs, arguments, self.eloc(location)).into()
+          },
+          op => Unary::postfix(op, lhs, self.eloc(location)).into(),
+        };
+
+        continue;
+      }
+
+      if let Some((l_bp, r_bp)) = op.infix_binding_power() {
+        if l_bp < min_bp {
+          break;
+        }
+        self.get();
+        if op == Question {
           let then_branch = self.next_expression(Operator::DEFAULT);
           self.recoverable_get::<{ Colon }>();
-          let else_branch = self.next_expression(Operator::DEFAULT);
-          current = Ternary::new(
-            current,
-            then_branch,
-            else_branch,
-            self.eloc(location),
-          )
-          .into();
-          continue;
+          let else_branch = self.next_expression(r_bp);
+          lhs =
+            Ternary::new(lhs, then_branch, else_branch, self.eloc(location))
+              .into();
+        } else {
+          let rhs = self.next_expression(r_bp);
+          lhs = Binary::new(op, lhs, rhs, self.eloc(location)).into();
         }
+        continue;
       }
+
       break;
     }
-    current
+
+    lhs
   }
 }

@@ -7,7 +7,7 @@ pub use self::{
   rawexpr::{
     RawArraySubscript, RawBinary, RawCStyleCast, RawCall, RawCompoundLiteral,
     RawConstant, RawMemberAccess, RawParen, RawSizeOf, RawSizeOfKind,
-    RawTernary, RawUnary,
+    RawTernary, RawUnary, RawUnaryKind,
   },
   rawstmt::{
     RawBreak, RawCase, RawCompound, RawContinue, RawDefault, RawDoWhile,

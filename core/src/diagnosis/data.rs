@@ -167,7 +167,7 @@ pub enum Data {
   DerefNonPtr(Elem),
   #[error("Cannot dereference void pointer of type '{0}'")]
   DerefVoidPtr(Elem),
-  #[error("Expression of type '{0}' is not assignable")]
+  #[error("Expression '{0}' is not assignable")]
   ExprNotAssignable(Elem),
   #[error("Return type mismatch: {0}")]
   ReturnTypeMismatch(CustomMessage),
@@ -190,6 +190,8 @@ pub enum Data {
   NonIntegerInCaseStmt(Constant),
   #[error("{0}")]
   InvalidConversion(CustomMessage),
+  #[error("Cannot apply operator '{2}' to types '{0}' and '{1}'")]
+  InvalidOprand(QualifiedType, QualifiedType, Operator),
   #[error("{0}")]
   Placeholder(CustomMessage),
   #[error("{0}")]

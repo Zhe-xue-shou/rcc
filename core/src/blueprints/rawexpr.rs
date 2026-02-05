@@ -35,6 +35,8 @@ macro_rules! type_alias_expr {
     pub type ConstantLiteral = $crate::types::Constant;
     /// type or expression
     pub type SizeOfKind = $crate::blueprints::RawSizeOfKind<$exprty, $typety>;
+    /// unary kind
+    pub type UnaryKind = $crate::blueprints::RawUnaryKind;
     pub type Constant = $crate::blueprints::RawConstant;
     pub type Unary = $crate::blueprints::RawUnary<$exprty>;
     pub type Binary = $crate::blueprints::RawBinary<$exprty>;
@@ -154,10 +156,18 @@ pub struct RawConstant {
   pub constant: Constant,
   pub span: SourceSpan,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ::strum_macros::Display)]
+pub enum RawUnaryKind {
+  #[strum(to_string = "pre")]
+  Prefix,
+  #[strum(serialize = "post")]
+  Postfix,
+}
 #[derive(Debug)]
 pub struct RawUnary<ExprTy> {
   pub operator: Operator,
   pub operand: Box<ExprTy>,
+  pub kind: RawUnaryKind,
   pub span: SourceSpan,
 }
 #[derive(Debug)]
@@ -243,23 +253,35 @@ impl IntoWith<SourceSpan, RawConstant> for Constant {
 }
 
 impl<ExprTy> RawUnary<ExprTy> {
-  pub fn from_operator(
+  pub fn new(
     operator: Operator,
     operand: ExprTy,
+    kind: RawUnaryKind,
     span: SourceSpan,
-  ) -> Option<Self> {
-    match operator.unary() {
-      true => Some(Self {
-        operator,
-        operand: operand.into(),
-        span,
-      }),
-      false => None,
+  ) -> Self {
+    debug_assert!(operator.unary(), "not a unary operator! got {:?}", operator);
+    Self {
+      operator,
+      operand: operand.into(),
+      kind,
+      span,
     }
   }
 
-  pub fn new(operator: Operator, operand: ExprTy, span: SourceSpan) -> Self {
-    Self::from_operator(operator, operand, span).unwrap()
+  #[inline(always)]
+  pub fn prefix(operator: Operator, operand: ExprTy, span: SourceSpan) -> Self {
+    debug_assert!(operator.unary(), "not a unary operator! got {:?}", operator);
+    Self::new(operator, operand, RawUnaryKind::Prefix, span)
+  }
+
+  #[inline(always)]
+  pub fn postfix(
+    operator: Operator,
+    operand: ExprTy,
+    span: SourceSpan,
+  ) -> Self {
+    debug_assert!(operator.unary(), "not a unary operator! got {:?}", operator);
+    Self::new(operator, operand, RawUnaryKind::Postfix, span)
   }
 }
 
@@ -322,6 +344,16 @@ impl<ExprTy> RawTernary<ExprTy> {
     }
   }
 }
+
+impl<ExprTy> RawArraySubscript<ExprTy> {
+  pub fn new(array: ExprTy, index: ExprTy, span: SourceSpan) -> Self {
+    Self {
+      array: array.into(),
+      index: index.into(),
+      span,
+    }
+  }
+}
 impl<ExprTy, TypeTy> RawSizeOf<ExprTy, TypeTy> {
   pub fn new(sizeof: RawSizeOfKind<ExprTy, TypeTy>, span: SourceSpan) -> Self {
     Self { sizeof, span }
@@ -377,7 +409,11 @@ mod fmt {
   }
   impl<ExprTy: Display> Display for RawUnary<ExprTy> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      write!(f, "({} {})", self.operand, self.operator)
+      if matches!(self.operator, Operator::PlusPlus | Operator::MinusMinus) {
+        write!(f, "({} {}{})", self.operand, self.kind, self.operator)
+      } else {
+        write!(f, "({} {})", self.operand, self.operator)
+      }
     }
   }
   impl<ExprTy: Display> Display for RawBinary<ExprTy> {

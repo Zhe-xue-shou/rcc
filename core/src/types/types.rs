@@ -209,6 +209,14 @@ impl QualifiedType {
     Self::new_unqualified(Type::nullptr().into())
   }
 
+  pub fn uintptr() -> Self {
+    Self::new_unqualified(Type::uintptr().into())
+  }
+
+  pub fn intptr() -> Self {
+    Self::new_unqualified(Type::intptr().into())
+  }
+
   pub fn char() -> Self {
     Self::new_unqualified(Type::char().into())
   }
@@ -418,6 +426,14 @@ impl Type {
 
   pub const fn nullptr() -> Self {
     Type::Primitive(Primitive::Nullptr)
+  }
+
+  pub const fn uintptr() -> Self {
+    Type::Primitive(Primitive::ULongLong)
+  }
+
+  pub const fn intptr() -> Self {
+    Type::Primitive(Primitive::LongLong)
   }
 
   pub const fn char() -> Self {

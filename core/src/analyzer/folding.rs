@@ -304,6 +304,13 @@ impl Folding for Binary {
           value_category,
         ));
       };
+    if self.operator == Operator::Comma {
+      return Success(Expression::new(
+        folded_rhs.destructure().0,
+        target_type,
+        value_category,
+      ));
+    }
     assert!(
       folded_lhs.raw_expr().is_constant()
         && folded_rhs.raw_expr().is_constant(),
@@ -312,7 +319,10 @@ impl Folding for Binary {
     assert!(
       folded_lhs.qualified_type() == folded_rhs.qualified_type(),
       "type checker makes sure both sides have the same type via \
-       `ImplicitCast`!"
+       `ImplicitCast`! {:#?} vs {:#?}, op {:#?}",
+      folded_lhs.qualified_type(),
+      folded_rhs.qualified_type(),
+        self.operator
     );
     let (lhs_expr, lhs_type, lhs_value_category) = folded_lhs.destructure();
     let (rhs_expr, rhs_type, rhs_value_category) = folded_rhs.destructure();

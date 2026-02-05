@@ -2,12 +2,12 @@
   Debug,
   Clone,
   Copy,
-  ::strum_macros::Display,
-  ::strum_macros::EnumString,
   PartialEq,
   Eq,
-  ::std::marker::ConstParamTy,
   Default,
+  ::strum_macros::Display,
+  ::strum_macros::EnumString,
+  ::std::marker::ConstParamTy,
 )]
 pub enum Operator {
   // one-character operators
@@ -130,6 +130,11 @@ impl Operator {
   pub const DEFAULT: u8 = 0x00;
   /// when parsing function call arguments or functiondecl, use this to stop at ',' or ')'
   pub const EXCOMMA: u8 = 0x04;
+  /// default binding power for postfix operators.
+  ///
+  /// Also, use this to ensure that postfix operators bind more tightly than any infix operators.
+  /// like in function calls.
+  pub const POSTFIX: u8 = 0xA0;
   /// use this to stop before `:`, excluding the `,` in ternary operator
   #[deprecated(note = "Based on the clang AST output, the precedence level \
                        for `? :` is lower than that of `,`. That is, `0 ? 1, \
@@ -151,7 +156,7 @@ impl Operator {
       // dereference and address-of
         | Star
         | Ampersand
-      // increment and decrement -- PREFIX only.
+      // increment and decrement.
         | PlusPlus
         | MinusMinus
     )
@@ -178,56 +183,82 @@ impl Operator {
         | Pipe
         | And
         | Or
+        | Dot
+        | Arrow
         // special cases
         | Comma
     ) || self.assignment()
   }
 
-  /// note: [`LeftBracket`], [`LeftParen`] are **not** considered postfix here.
   pub const fn postfix(&self) -> bool {
-    matches!(self, PlusPlus | MinusMinus | Dot | Arrow)
+    matches!(
+      self,
+      PlusPlus | MinusMinus | Dot | Arrow | LeftBracket | LeftParen
+    )
   }
 
-  // left-.
-  pub const fn precedence(&self) -> u8 {
-    debug_assert!(self.binary(), "precedence called on non-binary operator");
-    match self {
-      // multiplicative
-      Star => 0x80,
-      Slash => 0x80,
-      Percent => 0x80,
-      // additive
-      Plus => 0x70,
-      Minus => 0x70,
-      // shift
-      LeftShift => 0x60,
-      RightShift => 0x60,
-      // relational
-      Less => 0x50,
-      LessEqual => 0x50,
-      Greater => 0x50,
-      GreaterEqual => 0x50,
-      // equality
-      EqualEqual => 0x40,
-      NotEqual => 0x40,
-      // bitwise AND
-      Ampersand => 0x38,
-      // bitwise XOR
-      Caret => 0x20,
-      // bitwise OR
-      Pipe => 0x18,
-      // logical AND
-      And => 0x10,
-      // logical OR
-      Or => 0x08,
-
-      // Question mark: 0x06, DEPRECATED: not needed, see `TERNARY` doc.
-
-      // assignment - it's a trick since it's mostly right associative
-      _ if self.assignment() => 0x04,
-      // comma operator
-      Comma => 0x02,
+  pub const fn prefix_binding_power(&self) -> ((), u8) {
+    debug_assert!(
+      self.unary(),
+      "prefix_binding_power called on non-unary operator"
+    );
+    let rhs = match self {
+      // arithmetic
+      Plus | Minus => 0x90,
+      // logical
+      Not => 0x90,
+      // bitwise
+      Tilde => 0x90,
+      // indirect and address-of
+      Star | Ampersand => 0x90,
+      // increment and decrement.
+      PlusPlus | MinusMinus => 0x90,
       _ => unreachable!(),
+    };
+    ((), rhs)
+  }
+
+  pub const fn postfix_binding_power(&self) -> Option<(u8, ())> {
+    match self {
+      PlusPlus | MinusMinus | LeftBracket | LeftParen =>
+        Some((Self::POSTFIX, ())),
+
+      _ => None,
+    }
+  }
+
+  pub const fn infix_binding_power(&self) -> Option<(u8, u8)> {
+    match self {
+      Dot | Arrow => Some((0xC0, 0xC1)),
+      // multiplicative
+      Star | Slash | Percent => Some((0x80, 0x81)),
+      // additive
+      Plus | Minus => Some((0x70, 0x71)),
+      // shift
+      LeftShift | RightShift => Some((0x60, 0x61)),
+      // relational
+      Less | LessEqual | Greater | GreaterEqual => Some((0x50, 0x51)),
+      // equality
+      EqualEqual | NotEqual => Some((0x40, 0x41)),
+      // bitwise AND
+      Ampersand => Some((0x38, 0x39)),
+      // bitwise XOR
+      Caret => Some((0x20, 0x21)),
+      // bitwise OR
+      Pipe => Some((0x18, 0x19)),
+      // logical AND
+      And => Some((0x10, 0x11)),
+      // logical OR
+      Or => Some((0x08, 0x09)),
+
+      // Question mark (ternary operator)
+      Question => Some((0x07, 0x06)),
+
+      // assignment
+      _ if self.assignment() => Some((0x04, 0x03)),
+      // comma operator
+      Comma => Some((0x02, 0x01)),
+      _ => None,
     }
   }
 }
@@ -247,50 +278,39 @@ pub enum Category {
   /// hmm...
   Assignment,
   /// ditto...
-  Comma,
+  Special,
+
+  /// should not reach here
+  Uncategorized,
 }
+use Category::*;
 impl Operator {
   pub const fn category(&self) -> Category {
     match self {
-      And | Or | Not => Category::Logical,
+      And | Or | Not => Logical,
 
-      LeftShift | RightShift => Category::BitShift,
+      LeftShift | RightShift => BitShift,
 
-      Tilde | Ampersand | Pipe | Caret => Category::Bitwise,
+      Tilde | Ampersand | Pipe | Caret => Bitwise,
 
-      Plus | Minus | Star | Slash | Percent => Category::Arithmetic,
+      Plus | Minus | Star | Slash | Percent | PlusPlus | MinusMinus =>
+        Arithmetic,
 
       Less | LessEqual | Greater | GreaterEqual | EqualEqual | NotEqual =>
-        Category::Relational,
+        Relational,
 
       Assign | PlusAssign | MinusAssign | StarAssign | SlashAssign
       | PercentAssign | AmpersandAssign | PipeAssign | CaretAssign
-      | LeftShiftAssign | RightShiftAssign => Category::Assignment,
+      | LeftShiftAssign | RightShiftAssign => Assignment,
 
-      Comma => Category::Comma,
-      _ => panic!(),
+      Comma | Dot | Arrow | LeftBracket | LeftParen => Special,
+
+      _ => Uncategorized,
     }
   }
 
   pub const fn assignment(&self) -> bool {
-    matches!(
-      self,
-      Assign
-        | PlusAssign
-        | MinusAssign
-        | StarAssign
-        | SlashAssign
-        | PercentAssign
-        | AmpersandAssign
-        | PipeAssign
-        | CaretAssign
-        | LeftShiftAssign
-        | RightShiftAssign
-    )
-  }
-
-  pub const fn is_arithmetic(&self) -> bool {
-    matches!(self, Plus | Minus | Star | Slash | Percent)
+    matches!(self.category(), Assignment)
   }
 }
 

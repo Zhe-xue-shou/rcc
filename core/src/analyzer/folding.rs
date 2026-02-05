@@ -107,6 +107,20 @@ impl Expression {
     raw_expr.fold(expr_type, value_category, diag)
   }
 }
+impl Folding for RawExpr {
+  #[inline]
+  fn fold(
+    self,
+    target_type: QualifiedType,
+    value_category: ValueCategory,
+    diag: &impl Diagnosis,
+  ) -> FoldingResult<Expression> {
+    static_dispatch!(
+      self.fold(target_type, value_category, diag),
+      Empty Constant Unary Binary Call Paren MemberAccess Ternary SizeOf CStyleCast ArraySubscript CompoundLiteral Variable ImplicitCast Assignment
+    )
+  }
+}
 impl Folding for Empty {
   #[inline(always)]
   fn fold(
@@ -153,13 +167,15 @@ impl Folding for CStyleCast {
 }
 
 impl Folding for ArraySubscript {
+  /// always fails folding in C, unlike C++.
+  #[inline(always)]
   fn fold(
     self,
-    _target_type: QualifiedType,
-    _value_category: ValueCategory,
+    target_type: QualifiedType,
+    value_category: ValueCategory,
     _diag: &impl Diagnosis,
   ) -> FoldingResult<Expression> {
-    todo!()
+    Failure(Expression::new(self.into(), target_type, value_category))
   }
 }
 
@@ -184,19 +200,6 @@ impl Folding for Assignment {
     _diag: &impl Diagnosis,
   ) -> FoldingResult<Expression> {
     Failure(Expression::new(self.into(), target_type, value_category))
-  }
-}
-impl Folding for RawExpr {
-  fn fold(
-    self,
-    target_type: QualifiedType,
-    value_category: ValueCategory,
-    diag: &impl Diagnosis,
-  ) -> FoldingResult<Expression> {
-    static_dispatch!(
-      self.fold(target_type, value_category, diag),
-      Empty Constant Unary Binary Call Paren MemberAccess Ternary SizeOf CStyleCast ArraySubscript CompoundLiteral Variable ImplicitCast Assignment
-    )
   }
 }
 impl Folding for Constant {
@@ -308,7 +311,8 @@ impl Folding for Binary {
     );
     assert!(
       folded_lhs.qualified_type() == folded_rhs.qualified_type(),
-      "type checker makes sure both sides have the same type via `ImplicitCast`!"
+      "type checker makes sure both sides have the same type via \
+       `ImplicitCast`!"
     );
     let (lhs_expr, lhs_type, lhs_value_category) = folded_lhs.destructure();
     let (rhs_expr, rhs_type, rhs_value_category) = folded_rhs.destructure();
@@ -335,34 +339,50 @@ impl Folding for Binary {
 
     use OperatorCategory::*;
     match (lhs, rhs) {
-          (
-            crate::types::Constant::Integral(lhs),
-            crate::types::Constant::Integral(rhs),
-          ) => Integral::handle_binary_op(self.operator, lhs, rhs, self.span, diag).map(Into::into),
-          (
-            crate::types::Constant::Floating(lhs),
-            crate::types::Constant::Floating(rhs),
-          ) => match self.operator.category() {
-              Logical | Relational => Floating::handle_binary_order_op(self.operator, lhs, rhs, self.span, diag).map(Into::into),
-              Arithmetic => Floating::handle_binary_arith_op(self.operator, lhs, rhs, self.span, diag).map(Into::into),
-              _ => contract_violation!(
-                "not a binary operator or bin-op but cannot be applied to floating!"
-              ),
-          }
-          (
-            crate::types::Constant::String(_),
-            crate::types::Constant::String(_),
-          ) => contract_violation!("can we reach here?"),
-          (
-            crate::types::Constant::Nullptr(_),
-            crate::types::Constant::Nullptr(_),
-          ) => contract_violation!("can we reach here?"),
-          _ => contract_violation!(
-            "type checker ensures both sides have the same types! or unimplemented type"
-          ),
-        }
-        .map(|constant:CL| {
-          Expression::new(
+      (
+        crate::types::Constant::Integral(lhs),
+        crate::types::Constant::Integral(rhs),
+      ) => Integral::handle_binary_op(self.operator, lhs, rhs, self.span, diag)
+        .map(Into::into),
+      (
+        crate::types::Constant::Floating(lhs),
+        crate::types::Constant::Floating(rhs),
+      ) => match self.operator.category() {
+        Logical | Relational => Floating::handle_binary_order_op(
+          self.operator,
+          lhs,
+          rhs,
+          self.span,
+          diag,
+        )
+        .map(Into::into),
+        Arithmetic => Floating::handle_binary_arith_op(
+          self.operator,
+          lhs,
+          rhs,
+          self.span,
+          diag,
+        )
+        .map(Into::into),
+        _ => contract_violation!(
+          "not a binary operator or bin-op but cannot be applied to floating!"
+        ),
+      },
+      (
+        crate::types::Constant::String(_),
+        crate::types::Constant::String(_),
+      ) => contract_violation!("can we reach here?"),
+      (
+        crate::types::Constant::Nullptr(_),
+        crate::types::Constant::Nullptr(_),
+      ) => contract_violation!("can we reach here?"),
+      _ => contract_violation!(
+        "type checker ensures both sides have the same types! or \
+         unimplemented type"
+      ),
+    }
+    .map(|constant: CL| {
+      Expression::new(
         constant.into_with(self.span),
         target_type,
         value_category,
@@ -423,7 +443,7 @@ impl Folding for SizeOf {
       } else {
         Failure(Integral::from_uintptr(0))
       }
-      .map(Integral::into)
+      .map(Into::into)
       .map(|constant: CL| {
         Expression::new(
           constant.into_with(self.span),
@@ -638,7 +658,8 @@ impl Integral {
       Pipe => Success(lhs | rhs),
       Caret => Success(lhs ^ rhs),
       _ => contract_violation!(
-        "not a binary operator or bin-op but cannot be applied to integral! assignment op should be handled upstream, so does comma."
+        "not a binary operator or bin-op but cannot be applied to integral! \
+         assignment op should be handled upstream, so does comma."
       ),
     }
   }
@@ -695,7 +716,8 @@ impl Floating {
       Star => arith!(*),
       Slash => arith!(/),
       _ => contract_violation!(
-        "not a binary arithmetic operator but cannot be applied to floating! assignment op should be handled upstream, so does comma."
+        "not a binary arithmetic operator but cannot be applied to floating! \
+         assignment op should be handled upstream, so does comma."
       ),
     }
   }
@@ -733,7 +755,8 @@ impl Floating {
       EqualEqual => Success(Integral::from_bool(lhs == rhs)),
       NotEqual => Success(Integral::from_bool(lhs != rhs)),
       _ => contract_violation!(
-        "not a binary operator or bin-op but cannot be applied to floating! {op}"
+        "not a binary operator or bin-op but cannot be applied to floating! \
+         {op}"
       ),
     }
   }
@@ -751,7 +774,8 @@ impl Floating {
       Minus => Success(-operand),
       Not | Tilde | Star | Ampersand | PlusPlus | MinusMinus =>
         contract_violation!(
-          "unary operator not applicable to floating! should be handled upstream"
+          "unary operator not applicable to floating! should be handled \
+           upstream"
         ),
       _ => unreachable!(),
     }
@@ -773,7 +797,8 @@ impl Floating {
       And | Or | Less | LessEqual | Greater | GreaterEqual | EqualEqual
       | NotEqual | Star | Ampersand | PlusPlus | MinusMinus =>
         contract_violation!(
-          "unary operator not applicable to floating! should be handled upstream"
+          "unary operator not applicable to floating! should be handled \
+           upstream"
         ),
       _ => unreachable!(),
     }

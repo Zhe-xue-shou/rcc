@@ -262,7 +262,7 @@ impl<'session> Analyzer<'session> {
     let parameter_types = parameters
       .iter()
       .map(|param| param.symbol.borrow().qualified_type.clone())
-      .collect::<Vec<QualifiedType>>();
+      .collect();
     let functionproto =
       FunctionProto::new(return_type, parameter_types, is_variadic);
 
@@ -274,29 +274,30 @@ impl<'session> Analyzer<'session> {
     parameters: Vec<pd::Parameter>,
   ) -> Vec<QualifiedType> {
     parameters
-            .into_iter()
-            .map(|parameter| {
-                let pd::Parameter {
-                    declarator,
-                    declspecs,
-                    span: _,
-                } = parameter;
-                let (_, storage, base_type) = self
-                    .parse_declspecs(declspecs)
-                    .shall_ok("Failed to parse declspecs for parameter");
-                contract_assert!(
+      .into_iter()
+      .map(|parameter| {
+        let pd::Parameter {
+          declarator,
+          declspecs,
+          span: _,
+        } = parameter;
+        let (_, storage, base_type) = self
+          .parse_declspecs(declspecs)
+          .shall_ok("Failed to parse declspecs for parameter");
+        contract_assert!(
           storage.is_none(),
-          "parameter cannot have storage class specifier; this should be handled in parser.
+          "parameter cannot have storage class specifier; this should be \
+           handled in parser.
           also, `register` is currently unimplemented"
         );
-                let pd::Declarator {
-                    modifiers,
-                    name: _,
-                    span: _,
-                } = declarator;
-                self.apply_modifiers_for_varty(base_type, modifiers)
-            })
-            .collect()
+        let pd::Declarator {
+          modifiers,
+          name: _,
+          span: _,
+        } = declarator;
+        self.apply_modifiers_for_varty(base_type, modifiers)
+      })
+      .collect()
   }
 
   fn parse_parameters(
@@ -304,37 +305,38 @@ impl<'session> Analyzer<'session> {
     parameters: Vec<pd::Parameter>,
   ) -> DeclRes<Vec<ad::Parameter>> {
     parameters
-            .into_iter()
-            .map(|parameter| {
-                let pd::Parameter {
-                    declarator,
-                    declspecs,
-                    span,
-                } = parameter;
-                let (_, storage, base_type) = self
-                    .parse_declspecs(declspecs)
-                    .shall_ok("Failed to parse declspecs for parameter");
-                contract_assert!(
+      .into_iter()
+      .map(|parameter| {
+        let pd::Parameter {
+          declarator,
+          declspecs,
+          span,
+        } = parameter;
+        let (_, storage, base_type) = self
+          .parse_declspecs(declspecs)
+          .shall_ok("Failed to parse declspecs for parameter");
+        contract_assert!(
           storage.is_none(),
-          "parameter cannot have storage class specifier; this should be handled in parser.
+          "parameter cannot have storage class specifier; this should be \
+           handled in parser.
           also, `register` is currently unimplemented"
         );
-                let pd::Declarator {
-                    modifiers,
-                    name,
-                    span: _,
-                } = declarator;
-                let qualified_type =
-                    self.apply_modifiers_for_varty(base_type, modifiers);
-                let symbol = Symbol::new_ref(Symbol::new(
-                    qualified_type,
-                    Storage::Automatic,
-                    name.unwrap_or_else(Self::unnamed_placeholder),
-                    VarDeclKind::Declaration,
-                ));
-                Ok(ad::Parameter::new(symbol, span))
-            })
-            .collect()
+        let pd::Declarator {
+          modifiers,
+          name,
+          span: _,
+        } = declarator;
+        let qualified_type =
+          self.apply_modifiers_for_varty(base_type, modifiers);
+        let symbol = Symbol::new_ref(Symbol::new(
+          qualified_type,
+          Storage::Automatic,
+          name.unwrap_or_else(Self::unnamed_placeholder),
+          VarDeclKind::Declaration,
+        ));
+        Ok(ad::Parameter::new(symbol, span))
+      })
+      .collect()
   }
 
   fn parse_declspecs(
@@ -587,20 +589,22 @@ impl<'session> Analyzer<'session> {
       ad::Function::new(symbol, parameters, function_specifier, None, span);
 
     match body {
-            Some(body) => match self.current_function {
-                Some(_) => contract_violation!(
+      Some(body) => match self.current_function {
+        Some(_) => contract_violation!(
           "nested function definition is not allowed; 
-          this should be handled in parser: current function {}, new function {}
+          this should be handled in parser: current function {}, new function \
+           {}
           
-          Also: this may occur if the `current_function` is not properly cleared 
+          Also: this may occur if the `current_function` is not properly \
+           cleared 
           after an `Err` returned of the previous function definition analysis",
           self.current_function.as_ref().unwrap().symbol.borrow().name,
           function.symbol.borrow().name
         ),
-                None => self.function_with_body(body, function),
-            },
-            None => Ok(function),
-        }
+        None => self.function_with_body(body, function),
+      },
+      None => Ok(function),
+    }
   }
 
   fn function_with_body(
@@ -665,7 +669,8 @@ impl<'session> Analyzer<'session> {
       self.parse_declspecs(declspecs).shall_ok("vardef");
     contract_assert!(
       function_specifier.is_empty(),
-      "variable cannot have function specifier; this should be handled in parser"
+      "variable cannot have function specifier; this should be handled in \
+       parser"
     );
     let pd::Declarator {
       modifiers,
@@ -861,7 +866,7 @@ impl<'session> Analyzer<'session> {
 impl<'session> Analyzer<'session> {
   fn expression(&self, expression: pe::Expression) -> ExprRes {
     match expression {
-      pe::Expression::Empty => Ok(ae::Expression::default()),
+      pe::Expression::Empty(_) => Ok(ae::Expression::default()),
       pe::Expression::Constant(constant) => self.constant(constant),
       pe::Expression::Unary(unary) => self.unary(unary),
       pe::Expression::Binary(binary) => self.binary(binary),
@@ -1477,7 +1482,7 @@ impl<'session> Analyzer<'session> {
           None
         },
       })
-      .collect::<Vec<_>>()
+      .collect()
   }
 
   fn statement(
@@ -1487,29 +1492,25 @@ impl<'session> Analyzer<'session> {
     match statement {
       ps::Statement::Expression(expression) => self.exprstmt(expression),
       ps::Statement::Compound(compound_stmt) =>
-        Ok(astmt::Statement::Compound(self.compound(compound_stmt)?)),
-      ps::Statement::Empty() => Ok(astmt::Statement::Empty()),
+        self.compound(compound_stmt).map(Into::into),
+      ps::Statement::Empty(_) => Ok(astmt::Statement::default()),
       ps::Statement::Return(return_stmt) =>
-        Ok(astmt::Statement::Return(self.returnstmt(return_stmt)?)),
-      ps::Statement::Declaration(declaration) => Ok(
-        astmt::Statement::Declaration(self.declarations(declaration)?),
-      ),
-      ps::Statement::If(if_stmt) =>
-        Ok(astmt::Statement::If(self.ifstmt(if_stmt)?)),
+        self.returnstmt(return_stmt).map(Into::into),
+      ps::Statement::Declaration(declaration) =>
+        self.declarations(declaration).map(Into::into),
+      ps::Statement::If(if_stmt) => self.ifstmt(if_stmt).map(Into::into),
       ps::Statement::While(while_stmt) =>
-        Ok(astmt::Statement::While(self.whilestmt(while_stmt)?)),
+        self.whilestmt(while_stmt).map(Into::into),
       ps::Statement::DoWhile(do_while) =>
-        Ok(astmt::Statement::DoWhile(self.dowhilestmt(do_while)?)),
-      ps::Statement::For(for_stmt) =>
-        Ok(astmt::Statement::For(self.forstmt(for_stmt)?)),
-      ps::Statement::Label(label) =>
-        Ok(astmt::Statement::Label(self.labelstmt(label)?)),
-      ps::Statement::Switch(switch) =>
-        Ok(astmt::Statement::Switch(self.switchstmt(switch)?)),
-      ps::Statement::Goto(goto) => self.gotostmt(goto),
-      ps::Statement::Break(break_stmt) => self.breakstmt(break_stmt),
+        self.dowhilestmt(do_while).map(Into::into),
+      ps::Statement::For(for_stmt) => self.forstmt(for_stmt).map(Into::into),
+      ps::Statement::Label(label) => self.labelstmt(label).map(Into::into),
+      ps::Statement::Switch(switch) => self.switchstmt(switch).map(Into::into),
+      ps::Statement::Goto(goto) => self.gotostmt(goto).map(Into::into),
+      ps::Statement::Break(break_stmt) =>
+        self.breakstmt(break_stmt).map(Into::into),
       ps::Statement::Continue(continue_stmt) =>
-        self.continuestmt(continue_stmt),
+        self.continuestmt(continue_stmt).map(Into::into),
     }
   }
 
@@ -1539,7 +1540,7 @@ impl<'session> Analyzer<'session> {
 
   fn exprstmt(&self, expr_stmt: pe::Expression) -> StmtRes<astmt::Statement> {
     // todo: unused expression result warning
-    Ok(astmt::Statement::Expression(self.expression(expr_stmt)?))
+    Ok(self.expression(expr_stmt)?.into())
   }
 
   fn returnstmt(&self, return_stmt: ps::Return) -> StmtRes<astmt::Return> {
@@ -1795,7 +1796,7 @@ impl<'session> Analyzer<'session> {
     }
   }
 
-  fn gotostmt(&mut self, goto: ps::Goto) -> StmtRes<astmt::Statement> {
+  fn gotostmt(&mut self, goto: ps::Goto) -> StmtRes<astmt::Goto> {
     match self.environment.is_global() {
       true => contract_violation!(
         "goto statement in global scope should be handled in parser"
@@ -1807,37 +1808,29 @@ impl<'session> Analyzer<'session> {
           .unwrap()
           .gotos
           .insert(goto.label.clone());
-        Ok(astmt::Statement::Goto(astmt::Goto::new(
-          goto.label, goto.span,
-        )))
+        Ok(astmt::Goto::new(goto.label, goto.span))
       },
     }
   }
 
-  fn breakstmt(&self, break_stmt: ps::Break) -> StmtRes<astmt::Statement> {
+  fn breakstmt(&self, break_stmt: ps::Break) -> StmtRes<astmt::Break> {
     match self.environment.is_global() {
       true => contract_violation!(
         "break statement in global scope should be handled in parser"
       ),
-      false => Ok(astmt::Statement::Break(astmt::Break::new(
-        break_stmt.tag,
-        break_stmt.span,
-      ))),
+      false => Ok(astmt::Break::new(break_stmt.tag, break_stmt.span)),
     }
   }
 
   fn continuestmt(
     &self,
     continue_stmt: ps::Continue,
-  ) -> StmtRes<astmt::Statement> {
+  ) -> StmtRes<astmt::Continue> {
     match self.environment.is_global() {
       true => contract_violation!(
         "continue statement in global scope should be handled in parser"
       ),
-      false => Ok(astmt::Statement::Continue(astmt::Continue::new(
-        continue_stmt.tag,
-        continue_stmt.span,
-      ))),
+      false => Ok(astmt::Continue::new(continue_stmt.tag, continue_stmt.span)),
     }
   }
 }

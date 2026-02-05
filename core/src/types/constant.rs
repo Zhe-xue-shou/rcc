@@ -4,7 +4,6 @@ use crate::{
   blueprints::Placeholder as Nullptr,
   common::{FloatFormat, Floating, Integral, Signedness},
   diagnosis::{DiagData, DiagMeta, Severity},
-  types::Type,
 };
 
 /// This class is **mixed**.
@@ -44,12 +43,12 @@ impl Constant {
     "LLU", // unsigned long long
     "uz", "uZ", "Uz", "UZ", "zu", "zU", "Zu", "ZU", // size_t
     "z", "Z", // size_t's signed version
-    // unsupported
-    "wb", "WB", // _BitInt
-    "uwb", "uWB", "Uwb", "UWB", // unsigned _BitInt
     // msvc extensions
     "i8", "i16", "i32", "i64", // signed int
     "ui8", "ui16", "ui32", "ui64", // unsigned int
+    // unsupported
+    "wb", "WB", // _BitInt
+    "uwb", "uWB", "Uwb", "UWB", // unsigned _BitInt
   ];
 
   /// parse a numeric literal with optional suffix, if fails, return an error message and the default value of the Constant
@@ -61,12 +60,14 @@ impl Constant {
     macro_rules! int_conv {
       ($t:ty, $signess:ident) => {
         match num.parse::<$t>() {
-          Ok(v) => (
-            Integral::new(v, (<$t>::BITS) as u8, Signedness::$signess).into(),
-            None,
-          ),
+          Ok(v) => (Integral::from(v).into(), None),
           Err(e) => (
-            Integral::default().into(),
+            Integral::new(
+              <$t>::default(),
+              <$t>::BITS as u8,
+              Signedness::$signess,
+            )
+            .into(),
             Some(
               DiagData::InvalidNumberFormat(e.to_string())
                 .into_with(Severity::Error),
@@ -76,11 +77,12 @@ impl Constant {
       };
     }
     macro_rules! float_conv {
-      ($t:ty, $format:expr) => {
+      ($t:ty, $format:ident) => {
         match num.parse::<$t>() {
-          Ok(v) => (Floating::new(v.to_bits(), $format).into(), None),
+          Ok(v) => (Floating::from(v).into(), None),
           Err(e) => (
-            Floating::new(<$t>::default().to_bits(), $format).into(),
+            Floating::new(<$t>::default().to_bits(), FloatFormat::$format)
+              .into(),
             Some(
               DiagData::InvalidNumberFormat(e.to_string())
                 .into_with(Severity::Error),
@@ -93,7 +95,7 @@ impl Constant {
       // default to int
       (None, false) => int_conv!(i32, Signed),
       // default to double
-      (None, true) => float_conv!(f64, FloatFormat::IEEE64),
+      (None, true) => float_conv!(f64, IEEE64),
       // integer with suffix
       (Some(suf), false) => match suf {
         "u" | "U" => int_conv!(u32, Unsigned),
@@ -106,6 +108,14 @@ impl Constant {
         "z" | "Z" => int_conv!(isize, Signed),
         "uz" | "uZ" | "Uz" | "UZ" | "zu" | "zU" | "Zu" | "ZU" =>
           int_conv!(usize, Unsigned),
+        "i8" => int_conv!(i8, Signed),
+        "i16" => int_conv!(i16, Signed),
+        "i32" => int_conv!(i32, Signed),
+        "i64" => int_conv!(i64, Signed),
+        "ui8" => int_conv!(u8, Unsigned),
+        "ui16" => int_conv!(u16, Unsigned),
+        "ui32" => int_conv!(u32, Unsigned),
+        "ui64" => int_conv!(u64, Unsigned),
         _ => (
           Integral::default().into(),
           Some(
@@ -119,8 +129,8 @@ impl Constant {
       },
       // floating with suffix
       (Some(suf), true) => match suf {
-        "f" | "F" => float_conv!(f32, FloatFormat::IEEE32),
-        "l" | "L" => float_conv!(f64, FloatFormat::IEEE64),
+        "f" | "F" => float_conv!(f32, IEEE32),
+        "l" | "L" => float_conv!(f64, IEEE64),
         _ => (
           Floating::default().into(),
           Some(
@@ -137,15 +147,6 @@ impl Constant {
 
   pub const fn is_char_array(&self) -> bool {
     matches!(self, Self::String(_))
-  }
-
-  pub fn unqualified_type(&self) -> Type {
-    match self {
-      Self::Integral(integral) => integral.unqualified_type(),
-      Self::Floating(floating) => floating.unqualified_type(),
-      Self::String(str) => Type::char_array(str.len() + 1),
-      Self::Nullptr(_) => Type::nullptr(),
-    }
   }
 
   pub fn is_zero(&self) -> bool {

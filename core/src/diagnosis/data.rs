@@ -141,17 +141,20 @@ pub enum Data {
   #[error("Operand of unary operator '{0}' must be arithmetic type, got '{1}'")]
   NonArithmeticInUnaryOp(Operator, Elem),
   #[error(
-    "Operands of binary operator '{2}' must be arithmetic types, got '{0}' and '{1}'"
+    "Operands of binary operator '{2}' must be arithmetic types, got '{0}' \
+     and '{1}'"
   )]
   NonArithmeticInBinaryOp(Elem, Elem, Operator),
   #[error("Operand of bitwise operator '{0}' must be integer type, got '{1}'")]
   NonIntegerInBitwiseUnaryOp(Operator, Elem),
   #[error(
-    "Operands of bitwise operator '{2}' must be integer types, got '{0}' and '{1}'"
+    "Operands of bitwise operator '{2}' must be integer types, got '{0}' and \
+     '{1}'"
   )]
   NonIntegerInBitwiseBinaryOp(Elem, Elem, Operator),
   #[error(
-    "Operands of bitshift operator '{2}' must be integer types, got '{0}' and '{1}'"
+    "Operands of bitshift operator '{2}' must be integer types, got '{0}' and \
+     '{1}'"
   )]
   NonIntegerInBitshiftOp(Elem, Elem, Operator),
   #[error("Array subscript is not an integer, got '{0}'")]
@@ -171,7 +174,8 @@ pub enum Data {
   #[error("Duplicate label '{0}'")]
   DuplicateLabel(Elem),
   #[error(
-    "Incompatible types in declaration of '{0}': '{1}' is not compatible with '{2}'"
+    "Incompatible types in declaration of '{0}': '{1}' is not compatible with \
+     '{2}'"
   )]
   IncompatibleType(Elem, QualifiedType, QualifiedType),
   #[error("Incompatible pointer types '{0}' and '{1}'")]
@@ -205,7 +209,9 @@ pub enum Data {
   #[error("{0}")]
   VariableUninitialized(CustomMessage),
   #[error(
-    "Function declarations without prototypes(e.g., int main()) are deprecated and removed in C23. Please provide a prototype (e.g., int main(void)) rather than leaving it empty."
+    "Function declarations without prototypes(e.g., int main()) are \
+     deprecated and removed in C23. Please provide a prototype (e.g., int \
+     main(void)) rather than leaving it empty."
   )]
   DeprecatedFunctionNoProto,
   #[error(
@@ -234,7 +240,10 @@ pub enum Data {
   #[error("Division by zero")]
   DivideByZero,
   #[error(
-    "C standard pre C23 does not allow declaration after label, if/else, while, do-while, for, and switch statements(e.g.`while(cond) int i = 0;` is invalid). If it's intended, please use surrounding braces to form a block."
+    "C standard pre C23 does not allow declaration after label, if/else, \
+     while, do-while, for, and switch statements(e.g.`while(cond) int i = 0;` \
+     is invalid). If it's intended, please use surrounding braces to form a \
+     block."
   )]
   DeprecatedStmtDeclCvt,
   #[error("Typedef defines nothing")]

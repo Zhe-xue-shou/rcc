@@ -22,10 +22,10 @@ pub enum RawStmt<StmtTy, DeclTy, ExprTy, ExprCaseTy = ExprTy> {
 
 #[macro_export(local_inner_macros)]
 macro_rules! type_alias_stmt {
-  ($stmtty:ident,$declty:ident,$exprty:ident) => {
+  ($stmtty:ident, $declty:ident, $exprty:ident) => {
     $crate::type_alias_stmt!($stmtty, $declty, $exprty, $exprty);
   };
-  ($stmtty:ident,$declty:ident,$exprty:ident,$exprcasety:ident) => {
+  ($stmtty:ident, $declty:ident, $exprty:ident, $exprcasety:ident) => {
     #[allow(dead_code)]
     pub type RawStmt = $crate::blueprints::RawStmt<$stmtty, $declty, $exprty>;
     #[allow(dead_code)]

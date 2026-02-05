@@ -19,5 +19,18 @@ pub use self::{
 pub struct Placeholder;
 
 impl From<Placeholder> for () {
+  #[inline(always)]
   fn from(_: Placeholder) -> Self {}
+}
+impl From<()> for Placeholder {
+  #[inline(always)]
+  fn from(_: ()) -> Self {
+    Self
+  }
+}
+impl ::std::fmt::Display for Placeholder {
+  #[inline(always)]
+  fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+    write!(f, "")
+  }
 }

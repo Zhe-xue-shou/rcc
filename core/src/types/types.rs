@@ -3,7 +3,7 @@ use ::rc_utils::{IntoWith, interconvert, make_trio_for};
 use ::std::{rc::Rc, str::FromStr};
 use ::strum_macros::{Display, EnumString, IntoStaticStr};
 
-use super::{Compatibility, TypeInfo};
+use super::{Compatibility, Constant, TypeInfo};
 use crate::{
   common::{FloatFormat, Floating, Integral, Signedness},
   diagnosis::{DiagData::*, DiagMeta, Severity},
@@ -134,16 +134,6 @@ pub struct Array {
 
 /// function types themselves don't have qualifiers, but pointers to them can.
 /// so the functionproto's qualifiers must be dropped.
-///
-/// ```c
-/// int func(int a, float b);
-/// int (*pfunc)(int, float) = &func;
-/// int (*const cpfunc)(int, float) = &func;
-///
-/// const int* cptr_func(int a, float b);
-/// const int* (*pfunc2)(int, float) = &cptr_func;
-/// const int* (*const cpfunc2)(int, float) = &cptr_func;
-/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionProto {
   pub return_type: QualifiedType,
@@ -292,9 +282,13 @@ impl FunctionProto {
     } else if !self.compatible_with(&Self::MAIN_PROTO_EMPTY)
       && !self.compatible_with(&Self::MAIN_PROTO_ARGS)
     {
-      Err(MainFunctionProtoMismatch(
-        "main function must have either no parameters or two parameters (int argc, char** argv)",
-      ).into_with(Severity::Error))
+      Err(
+        MainFunctionProtoMismatch(
+          "main function must have either no parameters or two parameters \
+           (int argc, char** argv)",
+        )
+        .into_with(Severity::Error),
+      )
     } else {
       Ok(())
     }
@@ -502,6 +496,17 @@ impl Floating {
     match self.format() {
       IEEE32 => Type::float(),
       IEEE64 => Type::double(),
+    }
+  }
+}
+
+impl Constant {
+  pub fn unqualified_type(&self) -> Type {
+    match self {
+      Self::Integral(integral) => integral.unqualified_type(),
+      Self::Floating(floating) => floating.unqualified_type(),
+      Self::String(str) => Type::char_array(str.len() + 1),
+      Self::Nullptr(_) => Type::nullptr(),
     }
   }
 }

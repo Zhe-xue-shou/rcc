@@ -8,7 +8,7 @@ use crate::{
 
 #[derive(Debug)]
 pub enum Expression {
-  Empty, // no-op for error recovery; for empty expr should use Option<Expression> instead
+  Empty(Empty), // no-op for error recovery; for empty expr should use Option<Expression> instead
   Constant(Constant),
   Unary(Unary),
   Binary(Binary),
@@ -60,27 +60,17 @@ interconvert!(ArraySubscript, Expression);
 interconvert!(CompoundLiteral, Expression);
 
 mod fmt {
+  use ::rc_utils::static_dispatch;
   use ::std::fmt::Display;
 
-  use super::{
-    Binary, Call, Constant, Expression, Expression::*, Paren, SizeOf, Ternary,
-    Unary, UnprocessedType, Variable,
-  };
+  use super::*;
 
   impl Display for Expression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      match self {
-        Constant(c) => <Constant as Display>::fmt(c, f),
-        Unary(u) => <Unary as Display>::fmt(u, f),
-        Binary(b) => <Binary as Display>::fmt(b, f),
-        Variable(v) => <Variable as Display>::fmt(v, f),
-        Ternary(t) => <Ternary as Display>::fmt(t, f),
-        Call(call) => <Call as Display>::fmt(call, f),
-        SizeOf(s) => <SizeOf as Display>::fmt(s, f),
-        Empty => write!(f, "<noop>"),
-        Paren(p) => <Paren as Display>::fmt(p, f),
-        _ => todo!("{:#?}", self),
-      }
+      static_dispatch!(
+        self.fmt(f),
+        Empty Constant Unary Binary Variable Call Paren MemberAccess Ternary SizeOf CStyleCast ArraySubscript CompoundLiteral
+      )
     }
   }
   impl Display for Variable {

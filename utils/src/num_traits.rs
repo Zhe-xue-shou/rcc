@@ -2,11 +2,19 @@
 //!
 //! do **NOT** add any new `impl` to arbitrary types here. Only built-in numeric types are allowed.
 
+mod private {
+  pub const trait Sealed {
+    /* nothing. */
+  }
+}
+
 macro_rules! traits {
   ($($variant:ty)*) => {
     ::paste::paste! {
         $(
-            pub const trait [< To $variant:camel >] {
+            impl const private::Sealed for $variant {}
+
+            pub const trait [< To $variant:camel >] : private::Sealed {
                 #[must_use]
                 fn [< to_ $variant:lower >](self) -> $variant;
             }
@@ -58,12 +66,12 @@ macro_rules! impl_all_float {
 
 impl_all_float!(f32 f64);
 
-pub const trait NumTo<T> {
+pub const trait NumTo<T>: private::Sealed {
   #[must_use]
   fn to(self) -> T;
 }
 
-pub const trait NumFrom<T> {
+pub const trait NumFrom<T>: private::Sealed {
   #[must_use]
   fn from(value: T) -> Self;
 }
@@ -71,6 +79,7 @@ pub const trait NumFrom<T> {
 // automatially impl NumTo for types that implement NumFrom
 impl<T, U> const NumTo<U> for T
 where
+  T: [const] private::Sealed,
   U: [const] NumFrom<T>,
 {
   #[inline(always)]
@@ -218,4 +227,4 @@ mark_neg_tag!(u8 u16 u32 u64 u128 usize => BuiltinSignedNumericOrBoolean);
 generate_tag!(bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 isize usize => BuiltinIntegerOrBoolean);
 mark_neg_tag!(f32 f64 => BuiltinIntegerOrBoolean);
 generate_tag!(f32 f64 bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 isize usize => BuiltinNumericOrBoolean);
-// mark_neg_tag!(/* nothing */ => BuiltinNumericOrBoolean);
+mark_neg_tag!(/* nothing */ => BuiltinNumericOrBoolean);

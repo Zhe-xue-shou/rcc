@@ -165,7 +165,7 @@ void f2(int a[][10]); // ERROR: 'int(*)[5]' vs 'int(*)[10]'
   }
   #[test]
   fn t3() {
-    let s = "const unsigned a = 1.0/0.9;";
+    let s = "const unsigned a = 1.0/0.9f;";
     let mut source_manager = SourceManager::default();
     source_manager.add_string(s.into());
     pipeline(&mut source_manager, Stage::Analyze, true);

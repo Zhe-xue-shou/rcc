@@ -412,4 +412,25 @@ mod fmt {
       }
     }
   }
+  // noop display impl for the rest
+  impl<ExprTy: Display> Display for RawArraySubscript<ExprTy> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      write!(f, "<array subscript>")
+    }
+  }
+  impl Display for RawCompoundLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      write!(f, "<compound literal>")
+    }
+  }
+  impl<ExprTy: Display> Display for RawCStyleCast<ExprTy> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      write!(f, "<C-style cast>")
+    }
+  }
+  impl<ExprTy: Display> Display for RawMemberAccess<ExprTy> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      write!(f, "({}.{})", self.object, self.member)
+    }
+  }
 }

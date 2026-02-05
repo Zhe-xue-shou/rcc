@@ -595,12 +595,12 @@ macro_rules! impl_from_integral {
     impl From<$t> for Integral {
       #[inline(always)]
       fn from(value: $t) -> Self {
-        Integral::new(value as Underlying, ($width / 8) as u8, $signedness)
+        Integral::new(value, $width as u8, $signedness)
       }
     }
   };
 }
-impl_from_integral!(bool, 8, Unsigned);
+impl_from_integral!(bool, 1, Unsigned);
 impl_from_integral!(i8, i8::BITS, Signed);
 impl_from_integral!(u8, u8::BITS, Unsigned);
 impl_from_integral!(i16, i16::BITS, Signed);

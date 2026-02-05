@@ -27,7 +27,7 @@ macro_rules! interconvert {
 
 #[macro_export]
 macro_rules! make_trio_for {
-  ($variant:ident,$main:ident) => {
+  ($variant:ident, $main:ident) => {
     $crate::make_trio_for!($variant, $variant, $main);
   };
   // We use :ident because we are working with names, not complex types

@@ -1,8 +1,9 @@
+use ::rc_utils::static_dispatch;
 use ::std::fmt::Display;
 
 use super::{
   Array, ArraySize, Constant, Enum, FunctionProto, FunctionSpecifier, Pointer,
-  Primitive, QualifiedType, Qualifiers, Record, Type, Union,
+  QualifiedType, Qualifiers, Record, Type, Union,
 };
 
 impl Display for Qualifiers {
@@ -67,16 +68,11 @@ impl Display for FunctionProto {
 }
 
 impl Display for Type {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Type::Primitive(builtin) => <Primitive as Display>::fmt(builtin, f),
-      Type::FunctionProto(proto) => <FunctionProto as Display>::fmt(proto, f),
-      Type::Pointer(ptr) => <Pointer as Display>::fmt(ptr, f),
-      Type::Array(array_type) => <Array as Display>::fmt(array_type, f),
-      Type::Enum(enum_type) => <Enum as Display>::fmt(enum_type, f),
-      Type::Record(record_type) => <Record as Display>::fmt(record_type, f),
-      Type::Union(variant_type) => <Union as Display>::fmt(variant_type, f),
-    }
+  fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+    static_dispatch!(
+      self.fmt(f),
+      Primitive FunctionProto Pointer Array Enum Record Union
+    )
   }
 }
 

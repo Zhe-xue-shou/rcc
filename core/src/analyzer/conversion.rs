@@ -278,11 +278,13 @@ impl Expression {
         // can add qualifiers, but cannot remove them
         // error if removing qualifiers (const, volatile, etc.)
         if !lhs.pointee.qualifiers().contains(*rhs.pointee.qualifiers()) {
-          do yeet DiscardingQualifiers(
-            *rhs.pointee.qualifiers() - *lhs.pointee.qualifiers(),
-          )
-          .into_with(Severity::Error)
-          .into_with(span)
+          Err(
+            DiscardingQualifiers(
+              *rhs.pointee.qualifiers() - *lhs.pointee.qualifiers(),
+            )
+            .into_with(Severity::Error)
+            .into_with(span),
+          )?
         }
 
         if lhs
@@ -421,15 +423,17 @@ impl Expression {
           Primitive::common_type(l, r),
         _ => {
           let lhs_span = lhs.span();
-          do yeet InvalidConversion(
-            "usual arithmetic conversion only applies to arithmetic types"
-              .to_string(),
-          )
-          .into_with(Severity::Error)
-          .into_with(SourceSpan {
-            end: rhs.span().end,
-            ..lhs_span
-          })
+          Err(
+            InvalidConversion(
+              "usual arithmetic conversion only applies to arithmetic types"
+                .to_string(),
+            )
+            .into_with(Severity::Error)
+            .into_with(SourceSpan {
+              end: rhs.span().end,
+              ..lhs_span
+            }),
+          )?
         },
       };
 

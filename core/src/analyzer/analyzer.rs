@@ -530,13 +530,15 @@ impl<'session> Analyzer<'session> {
       Some(prev_symbol_ref) => {
         let borrow = prev_symbol_ref.borrow();
         if !QualifiedType::compatible(&borrow.qualified_type, &qualified_type) {
-          do yeet IncompatibleType(
-            name.clone(),
-            borrow.qualified_type.clone(),
-            qualified_type.clone(),
-          )
-          .into_with(Severity::Error)
-          .into_with(span)
+          Err(
+            IncompatibleType(
+              name.clone(),
+              borrow.qualified_type.clone(),
+              qualified_type.clone(),
+            )
+            .into_with(Severity::Error)
+            .into_with(span),
+          )?;
         }
 
         let prev_declkind = borrow.declkind;
@@ -562,18 +564,21 @@ impl<'session> Analyzer<'session> {
               borrow_mut.declkind = VarDeclKind::merge(prev_declkind, declkind);
               prev_symbol_ref.clone()
             } else {
-              do yeet IncompatibleType(
-                name.clone(),
-                prev_symbol_ref.borrow().qualified_type.clone(),
-                qualified_type.clone(),
-              )
-              .into_with(Severity::Error)
-              .into_with(span)
+              Err(
+                IncompatibleType(
+                  name.clone(),
+                  prev_symbol_ref.borrow().qualified_type.clone(),
+                  qualified_type.clone(),
+                )
+                .into_with(Severity::Error)
+                .into_with(span),
+              )?
             },
-          (Definition, Definition) =>
-            do yeet FunctionAlreadyDefined(name)
+          (Definition, Definition) => Err(
+            FunctionAlreadyDefined(name.clone())
               .into_with(Severity::Error)
               .into_with(span),
+          )?,
           (Tentative, _) | (_, Tentative) =>
             contract_violation!("function cannot be tentative"),
         }
@@ -719,13 +724,15 @@ impl<'session> Analyzer<'session> {
         &prev_symbol_ref.borrow().qualified_type,
         &vardef.symbol.borrow().qualified_type,
       ) {
-        do yeet IncompatibleType(
-          name,
-          prev_symbol_ref.borrow().qualified_type.clone(),
-          vardef.symbol.borrow().qualified_type.clone(),
-        )
-        .into_with(Severity::Error)
-        .into_with(span)
+        Err(
+          IncompatibleType(
+            name,
+            prev_symbol_ref.borrow().qualified_type.clone(),
+            vardef.symbol.borrow().qualified_type.clone(),
+          )
+          .into_with(Severity::Error)
+          .into_with(span),
+        )?
       }
       let prev_declkind = prev_symbol_ref.borrow().declkind;
       let new_declkind = vardef.symbol.borrow().declkind;
@@ -941,15 +948,17 @@ impl<'session> Analyzer<'session> {
       Type::FunctionProto(proto) => proto,
       Type::Pointer(ptr) => match ptr.pointee.unqualified_type() {
         Type::FunctionProto(proto) => proto,
-        _ =>
-          do yeet InvalidCallee(ptr.pointee.clone())
+        _ => Err(
+          InvalidCallee(ptr.pointee.clone())
             .into_with(Severity::Error)
             .into_with(span),
+        )?,
       },
-      _ =>
-        do yeet InvalidCallee(analyzed_callee.qualified_type().clone())
+      _ => Err(
+        InvalidCallee(analyzed_callee.qualified_type().clone())
           .into_with(Severity::Error)
           .into_with(span),
+      )?,
     };
 
     let mut analyzed_arguments = Vec::new();
@@ -1153,9 +1162,11 @@ impl<'session> Analyzer<'session> {
       self.expression(*pe_index)?.lvalue_conversion().decay();
 
     if !analyzed_index.unqualified_type().is_integer() {
-      do yeet NonIntegerSubscript(analyzed_index.to_string())
-        .into_with(Severity::Error)
-        .into_with(span)
+      Err(
+        NonIntegerSubscript(analyzed_index.to_string())
+          .into_with(Severity::Error)
+          .into_with(span),
+      )?
     }
 
     let analyzed_index = analyzed_index.ptrdiff_conversion_unchecked();
@@ -1335,9 +1346,11 @@ impl<'session> Analyzer<'session> {
     let operand = operand.lvalue_conversion().decay();
 
     if !operand.unqualified_type().is_pointer() {
-      do yeet DerefNonPtr(operand.to_string())
-        .into_with(Severity::Error)
-        .into_with(span)
+      Err(
+        DerefNonPtr(operand.to_string())
+          .into_with(Severity::Error)
+          .into_with(span),
+      )?
     }
 
     let pointee_type =
@@ -1622,9 +1635,11 @@ impl<'session> Analyzer<'session> {
     if !lhs.unqualified_type().is_integer()
       || !rhs.unqualified_type().is_integer()
     {
-      do yeet NonIntegerInBitshiftOp(lhs.to_string(), rhs.to_string(), operator)
-        .into_with(Severity::Error)
-        .into_with(span)
+      Err(
+        NonIntegerInBitshiftOp(lhs.to_string(), rhs.to_string(), operator)
+          .into_with(Severity::Error)
+          .into_with(span),
+      )?
     }
 
     let expr_type = lhs.qualified_type().clone();

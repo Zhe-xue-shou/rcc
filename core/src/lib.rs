@@ -1,6 +1,4 @@
 #![feature(const_trait_impl)]
-// do yeet expressions
-#![feature(yeet_expr)]
 // operator `?` overloading
 #![feature(try_trait_v2)]
 // for using core::intrinsics::breakpoint

@@ -10,6 +10,8 @@ int func(INT a, CONST_INT b) { return a + b; }
 inline static int foo(int a) { return a + 1; }
 long int p = 0 && 9 ? 1, 0 : 2;
 int f(int i, int j) {
+  int arr[10][10];
+  arr[0][2] = 0;
   k[p] = i + j;
   p++;
   p += 9;

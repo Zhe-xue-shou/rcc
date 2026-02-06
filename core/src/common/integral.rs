@@ -376,7 +376,7 @@ impl Integral {
     debug_assert_eq!(self.signedness, rhs.signedness);
 
     if rhs.is_zero() {
-      do yeet
+      None?
     }
 
     let quotient = if self.is_signed() {
@@ -394,7 +394,7 @@ impl Integral {
     debug_assert_eq!(self.signedness, rhs.signedness);
 
     if rhs.is_zero() {
-      do yeet
+      None?
     }
 
     let remainder = if self.is_signed() {

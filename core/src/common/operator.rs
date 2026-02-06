@@ -137,9 +137,9 @@ impl Operator {
   pub const POSTFIX: u8 = 0xA0;
   /// use this to stop before `:`, excluding the `,` in ternary operator
   #[deprecated(note = "Based on the clang AST output, the precedence level \
-                       for `? :` is lower than that of `,`. That is, `0 ? 1, \
-                       2 : 3` is parsed as `0 ? (1, 2) : 3`. Use DEFAULT \
-                       instead.")]
+                       for `? :` is lower than that of `,`. That being said, \
+                       `0 ? 1, 2 : 3` is parsed as `0 ? (1, 2) : 3`. Use \
+                       DEFAULT instead.")]
   pub const TERNARY: u8 = 0x06;
 }
 impl Operator {

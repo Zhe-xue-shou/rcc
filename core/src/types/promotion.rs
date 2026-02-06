@@ -4,6 +4,7 @@ use ::rcc_utils::breakpoint;
 
 use super::{CastType, Primitive, Primitive::*, QualifiedType, Type};
 use crate::common::FloatFormat;
+
 pub trait Promotion {
   #[must_use]
   fn promote(self) -> (Self, CastType)
@@ -55,7 +56,7 @@ impl Primitive {
       Char | SChar | UChar => 8,
       Short | UShort => 16,
       Int | UInt => 32,
-      Long | ULong => 32,
+      Long | ULong => 64,
       LongLong | ULongLong => 64,
       _ => {
         breakpoint!();

@@ -13,6 +13,11 @@ pub enum Format {
 
 use Format::*;
 
+/// you can see the doc of [`Integral`] for more information. Unlike the feature-rich [`Integral`],
+/// this struct is essentially a simple wrapper around the raw bits of a floating-point number, along with its format.
+/// That being said, I didn't reference
+/// [LLVM's APFloat](https://github.com/llvm/llvm-project/blob/main/llvm/include/llvm/ADT/APFloat.h) at all,
+/// which is a far more comprehensive and complex implementation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Floating {
   bits: u128,

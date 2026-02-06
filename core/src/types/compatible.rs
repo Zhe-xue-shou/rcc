@@ -1,9 +1,14 @@
-#![allow(unused)]
-use ::rcc_utils::breakpoint;
+#![allow(unused_variables)]
+
+use ::once_cell::sync::Lazy;
+use ::rcc_utils::{IntoWith, breakpoint};
 
 use super::{
-  Array, ArraySize, Enum, FunctionProto, Pointer, Primitive, QualifiedType,
-  Qualifiers, Record, Type, Union,
+  Array, ArraySize, Enum, FunctionProto, FunctionSpecifier, Pointer, Primitive,
+  QualifiedType, Qualifiers, Record, Type, Union,
+};
+use crate::diagnosis::{
+  DiagData::MainFunctionProtoMismatch, DiagMeta, Severity,
 };
 
 /// rules about the `metadata`. used for declaration and definition.
@@ -409,5 +414,64 @@ impl Compatibility for Union {
     Self: Sized,
   {
     todo!()
+  }
+}
+
+impl FunctionProto {
+  #[allow(clippy::declare_interior_mutable_const)]
+  const MAIN_PROTO_ARGS: Lazy<FunctionProto> = Lazy::new(|| {
+    FunctionProto::new(
+      Primitive::Int.into(),
+      vec![
+        Primitive::Int.into(),
+        Pointer::new(Pointer::new(Primitive::Char.into()).into()).into(),
+      ],
+      false,
+    )
+  });
+  #[allow(clippy::declare_interior_mutable_const)]
+  const MAIN_PROTO_EMPTY: Lazy<FunctionProto> =
+    Lazy::new(|| FunctionProto::new(Primitive::Int.into(), vec![], false));
+
+  pub fn new(
+    return_type: QualifiedType,
+    parameter_types: Vec<QualifiedType>,
+    is_variadic: bool,
+  ) -> Self {
+    Self {
+      return_type,
+      parameter_types,
+      is_variadic,
+    }
+  }
+
+  #[allow(clippy::borrow_interior_mutable_const)]
+  pub fn main_proto_validate(
+    &self,
+    function_specifier: FunctionSpecifier,
+  ) -> Result<(), DiagMeta> {
+    if self.is_variadic {
+      Err(
+        MainFunctionProtoMismatch("main function cannot be variadic")
+          .into_with(Severity::Error),
+      )
+    } else if function_specifier.contains(FunctionSpecifier::Inline) {
+      Err(
+        MainFunctionProtoMismatch("main function cannot be inline")
+          .into_with(Severity::Error),
+      )
+    } else if !self.compatible_with(&Self::MAIN_PROTO_EMPTY)
+      && !self.compatible_with(&Self::MAIN_PROTO_ARGS)
+    {
+      Err(
+        MainFunctionProtoMismatch(
+          "main function must have either no parameters or two parameters \
+           (int argc, char** argv)",
+        )
+        .into_with(Severity::Error),
+      )
+    } else {
+      Ok(())
+    }
   }
 }

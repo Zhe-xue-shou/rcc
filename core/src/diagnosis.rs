@@ -19,7 +19,7 @@ pub trait Diagnosis {
     match diag.metadata.severity {
       Severity::Error => self.add_error(diag.metadata.data, diag.span),
       Severity::Warning => self.add_warning(diag.metadata.data, diag.span),
-      Severity::Info => {}, // ignore info for now
+      Severity::Info | Severity::Hint => {}, // ignore info for now
     }
   }
 }

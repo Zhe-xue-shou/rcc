@@ -400,7 +400,6 @@ impl Expression {
         function_proto
       ),
       Type::Enum(e) => {
-        // let underlying_type = e.underlying_type.clone();
         todo!("conditional conversion for enum types {:#?}", e)
       },
       Type::Record(_) | Type::Union(_) => {

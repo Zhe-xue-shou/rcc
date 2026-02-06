@@ -1,11 +1,11 @@
-use ::rcc_utils::static_dispatch;
-
 use super::{
   Array, ArraySize, Enum, FunctionProto, Pointer, Primitive, Primitive::*,
   QualifiedType, Record, Type, Union,
 };
 pub trait TypeInfo {
+  #[must_use]
   fn size(&self) -> usize;
+  #[must_use]
   fn is_scalar(&self) -> bool;
 }
 
@@ -23,7 +23,7 @@ impl TypeInfo for QualifiedType {
 impl TypeInfo for Type {
   #[inline]
   fn size(&self) -> usize {
-    static_dispatch!(
+    ::rcc_utils::static_dispatch!(
       self.size(),
       Primitive Array Pointer FunctionProto Enum Record Union
     )
@@ -31,7 +31,7 @@ impl TypeInfo for Type {
 
   #[inline]
   fn is_scalar(&self) -> bool {
-    static_dispatch!(
+    ::rcc_utils::static_dispatch!(
       self.is_scalar(),
       Primitive Array Pointer FunctionProto Enum Record Union
     )
@@ -49,12 +49,12 @@ impl TypeInfo for Primitive {
       SChar => 1,
       Short => 2,
       Int => 4,
-      Long => 4, // LLP64 Windows
+      Long => 8, // x86_64 linux
       LongLong => 8,
       UChar => 1,
       UShort => 2,
       UInt => 4,
-      ULong => 4,
+      ULong => 8,
       ULongLong => 8,
       Float => 4,
       Double => 8,

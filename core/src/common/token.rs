@@ -6,7 +6,7 @@ use super::{
   Operator, SourceSpan,
 };
 /// strictly speaking this isn't counted as cyclic dependency,
-/// the [`Constant`](crate::type::Constant) type looks similiar so used in here too.
+/// the [`Constant`] type looks similiar so used in here too.
 use crate::types::Constant;
 
 #[derive(Debug, PartialEq, Clone)]

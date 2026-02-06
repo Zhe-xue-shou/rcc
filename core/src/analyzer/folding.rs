@@ -1,6 +1,4 @@
-use ::rcc_utils::{
-  IntoWith, contract_assert, contract_violation, static_dispatch,
-};
+use ::rcc_utils::{IntoWith, contract_assert, contract_violation};
 
 use super::expression::{
   ArraySubscript, Assignment, Binary, CStyleCast, Call, CompoundLiteral,
@@ -85,6 +83,7 @@ pub trait Folding {
   /// This serves as a never-fail folding mechanism,
   /// all errors and warnings shall be handled via `diag` parameter.
   /// [`Operational`](crate::diagnosis::Operational) is recommended.
+  ///
   /// If folding is not possible, return self unchanged.
   /// So it may end up being a no-op, partial-fold, or full-fold.
   ///
@@ -115,7 +114,7 @@ impl Folding for RawExpr {
     value_category: ValueCategory,
     diag: &impl Diagnosis,
   ) -> FoldingResult<Expression> {
-    static_dispatch!(
+    ::rcc_utils::static_dispatch!(
       self.fold(target_type, value_category, diag),
       Empty Constant Unary Binary Call Paren MemberAccess Ternary SizeOf CStyleCast ArraySubscript CompoundLiteral Variable ImplicitCast Assignment
     )

@@ -1,4 +1,4 @@
-use ::rcc_utils::{IntoWith, interconvert, make_trio_for};
+use ::rcc_utils::IntoWith;
 
 use crate::{
   blueprints::Placeholder as Nullptr,
@@ -188,12 +188,12 @@ impl Constant {
     }
   }
 }
-interconvert!(Integral, Constant);
-interconvert!(Floating, Constant);
-interconvert!(String, Constant);
-interconvert!(Nullptr, Constant);
+::rcc_utils::interconvert!(Integral, Constant);
+::rcc_utils::interconvert!(Floating, Constant);
+::rcc_utils::interconvert!(String, Constant);
+::rcc_utils::interconvert!(Nullptr, Constant);
 
-make_trio_for!(Integral, Constant);
-make_trio_for!(Floating, Constant);
-make_trio_for!(Nullptr, Constant);
-make_trio_for!(String, Constant);
+::rcc_utils::make_trio_for!(Integral, Constant);
+::rcc_utils::make_trio_for!(Floating, Constant);
+::rcc_utils::make_trio_for!(Nullptr, Constant);
+::rcc_utils::make_trio_for!(String, Constant);

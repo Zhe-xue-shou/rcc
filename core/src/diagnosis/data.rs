@@ -46,6 +46,7 @@ impl IntoWith<SourceSpan, Diag> for Meta {
 }
 #[derive(Debug, Clone, Copy, ::strum_macros::Display)]
 pub enum Severity {
+  Hint,
   Info,
   Warning,
   Error,

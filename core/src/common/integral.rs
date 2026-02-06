@@ -34,13 +34,20 @@ impl From<bool> for Signedness {
   }
 }
 
-/// A width-aware integer that can represent any C integer type.
+/// A width-aware integer that can represent any C integer type, inspired by
+/// [LLVM/Clang's APInt](https://github.com/llvm/llvm-project/blob/main/llvm/include/llvm/ADT/APInt.h?=#L78),
+/// this provides a unified representation for all integer constants.
 ///
-/// Inspired by LLVM/Clang's APInt, this provides a unified representation
-/// for all integer constants, eliminating the need for separate enum variants.
+/// The value is always stored in the lower [`Integral::width`] bits of [`Integral::bits`].
+/// For signed interpretation, use [`Integral::as_signed`].
 ///
-/// The value is always stored in the lower `width` bits of `bits`.
-/// For signed interpretation, use `as_signed()`.
+/// This class is designed to by *trivially copyable* and *const-evaluable*,
+/// all methods are taking either `self` or `&self` and return a new `Integral`, no internal mutation.
+///
+/// Also, methods w.r.t. 2 or more [`Integral`]s (e.g. [`Integral::overflowing_add`]) needs to ensure
+/// that the operands have the same width and signedness, otherwise panic.
+///
+/// It does not support 0-width integers, and the current maximum width is 128 bits.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Integral {
   /// The raw bits, stored in the lower `width` bits.
@@ -61,13 +68,11 @@ impl Integral {
   pub const WIDTH_BOOL: u8 = 1;
   pub const WIDTH_CHAR: u8 = 8;
   pub const WIDTH_INT: u8 = 32;
+  // long and long long are both 64-bit in my implementation here(ref linux x86-64 version.)
   pub const WIDTH_LONG: u8 = 64;
-  // LP64/LLP64
   pub const WIDTH_LONG_LONG: u8 = 64;
-  pub const WIDTH_PTR: u8 = 64;
   pub const WIDTH_SHORT: u8 = 16;
-
-  // 64-bit
+  pub const WIDTH_UINTPTR: u8 = 64;
 
   /// Create a new integral value, automatically masking to the specified width.
   #[inline]
@@ -108,7 +113,7 @@ impl Integral {
 
   #[inline]
   pub const fn from_uintptr(value: usize) -> Self {
-    Self::new(value, Self::WIDTH_PTR, Signedness::Unsigned)
+    Self::new(value, Self::WIDTH_UINTPTR, Signedness::Unsigned)
   }
 }
 impl Integral {
@@ -148,22 +153,22 @@ impl Integral {
     }
   }
 
-  /// get the bits as unsigned, same as `bits()`.
+  /// get the bits as unsigned, same as [`Integral::bits()`].
   #[inline]
   pub const fn as_unsigned(&self) -> u128 {
     self.bits
   }
 
-  /// Get the value respecting signedness.
-  /// Returns (value as i128, whether it's actually negative).
-  #[inline]
-  pub const fn value(&self) -> i128 {
-    if self.is_signed() {
-      self.as_signed()
-    } else {
-      self.bits as i128
-    }
-  }
+  // /// Get the value respecting signedness.
+  // /// Returns (value as i128, whether it's actually negative).
+  // #[inline]
+  // pub const fn value(&self) -> i128 {
+  //   if self.is_signed() {
+  //     self.as_signed()
+  //   } else {
+  //     self.bits as i128
+  //   }
+  // }
 
   #[inline]
   pub const fn is_zero(&self) -> bool {
@@ -388,7 +393,7 @@ impl Integral {
     Some(Self::new(quotient, self.width, self.signedness))
   }
 
-  /// Remainder, returns None on division by zero.
+  /// Remainder, returns [`None`] on division by zero.
   pub fn checked_rem(self, rhs: Self) -> Option<Self> {
     debug_assert_eq!(self.width, rhs.width);
     debug_assert_eq!(self.signedness, rhs.signedness);

@@ -10,11 +10,9 @@ use crate::{
 type_alias_expr! {Expression, QualifiedType, Variable ImplicitCast Assignment}
 #[derive(Debug, Clone, Copy, ::strum_macros::Display, PartialEq)]
 pub enum ValueCategory {
-  #[strum(serialize = "lvalue")]
   LValue,
   /// 6.3.2: "rvalue" is in this document described as the "value of an expression".
   ///        which, is different from the one defined in C++ standard.
-  #[strum(serialize = "rvalue")]
   RValue,
 }
 use ValueCategory::{LValue, RValue};
@@ -378,7 +376,6 @@ mod test {
     use ::rcc_utils::{Dummy, IntoWith};
 
     use super::*;
-    use crate::common::{ASTDumper, Dumper};
 
     let int_expr = Expression::new(
       RawExpr::Constant(
@@ -395,7 +392,6 @@ mod test {
       QualifiedType::float(),
       RValue,
     );
-    _ = ASTDumper::dump(&float_expr);
     let promoted_expr =
       Expression::usual_arithmetic_conversion(int_expr, float_expr)
         .unwrap()

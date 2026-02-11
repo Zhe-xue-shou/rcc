@@ -21,7 +21,7 @@ impl Dumpable for QualifiedType {
       &palette.meta,
     )?;
 
-    let subprefix = Self::child_prefix(prefix, is_last);
+    let subprefix = dumper.child_prefix(prefix, is_last);
     self
       .unqualified_type()
       .dump(dumper, &subprefix, true, palette)
@@ -70,7 +70,7 @@ impl Dumpable for Pointer {
     dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim)?;
     dumper.write_fmt(format_args!("{}\n", self), &palette.meta)?;
 
-    let subprefix = Self::child_prefix(prefix, is_last);
+    let subprefix = dumper.child_prefix(prefix, is_last);
     self.pointee.dump(dumper, &subprefix, true, palette)
   }
 }
@@ -90,7 +90,7 @@ impl Dumpable for Array {
       &palette.meta,
     )?;
 
-    let subprefix = Self::child_prefix(prefix, is_last);
+    let subprefix = dumper.child_prefix(prefix, is_last);
     self.element_type.dump(dumper, &subprefix, true, palette)
   }
 }

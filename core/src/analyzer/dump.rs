@@ -27,33 +27,34 @@ impl Dumpable for Expression {
       };
       ($name:expr, $raw:ident, $newline:literal) => {
         dumper.write($name, &palette.node_type)?;
-        dumper.write_fmt(
-          format_args!(
-            " {:p} <span [{} {})> ",
-            self, $raw.span.start, $raw.span.end
-          ),
-          &palette.dim,
-        )?;
+        dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim)?;
+        $raw.span.dump(dumper, prefix, is_last, palette)?;
         dumper.write_fmt(
           format_args!("'{}' ", self.qualified_type()),
           &palette.meta,
         )?;
         dumper.write_fmt(
           format_args!(concat!("{} ", $newline), self.value_category()),
-          &palette.dim,
+          &palette.info,
         )?;
       };
     }
 
-    let subprefix = Self::child_prefix(prefix, is_last);
+    let subprefix = dumper.child_prefix(prefix, is_last);
 
     match self.raw_expr() {
       Empty(_) => dumper.write("<<<Recovery/Invalid>>>\n", &palette.error),
 
       Constant(constant) => {
-        header!("ConstantLiteral", constant);
-        dumper
-          .write_fmt(format_args!(" {}\n", constant.value), &palette.literal)
+        dumper.write("ConstantLiteral", &palette.node_type)?;
+        dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim)?;
+        constant.span.dump(dumper, prefix, is_last, palette)?;
+        dumper.write_fmt(
+          format_args!("'{}' ", self.qualified_type()),
+          &palette.meta,
+        )?;
+        // didnt print RValue.
+        dumper.write_fmt(format_args!("{}\n", constant.value), &palette.literal)
       },
 
       Variable(variable) => {
@@ -116,7 +117,7 @@ impl Dumpable for Expression {
       ImplicitCast(cast) => {
         header!("ImplicitCast", cast);
         dumper
-          .write_fmt(format_args!(" '{}'\n", cast.cast_type), &palette.meta)?;
+          .write_fmt(format_args!(" <{}>\n", cast.cast_type), &palette.kind)?;
         cast.expr.dump(dumper, &subprefix, true, palette)
       },
 
@@ -182,7 +183,7 @@ impl Dumpable for TranslationUnit {
   ) -> DumpRes {
     dumper.write("TranslationUnit", &palette.node_type)?;
     dumper.write_fmt(format_args!(" {:p}\n", self), &palette.dim)?;
-    let subprefix = Self::child_prefix(prefix, is_last);
+    let subprefix = dumper.child_prefix(prefix, is_last);
     self
       .declarations
       .iter()
@@ -221,20 +222,26 @@ impl Dumpable for VarDef {
     palette: &Palette,
   ) -> DumpRes {
     dumper.print_indent(prefix, is_last)?;
-    dumper.write("Variable", &palette.node_type)?;
+    let borrowed = self.symbol.borrow();
+    dumper.write(
+      if borrowed.is_typedef() {
+        "Typedef"
+      } else {
+        "Variable"
+      },
+      &palette.node_type,
+    )?;
+    dumper.write_fmt(format_args!(" {:p}", self), &palette.dim)?;
+    self.span.dump(dumper, prefix, is_last, palette)?;
+    dumper.write_fmt(format_args!(" '{}'", borrowed.name), &palette.literal)?;
+
     dumper.write_fmt(
-      format_args!(
-        " {:p} <span [{} {})> '{}'\n",
-        self,
-        self.span.start,
-        self.span.end,
-        self.symbol.borrow().name
-      ),
-      &palette.dim,
+      format_args!(" '{}'\n", borrowed.qualified_type),
+      &palette.meta,
     )?;
 
     if let Some(initializer) = &self.initializer {
-      let subprefix = Self::child_prefix(prefix, is_last);
+      let subprefix = dumper.child_prefix(prefix, is_last);
       initializer.dump(dumper, &subprefix, true, palette)?;
     }
     Ok(())
@@ -250,20 +257,20 @@ impl Dumpable for Function {
   ) -> DumpRes {
     dumper.print_indent(prefix, is_last)?;
     dumper.write("Function", &palette.node_type)?;
+    dumper.write_fmt(format_args!(" {:p}", self), &palette.dim)?;
+    self.span.dump(dumper, prefix, is_last, palette)?;
     dumper.write_fmt(
       format_args!(
-        " {:p} <span [{} {})> '{}' {} '{}'\n",
-        self,
-        self.span.start,
-        self.span.end,
+        " {} {} '{}'\n",
         self.specifier,
         self.symbol.borrow().name,
-        self.symbol.borrow().qualified_type,
+        self.symbol.borrow().qualified_type
       ),
-      &palette.dim,
+      &palette.literal,
     )?;
+
     if let Some(body) = &self.body {
-      let subprefix = Self::child_prefix(prefix, is_last);
+      let subprefix = dumper.child_prefix(prefix, is_last);
       body.dump(dumper, &subprefix, true, palette)?;
     }
     Ok(())
@@ -282,16 +289,10 @@ impl Dumpable for Initializer {
     dumper.write("Initializer", &palette.node_type)?;
     match self {
       Self::Scalar(expression) => {
-        dumper.write_fmt(
-          format_args!(
-            " {:p} <span [{} {})>\n",
-            self,
-            expression.span().start,
-            expression.span().end
-          ),
-          &palette.dim,
-        )?;
-        let subprefix = Self::child_prefix(prefix, is_last);
+        dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim)?;
+        expression.span().dump(dumper, prefix, is_last, palette)?;
+        dumper.newline()?;
+        let subprefix = dumper.child_prefix(prefix, is_last);
         expression.dump(dumper, &subprefix, true, palette)
       },
       Self::Aggregate(_) => todo!(),
@@ -339,13 +340,9 @@ macro_rules! headers {
   ) => {{
     $dumper.print_indent($prefix, $is_last)?;
     $dumper.write($name, &$palette.node_type)?;
-    $dumper.write_fmt(
-      format_args!(
-        " {:p} <span [{} {})>\n",
-        $self, $self.span.start, $self.span.end
-      ),
-      &$palette.dim,
-    )
+    $dumper.write_fmt(format_args!(" {:p} ", $self), &$palette.dim)?;
+    $self.span.dump($dumper, $prefix, $is_last, &$palette)?;
+    $dumper.newline()
   }};
 }
 
@@ -360,7 +357,7 @@ impl Dumpable for Return {
     headers!(self, dumper, prefix, is_last, palette, "Return")?;
 
     if let Some(expr) = &self.expression {
-      let subprefix = Self::child_prefix(prefix, is_last);
+      let subprefix = dumper.child_prefix(prefix, is_last);
       expr.dump(dumper, &subprefix, true, palette)?;
     }
     Ok(())
@@ -377,7 +374,7 @@ impl Dumpable for Compound {
   ) -> DumpRes {
     headers!(self, dumper, prefix, is_last, palette, "Compound")?;
 
-    let subprefix = Self::child_prefix(prefix, is_last);
+    let subprefix = dumper.child_prefix(prefix, is_last);
     self
       .statements
       .iter()
@@ -398,7 +395,7 @@ impl Dumpable for If {
   ) -> DumpRes {
     headers!(self, dumper, prefix, is_last, palette, "If")?;
 
-    let subprefix = Self::child_prefix(prefix, is_last);
+    let subprefix = dumper.child_prefix(prefix, is_last);
     self.condition.dump(dumper, &subprefix, false, palette)?;
     self.then_branch.dump(
       dumper,
@@ -423,7 +420,7 @@ impl Dumpable for While {
   ) -> DumpRes {
     headers!(self, dumper, prefix, is_last, palette, "While")?;
 
-    let subprefix = Self::child_prefix(prefix, is_last);
+    let subprefix = dumper.child_prefix(prefix, is_last);
     self.condition.dump(dumper, &subprefix, false, palette)?;
     self.body.dump(dumper, &subprefix, true, palette)
   }
@@ -439,7 +436,7 @@ impl Dumpable for DoWhile {
   ) -> DumpRes {
     headers!(self, dumper, prefix, is_last, palette, "DoWhile")?;
 
-    let subprefix = Self::child_prefix(prefix, is_last);
+    let subprefix = dumper.child_prefix(prefix, is_last);
     self.body.dump(dumper, &subprefix, false, palette)?;
     self.condition.dump(dumper, &subprefix, true, palette)
   }
@@ -455,7 +452,7 @@ impl Dumpable for For {
   ) -> DumpRes {
     headers!(self, dumper, prefix, is_last, palette, "For")?;
 
-    let subprefix = Self::child_prefix(prefix, is_last);
+    let subprefix = dumper.child_prefix(prefix, is_last);
     if let Some(init) = &self.initializer {
       init.dump(dumper, &subprefix, false, palette)?;
     }
@@ -479,7 +476,7 @@ impl Dumpable for Switch {
   ) -> DumpRes {
     headers!(self, dumper, prefix, is_last, palette, "Switch")?;
 
-    let subprefix = Self::child_prefix(prefix, is_last);
+    let subprefix = dumper.child_prefix(prefix, is_last);
     self.condition.dump(dumper, &subprefix, false, palette)?;
     self.cases.iter().enumerate().try_for_each(|(i, case)| {
       case.dump(
@@ -505,7 +502,7 @@ impl Dumpable for Case {
   ) -> DumpRes {
     headers!(self, dumper, prefix, is_last, palette, "Case")?;
 
-    let subprefix = Self::child_prefix(prefix, is_last);
+    let subprefix = dumper.child_prefix(prefix, is_last);
     dumper
       .write_fmt(format_args!("Value: {}\n", self.value), &palette.literal)?;
     self.body.iter().enumerate().try_for_each(|(i, stmt)| {
@@ -523,7 +520,7 @@ impl Dumpable for statement::Default {
   ) -> DumpRes {
     headers!(self, dumper, prefix, is_last, palette, "Default")?;
 
-    let subprefix = Self::child_prefix(prefix, is_last);
+    let subprefix = dumper.child_prefix(prefix, is_last);
     self.body.iter().enumerate().try_for_each(|(i, stmt)| {
       stmt.dump(dumper, &subprefix, i == self.body.len() - 1, palette)
     })

@@ -151,9 +151,9 @@ pub struct RawConstant {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ::strum_macros::Display)]
 pub enum RawUnaryKind {
-  #[strum(to_string = "pre")]
+  #[strum(to_string = "prefix")]
   Prefix,
-  #[strum(serialize = "post")]
+  #[strum(serialize = "postfix")]
   Postfix,
 }
 #[derive(Debug)]

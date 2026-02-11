@@ -2052,7 +2052,7 @@ mod test {
   #[test]
   fn oneplusone() {
     use super::*;
-    let session = Session::default();
+    let session = Session::no_manager();
     // 1 + 1
     let analyzer = Analyzer::new(Default::default(), &session);
     let expr = pe::Expression::oneplusone();

@@ -74,6 +74,12 @@ static_assert!(
   ::std::mem::needs_drop::<Coordinate>() == false,
   "Coordinate should be a POD type"
 );
+impl Coordinate {
+  #[inline(always)]
+  pub fn destructure(self) -> (Index, Index) {
+    (self.line, self.column)
+  }
+}
 
 #[derive(Debug, Default)]
 pub struct File {

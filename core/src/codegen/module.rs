@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use ::rcc_utils::SmallString;
 
 use super::instruction::{Instruction, Operand};
@@ -46,8 +44,6 @@ pub struct BasicBlock {
 }
 
 /// **Static** initializer.
-///
-/// TODO: Address Constant is missing here!
 #[derive(Debug, Clone)]
 pub enum Initializer {
   Scalar(Constant),

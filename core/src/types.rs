@@ -1,7 +1,7 @@
 mod cast_type;
 mod compatible;
 mod constant;
-mod dumpable;
+mod dump;
 mod fmt;
 mod meta;
 mod primitives;

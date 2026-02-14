@@ -235,10 +235,10 @@ impl Dumpable for VarDef {
       },
       &palette.node_type,
     )?;
-    dumper.write_fmt(format_args!(" {:p}", self), &palette.dim)?;
+    dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim)?;
     self.span.dump(dumper, prefix, is_last, palette)?;
 
-    dumper.write(" <", &palette.skeleton)?;
+    dumper.write("<", &palette.skeleton)?;
     dumper.write_fmt(format_args!("{}", borrowed.declkind), &palette.kind)?;
     dumper.write(">", &palette.skeleton)?;
 
@@ -548,9 +548,9 @@ impl Dumpable for Goto {
   ) -> DumpRes {
     dumper.print_indent(prefix, is_last)?;
     dumper.write("Goto", &palette.node_type)?;
-    dumper.write_fmt(format_args!(" {:p}", self), &palette.dim)?;
+    dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim)?;
     self.span.dump(dumper, prefix, is_last, palette)?;
-    dumper.write_fmt(format_args!("{}", self.label), &palette.dim)?;
+    dumper.write_fmt(format_args!("'{}'", self.label), &palette.literal)?;
     dumper.newline()
   }
 }
@@ -579,6 +579,7 @@ impl Dumpable for Label {
 }
 
 impl Dumpable for Break {
+  #[inline]
   fn dump(
     &self,
     dumper: &mut impl Dumper,
@@ -591,6 +592,7 @@ impl Dumpable for Break {
 }
 
 impl Dumpable for Continue {
+  #[inline]
   fn dump(
     &self,
     dumper: &mut impl Dumper,

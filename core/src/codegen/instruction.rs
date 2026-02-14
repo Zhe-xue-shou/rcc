@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use ::rcc_utils::SmallString;
 
 use crate::types::{Constant, QualifiedType};
@@ -76,12 +74,6 @@ pub enum BinaryOp {
   Mul,
   Div,
   Mod,
-  Eq,
-  Ne,
-  Lt,
-  Le,
-  Gt,
-  Ge,
   BitwiseAnd,
   BitwiseOr,
   BitwiseXor,
@@ -89,6 +81,26 @@ pub enum BinaryOp {
   RightShift,
 }
 
+pub struct ICmp {
+  pub result: Operand,
+  pub predicate: ICmpPredicate,
+  pub lhs: Operand,
+  pub rhs: Operand,
+  pub qualified_type: QualifiedType, // type of operands.
+}
+#[derive(Debug, Clone, Copy)]
+pub enum ICmpPredicate {
+  Eq,
+  Ne,
+  Slt,
+  Sle,
+  Sgt,
+  Sge,
+  Ult,
+  Ule,
+  Ugt,
+  Uge,
+}
 /// Store value to address: *addr = value
 pub struct Store {
   pub addr: Operand,
@@ -135,5 +147,6 @@ pub enum Instruction {
   Memory(Memory),
   Cast(Cast),
   Call(Call),
+  ICmp(ICmp),
   // etc...
 }

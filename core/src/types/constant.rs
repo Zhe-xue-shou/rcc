@@ -197,8 +197,10 @@ impl Constant {
 ::rcc_utils::interconvert!(Floating, Constant);
 ::rcc_utils::interconvert!(SmallString, Constant, String);
 ::rcc_utils::interconvert!(Nullptr, Constant);
+// ::rcc_utils::interconvert!(SmallString, Constant, Address);
 
 ::rcc_utils::make_trio_for!(Integral, Constant);
 ::rcc_utils::make_trio_for!(Floating, Constant);
 ::rcc_utils::make_trio_for!(Nullptr, Constant);
 ::rcc_utils::make_trio_for!(SmallString, Constant, String);
+::rcc_utils::make_trio_for!(SmallString, Constant, Address);

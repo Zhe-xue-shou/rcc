@@ -341,14 +341,8 @@ impl Folding for Binary {
       "type checker ensures both sides are rvalues!"
     );
 
-    let lhs = lhs_expr
-      .into_constant()
-      .expect("shall be constant")
-      .value;
-    let rhs = rhs_expr
-      .into_constant()
-      .expect("shall be constant")
-      .value;
+    let lhs = lhs_expr.into_constant().expect("shall be constant").value;
+    let rhs = rhs_expr.into_constant().expect("shall be constant").value;
 
     use OperatorCategory::*;
     match (lhs, rhs) {
@@ -820,10 +814,4 @@ impl Floating {
       _ => unreachable!(),
     }
   }
-}
-
-#[cfg(test)]
-mod tests {
-  #[test]
-  fn t() {}
 }

@@ -4,15 +4,20 @@ use super::{
 };
 use crate::common::{FloatFormat, Floating, Integral, Signedness};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
   Primitive(Primitive),
-  Array(Array),
   Pointer(Pointer),
+  Array(Array),
   FunctionProto(FunctionProto),
   Enum(Enum),
   Record(Record),
   Union(Union),
+}
+
+#[repr(transparent)]
+pub struct TypeRef<'tcx> {
+  inner: &'tcx Type,
 }
 
 impl Type {

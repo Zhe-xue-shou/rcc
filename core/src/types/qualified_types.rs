@@ -2,7 +2,7 @@ use ::std::rc::Rc;
 
 use super::Type;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct QualifiedType {
   qualifiers: Qualifiers,
   unqualified_type: Rc<Type>,
@@ -15,7 +15,7 @@ pub struct QualifiedType {
 /// -    alignment-specifier (don't care)
 ///
 /// specifier would be merged into `Type` directly, so here only have qualifiers
-  #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
+  #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
   pub struct Qualifiers: u8 {
     const Const = 0x01;
     const Volatile = 0x02;

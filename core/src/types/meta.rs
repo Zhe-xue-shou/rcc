@@ -4,17 +4,17 @@ use ::rcc_utils::SmallString;
 
 use super::{Primitive, QualifiedType, Type};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Pointer {
   pub pointee: QualifiedType,
 }
 #[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ExpressionId {
   id: usize,
 }
 
-#[derive(Debug, Clone, ::strum_macros::Display, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, ::strum_macros::Display)]
 pub enum ArraySize {
   Constant(usize),
   /// unspecified size
@@ -25,7 +25,7 @@ pub enum ArraySize {
   Variable(ExpressionId),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Array {
   /// Array itself cannot have qualifiers,
   /// hence the QualifiedType::qualifiers of the whole array should be empty,
@@ -39,40 +39,40 @@ pub struct Array {
 
 /// function types themselves don't have qualifiers, but pointers to them can.
 /// so the functionproto's qualifiers must be dropped.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionProto {
   pub return_type: QualifiedType,
   pub parameter_types: Vec<QualifiedType>,
   pub is_variadic: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Field {
   pub name: SmallString,
   pub field_type: QualifiedType,
 }
 
 // ignore unnamed/anonymous structs/unions for now
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Record {
   pub name: Option<SmallString>,
   pub fields: Vec<Field>,
 }
 
 // seems not so much difference between struct and union here, but for convenience we keep them separate
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Union {
   pub name: Option<SmallString>,
   pub fields: Vec<Field>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EnumConstant {
   pub name: SmallString,
   pub value: Option<isize>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Enum {
   pub name: Option<SmallString>,
   pub constants: Vec<EnumConstant>,

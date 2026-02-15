@@ -3,6 +3,8 @@
   Debug,
   Clone,
   PartialEq,
+  Eq,
+  Hash,
   ::strum_macros::Display,
   ::strum_macros::IntoStaticStr,
   ::strum_macros::EnumString,

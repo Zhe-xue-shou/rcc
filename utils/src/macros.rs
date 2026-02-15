@@ -1,21 +1,68 @@
+///
+/// ```
+/// use rcc_utils::interconvert;
+/// struct InnerHasLifetime<'a> {
+///   a: &'a i32,
+/// }
+/// struct InnerNoLifetime;
+/// enum LifetimeOuter<'a> {
+///   InnerHasLifetime(InnerHasLifetime<'a>),
+///   InnerNoLifetime(InnerNoLifetime),
+/// }
+/// interconvert!(InnerNoLifetime, LifetimeOuter<'a>);
+/// interconvert!(InnerHasLifetime, LifetimeOuter,'a);
+///
+/// enum OuterNoLifetime{
+///   InnerNoLifetime(InnerNoLifetime),
+///   InnerVariantAlias(InnerNoLifetime),
+/// }
+/// interconvert!(InnerNoLifetime, OuterNoLifetime);
+/// ```
 #[macro_export]
 macro_rules! interconvert {
+  // no lifetimes
   ($inner:ident, $outer:ident) => {
     $crate::interconvert!($inner, $outer, $inner);
   };
 
+  // with variant, no lifetimes
   ($inner:ident, $outer:ident, $variant:ident) => {
-    impl From<$inner> for $outer {
+    $crate::interconvert!(@impl $inner, $outer, $variant, [], []);
+  };
+
+  // Both lifetimes
+  ($inner:ident, $outer:ident, $outer_lt:lifetime) => {
+    $crate::interconvert!(@impl $inner, $outer, $inner, [<$outer_lt>], [<$outer_lt>]);
+  };
+
+  // Both lifetimes
+  ($inner:ident, $outer:ident, $outer_lt:lifetime, $variant:ident) => {
+    $crate::interconvert!(@impl $inner, $outer, $variant, [<$outer_lt>], [<$outer_lt>]);
+  };
+
+  // outer lifetime
+  ($inner:ident, $outer:ident<$outer_lt:lifetime>) => {
+    $crate::interconvert!(@impl $inner, $outer, $inner, [], [<$outer_lt>]);
+  };
+
+  // outer lifetime
+  ($inner:ident, $outer:ident<$outer_lt:lifetime>, $variant:ident) => {
+    $crate::interconvert!(@impl $inner, $outer, $variant, [], [<$outer_lt>]);
+  };
+
+
+  (@impl $inner:ident, $outer:ident, $variant:ident, [$($inner_lt:tt)*], [$($outer_lt:tt)*]) => {
+    impl$($outer_lt)* From<$inner$($inner_lt)*> for $outer$($outer_lt)* {
       #[inline]
-      fn from(value: $inner) -> Self {
+      fn from(value: $inner$($inner_lt)*) -> Self {
         $outer::$variant(value)
       }
     }
-    impl TryFrom<$outer> for $inner {
+    impl$($outer_lt)* TryFrom<$outer$($outer_lt)*> for $inner$($inner_lt)* {
       type Error = ();
 
       #[inline]
-      fn try_from(value: $outer) -> Result<Self, Self::Error> {
+      fn try_from(value: $outer$($outer_lt)*) -> Result<Self, Self::Error> {
         match value {
           $outer::$variant(inner) => Ok(inner),
           _ => Err(()),
@@ -24,84 +71,108 @@ macro_rules! interconvert {
     }
   };
 }
-
+///
+/// ```
+/// use rcc_utils::make_trio_for;
+/// struct InnerHasLifetime<'a> {
+///   a: &'a i32,
+/// }
+/// struct InnerNoLifetime;
+/// enum LifetimeOuter<'a> {
+///   InnerHasLifetime(InnerHasLifetime<'a>),
+///   InnerNoLifetime(InnerNoLifetime),
+/// }
+/// make_trio_for!(InnerNoLifetime, LifetimeOuter<'a>);
+/// make_trio_for!(InnerHasLifetime, LifetimeOuter,'a);
+///
+/// enum OuterNoLifetime{
+///   InnerNoLifetime(InnerNoLifetime),
+///   InnerVariantAlias(InnerNoLifetime),
+/// }
+/// make_trio_for!(InnerNoLifetime, OuterNoLifetime);
+/// make_trio_for!(InnerNoLifetime, OuterNoLifetime, InnerVariantAlias);
+/// ```
 #[macro_export]
 macro_rules! make_trio_for {
+  // no lifetimes
   ($inner:ident, $main:ident) => {
     $crate::make_trio_for!($inner, $main, $inner);
   };
-  // We use :ident because we are working with names, not complex types
+
+  // no lifetimes
   ($inner:ident, $main:ident, $variant:ident) => {
+    $crate::make_trio_for!(@impl $inner, $main, $variant, [], []);
+  };
+
+  // Both lifetimes
+  ($inner:ident, $main:ident, $main_lt:lifetime) => {
+    $crate::make_trio_for!(@impl $inner, $main, $inner, [<$main_lt>], [<$main_lt>]);
+  };
+
+  // Both lifetimes
+  ($inner:ident, $main:ident, $main_lt:lifetime, $variant:ident) => {
+    $crate::make_trio_for!(@impl $inner, $main, $variant, [<$main_lt>], [<$main_lt>]);
+  };
+
+  // Only main lifetime
+  ($inner:ident, $main:ident<$main_lt:lifetime>) => {
+    $crate::make_trio_for!(@impl $inner, $main, $inner, [], [<$main_lt>]);
+  };
+
+  // Only main lifetime
+  ($inner:ident, $main:ident<$main_lt:lifetime>, $variant:ident) => {
+    $crate::make_trio_for!(@impl $inner, $main, $variant, [], [<$main_lt>]);
+  };
+
+  (@impl $inner:ident, $main:ident, $variant:ident, [$($inner_lt:tt)*], [$($main_lt:tt)*]) => {
     ::paste::paste! {
-        impl $main {
-            #[inline]
-            pub fn [<is_ $variant:lower>](&self) -> bool {
-                matches!(self, Self::$variant(_))
-            }
-
-            #[inline]
-            pub fn [<as_ $variant:lower>](&self) -> Option<&$inner> {
-                match self {
-                    Self::$variant(v) => Some(v),
-                    _ => None,
-                }
-            }
-
-            #[inline]
-            pub fn [<as_ $variant:lower _unchecked>](&self) -> &$inner {
-                match self {
-                    Self::$variant(v) => v,
-                    _ => {
-                        $crate::breakpoint!();
-                        unreachable!()
-                    }
-                }
-            }
-
-            #[inline]
-            pub fn [<into_ $variant:lower>](self) -> Option<$inner> {
-                match self {
-                    Self::$variant(v) => Some(v),
-                    _ => None,
-                }
-            }
-
-            #[inline]
-            pub fn [<into_ $variant:lower _unchecked>](self) -> $inner {
-                match self {
-                    Self::$variant(v) => v,
-                    _ => {
-                        $crate::breakpoint!();
-                        unreachable!()
-                    }
-                }
-            }
-
-            #[inline]
-            pub fn [<try_into_ $variant:lower>](self) -> Result<$inner, Self> {
-                match self {
-                    Self::$variant(v) => Ok(v),
-                    _ => Err(self),
-                }
-            }
+      impl$($main_lt)* $main$($main_lt)* {
+        #[inline]
+        pub fn [<is_ $variant:lower>](&self) -> bool {
+          matches!(self, Self::$variant(_))
         }
+
+        #[inline]
+        pub fn [<as_ $variant:lower>](&self) -> Option<&$inner$($inner_lt)*> {
+          match self {
+            Self::$variant(v) => Some(v),
+            _ => None,
+          }
+        }
+
+        #[inline]
+        pub fn [<as_ $variant:lower _unchecked>](&self) -> &$inner$($inner_lt)* {
+          match self {
+            Self::$variant(v) => v,
+            _ => unreachable!()
+          }
+        }
+
+        #[inline]
+        pub fn [<into_ $variant:lower>](self) -> Option<$inner$($inner_lt)*> {
+          match self {
+            Self::$variant(v) => Some(v),
+            _ => None,
+          }
+        }
+
+        #[inline]
+        pub fn [<into_ $variant:lower _unchecked>](self) -> $inner$($inner_lt)* {
+          match self {
+            Self::$variant(v) => v,
+            _ => unreachable!()
+          }
+        }
+
+        #[inline]
+        pub fn [<try_into_ $variant:lower>](self) -> Result<$inner$($inner_lt)*, Self> {
+          match self {
+            Self::$variant(v) => Ok(v),
+            _ => Err(self),
+          }
+        }
+      }
     }
-  };
-}
-#[macro_export]
-macro_rules! interconvert_all{
-  ($($variant:ident)* => $main:ident) => {
-    $(
-      $crate::interconvert!($variant, $main);
-    )*
-  };
-}
-#[macro_export]
-macro_rules! make_trio_for_all {
-  ($($variant:ident)* => $main:ident) => {
-    $(
-      $crate::make_trio_for!($variant, $main);
-    )*
   };
 }
 
@@ -225,3 +296,5 @@ macro_rules! not_implemented_feature {
     );
   }};
 }
+
+mod tests {}

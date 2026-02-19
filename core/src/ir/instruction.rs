@@ -16,11 +16,13 @@ pub enum Operand<'context> {
   /// Effectively a link-time constant.
   Label(SmallString),
 
-  /// A Fixed Constyant (Immediate).
+  /// A Fixed Constant (Immediate).
   Imm(Constant<'context>),
 }
 
 /// result = phi [val1, label1], [val2, label2]
+///
+/// left here as placeholder, do it later.
 #[derive(Debug, Clone)]
 pub struct Phi<'context> {
   pub result: Operand<'context>, // The register defining the merged value
@@ -97,7 +99,7 @@ pub struct ICmp<'context> {
   pub rhs: Operand<'context>,
   pub qualified_type: QualifiedType<'context>, // type of operands.
 }
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, ::strum_macros::Display)]
 pub enum ICmpPredicate {
   Eq,
   Ne,
@@ -141,8 +143,9 @@ pub struct Alloca<'context> {
 }
 
 #[derive(Debug)]
-pub enum Cast {
+pub enum Cast<'a> {
   // add later.
+  Placeholder(&'a u8),
 }
 
 /// Function call: result = call func(args)
@@ -171,7 +174,7 @@ pub enum Instruction<'context> {
   Unary(Unary<'context>),
   Binary(Binary<'context>),
   Memory(Memory<'context>),
-  Cast(Cast),
+  Cast(Cast<'context>),
   Call(Call<'context>),
   ICmp(ICmp<'context>),
   // etc...
@@ -182,6 +185,6 @@ pub enum Instruction<'context> {
 ::rcc_utils::interconvert!(Unary, Instruction,'context);
 ::rcc_utils::interconvert!(Binary, Instruction,'context);
 ::rcc_utils::interconvert!(Memory, Instruction,'context);
-::rcc_utils::interconvert!(Cast, Instruction<'context>);
+::rcc_utils::interconvert!(Cast, Instruction,'context);
 ::rcc_utils::interconvert!(Call, Instruction,'context);
 ::rcc_utils::interconvert!(ICmp, Instruction,'context);

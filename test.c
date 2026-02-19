@@ -1,4 +1,9 @@
-int main(int argc, char **argv);
+
+int putchar(int);
+int main(int, char **) {
+  putchar(48);
+  putchar(65);
+}
 
 // // // this is also... weird but valid
 // extern int k[10];

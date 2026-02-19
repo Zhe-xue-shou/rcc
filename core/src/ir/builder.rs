@@ -3,8 +3,8 @@ use ::std::collections::HashMap;
 
 use super::{
   ilist_type,
-  instruction::{self, Instruction, Operand},
-  module::{self as ir, Module},
+  instruction::{self as inst, Instruction, Operand},
+  module::{self, BasicBlock, Module},
 };
 use crate::{
   analyzer::{
@@ -28,9 +28,9 @@ where
   /// counter for generating unique label names
   label_counter: usize,
   /// The basic block currently being written into
-  current_block: Option<ir::BasicBlock<'context>>,
+  current_block: Option<BasicBlock<'context>>,
   /// Blocks finalized in the current function
-  current_blocks: ilist_type<ir::BasicBlock<'context>>,
+  current_blocks: ilist_type<BasicBlock<'context>>,
   locals: HashMap<SmallString, Operand<'context>>,
   module: Module<'context>,
 }
@@ -51,12 +51,14 @@ impl<'session, 'context, 'source> ModuleBuilder<'session, 'context, 'source> {
   fn emit(&mut self, instruction: Instruction<'context>) {
     if let Some(block) = &mut self.current_block {
       block.instructions.push(instruction);
+      return;
     }
+    panic!("no block to push.")
   }
 
   fn push_block(&mut self, label: &str) {
     self.seal_current_block();
-    self.current_block = Some(ir::BasicBlock {
+    self.current_block = Some(BasicBlock {
       label: SmallString::from(label),
       instructions: ilist_type::new(),
     });
@@ -102,7 +104,7 @@ impl<'session, 'context, 'source> ModuleBuilder<'session, 'context, 'source> {
   pub fn function(
     &mut self,
     function: ad::Function<'context>,
-  ) -> ir::Function<'context> {
+  ) -> module::Function<'context> {
     let ad::Function {
       symbol,
       parameters,
@@ -136,8 +138,10 @@ impl<'session, 'context, 'source> ModuleBuilder<'session, 'context, 'source> {
       self.compound(body);
       self.seal_current_block();
     }
+    //locals clear, mamtake would take care of cur blocks
+    self.locals.clear();
 
-    ir::Function {
+    module::Function {
       name: symbol.borrow().name.clone(),
       params,
       blocks: std::mem::take(&mut self.current_blocks),
@@ -153,7 +157,7 @@ impl<'session, 'context, 'source> ModuleBuilder<'session, 'context, 'source> {
   pub fn vardef(
     &mut self,
     variable: ad::VarDef<'context>,
-  ) -> ir::Variable<'context> {
+  ) -> module::Variable<'context> {
     todo!()
   }
 
@@ -161,20 +165,23 @@ impl<'session, 'context, 'source> ModuleBuilder<'session, 'context, 'source> {
     let astmt::Compound { statements, span } = body;
     if statements.is_empty() {
       self.push_block("noop");
+    } else {
+      self.push_block("b");
     }
     for statement in statements {
       self.statement(statement);
     }
-    todo!("not implemented!!!")
   }
 
-  fn statement(&mut self, statement: astmt::Statement) {
+  fn statement(&mut self, statement: astmt::Statement<'context>) {
     #[allow(clippy::upper_case_acronyms)]
     type STMT<'a> = astmt::Statement<'a>;
     match statement {
       STMT::Empty(_) => (),
       STMT::Return(return_stmt) => todo!(),
-      STMT::Expression(expression) => todo!(),
+      STMT::Expression(expression) => {
+        self.expression(expression);
+      },
       STMT::Declaration(external_declaration) => todo!(),
       STMT::Compound(compound) => todo!(),
       STMT::If(if_stmt) => todo!(),
@@ -227,7 +234,7 @@ impl<'session, 'context, 'source> ModuleBuilder<'session, 'context, 'source> {
       arguments,
       span,
     } = call;
-    let callee_operand = self.expression(*callee);
+    // let callee_operand = self.expression(*callee);
     let oprand_args = arguments
       .into_iter()
       .map(|actual_parameter| {
@@ -243,10 +250,13 @@ impl<'session, 'context, 'source> ModuleBuilder<'session, 'context, 'source> {
       Some(self.reg())
     };
 
-    let callee_name = match &callee_operand {
-      Some(Operand::Label(name)) => name.clone(),
-      _ => panic!("callee must be a global function reference"),
-    };
+    let callee_name =
+      &callee.raw_expr().as_variable_unchecked().name.borrow().name;
+
+    //  match &callee_operand {
+    //   Some(Operand::Label(name)) => name.clone(),
+    //   _ => panic!("callee must be a global function reference"),
+    // };
     let func_sig = self
       .module
       .functions
@@ -255,12 +265,9 @@ impl<'session, 'context, 'source> ModuleBuilder<'session, 'context, 'source> {
       .expect("callee not yet emitted — forward decls need a separate pass");
 
     self.emit(
-      instruction::Call::new(
-        retreg,
-        todo!(
-          "maybe refactor struct to directly contain a `module` so that we \
-           can found the global funcion signature?"
-        ),
+      inst::Call::new(
+        retreg.clone(),
+        Operand::Label(func_sig.name.clone()),
         oprand_args,
       )
       .into(),

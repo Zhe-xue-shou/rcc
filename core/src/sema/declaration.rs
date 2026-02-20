@@ -1,7 +1,7 @@
 use ::std::{cell::Ref, collections::HashSet};
 
+use super::{expression::Expression, statement::Compound};
 use crate::{
-  analyzer::{expression::Expression, statement::Compound},
   common::{SourceSpan, StrRef, SymbolRef},
   types::{FunctionSpecifier, QualifiedType, Type},
 };

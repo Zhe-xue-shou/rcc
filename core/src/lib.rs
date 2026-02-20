@@ -1,4 +1,3 @@
-#![feature(str_as_str)]
 // C/C++ like default initialization in struct fields
 #![feature(default_field_values)]
 // const for Box::new
@@ -12,12 +11,12 @@
 // for using core::intrinsics::breakpoint
 #![allow(internal_features)]
 #![feature(core_intrinsics)]
-pub mod analyzer;
 pub(crate) mod blueprints;
 pub mod common;
 pub mod diagnosis;
 pub mod ir;
 pub mod lexer;
 pub mod parser;
+pub mod sema;
 pub mod session;
 pub mod types;

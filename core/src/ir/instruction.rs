@@ -10,7 +10,10 @@ pub enum Operand<'context> {
   /// A Virtual Register (vreg).
   ///
   /// Covers **both** user variables (`int x`) and compiler temps (`%1`).
-  /// We use a usize ID because string lookups are slow in the backend.
+  ///
+  ///
+  /// Since the arena-like inst and reg are not yet implemented,
+  /// we still kepes index rather than reference (llvm Value, User, USe way -- too difficult.)
   Reg(usize),
 
   /// A Global Label.
@@ -19,7 +22,7 @@ pub enum Operand<'context> {
   /// Effectively a link-time constant.
   Label(StrRef<'context>),
 
-  /// A Fixed Constant (Immediate).
+  /// A Fixed [`Constant`] (Immediate).
   Imm(Constant<'context>),
 }
 

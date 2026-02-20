@@ -4,11 +4,6 @@ use ::rcc_utils::{
 };
 
 use crate::{
-  analyzer::{
-    declaration as ad,
-    expression::{self as ae},
-    statement as astmt,
-  },
   common::{
     Environment, Integral, Operator, OperatorCategory, SourceSpan, Storage,
     StrRef, Symbol, VarDeclKind,
@@ -19,6 +14,11 @@ use crate::{
     Diagnosis, Severity,
   },
   parser::{declaration as pd, expression as pe, statement as ps},
+  sema::{
+    declaration as ad,
+    expression::{self as ae},
+    statement as astmt,
+  },
   session::Session,
   types::{
     ArenaVec, Array, ArraySize, Compatibility, Context, FunctionProto,
@@ -74,11 +74,11 @@ trait ImplHelper2<T, Listener> {
   fn handle_with(self, context: &Listener, default: T) -> T;
 }
 
-impl<'context, T> ImplHelper2<T, Analyzer<'_, 'context, '_>>
+impl<'context, T> ImplHelper2<T, Sema<'_, 'context, '_>>
   for Result<T, Diag<'context>>
 {
   /// if it's error, log it, and return a default value (means error)
-  fn handle_with(self, context: &Analyzer<'_, 'context, '_>, default: T) -> T {
+  fn handle_with(self, context: &Sema<'_, 'context, '_>, default: T) -> T {
     match self {
       Ok(t) => t,
       Err(e) => {
@@ -94,9 +94,9 @@ trait ImplHelper3<T, Listener> {
 }
 
 impl<'context, T: ::std::default::Default>
-  ImplHelper3<T, Analyzer<'_, 'context, '_>> for Result<T, Diag<'context>>
+  ImplHelper3<T, Sema<'_, 'context, '_>> for Result<T, Diag<'context>>
 {
-  fn handle_or_default(self, context: &Analyzer<'_, 'context, '_>) -> T {
+  fn handle_or_default(self, context: &Sema<'_, 'context, '_>) -> T {
     match self {
       Ok(t) => t,
       Err(e) => {
@@ -106,7 +106,7 @@ impl<'context, T: ::std::default::Default>
     }
   }
 }
-pub struct Analyzer<'session, 'context, 'source>
+pub struct Sema<'session, 'context, 'source>
 where
   'context: 'session,
   'source: 'context,
@@ -117,7 +117,7 @@ where
   session: &'session Session<'context, 'source>,
 }
 
-impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
+impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
   pub fn new(
     program: pd::Program<'context>,
     session: &'session Session<'context, 'source>,
@@ -154,7 +154,7 @@ impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
     translation_unit
   }
 }
-impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
+impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
   /// TODO: caller shoould check whether the `restrict` is valid.
   /// it's only valid for pointers and non-static local variable.
   fn apply_modifiers_for_varty(
@@ -531,7 +531,7 @@ impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
   }
 }
 
-impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
+impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
   fn externaldecl(&mut self) -> Vec<ad::ExternalDeclaration<'context>> {
     let mut declarations = Vec::new();
     std::mem::take(&mut self.program)
@@ -583,7 +583,7 @@ impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
       .apply_modifiers_for_functiondecl(return_type, modifiers)
       .shall_ok("failed to apply modifiers for function declarator");
 
-    if name.as_str() == "main" {
+    if name == "main" {
       Context::main_proto_validate(
         self.context(),
         qualified_type.unqualified_type.as_functionproto_unchecked(),
@@ -601,7 +601,7 @@ impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
       Declaration
     };
 
-    let symbol = match self.environment.find(name.as_str()) {
+    let symbol = match self.environment.find(name) {
       None =>
         Symbol::new_ref(Symbol::new(qualified_type, storage, name, declkind)),
       Some(prev_symbol_ref) => {
@@ -788,8 +788,7 @@ impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
     // prev: declaration -- update to definition
     // prev: typedef w/ current vardef or vice versa -> override
     // prev and cur all typedef -> if all same nothing, otherwise error
-    if let Some(prev_symbol_ref) = self.environment.shallow_find(name.as_str())
-    {
+    if let Some(prev_symbol_ref) = self.environment.shallow_find(name) {
       if !Compatibility::compatible(
         &prev_symbol_ref.borrow().qualified_type,
         &vardef.symbol.borrow().qualified_type,
@@ -966,7 +965,7 @@ impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
   }
 }
 
-impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
+impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
   fn expression(
     &self,
     expression: pe::Expression<'context>,
@@ -1105,7 +1104,7 @@ impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
     &self,
     variable: pe::Variable<'context>,
   ) -> Result<ae::Expression<'context>, Diag<'context>> {
-    let symbol = self.environment.find(variable.name.as_str()).ok_or(
+    let symbol = self.environment.find(variable.name).ok_or(
       UndefinedVariable(variable.name)
         .into_with(Severity::Error)
         .into_with(variable.span),
@@ -1335,7 +1334,7 @@ impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
     todo!()
   }
 }
-impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
+impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
   /// unary arithmetic operators: `+`, `-`
   fn unary_arithmetic(
     &self,
@@ -1527,7 +1526,7 @@ impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
     }
   }
 }
-impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
+impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
   /// assignment operator `=`
   fn assignment(
     &self,
@@ -1831,7 +1830,7 @@ impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
     ))
   }
 }
-impl<'session, 'context, 'source> Analyzer<'session, 'context, 'source> {
+impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
   fn statements(
     &mut self,
     statements: Vec<ps::Statement<'context>>,

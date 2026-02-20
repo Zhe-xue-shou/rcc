@@ -2,8 +2,8 @@
 
 use ::rcc_utils::IntoWith;
 
+use super::expression::{Expression, ImplicitCast};
 use crate::{
-  analyzer::expression::{Expression, ImplicitCast},
   common::SourceSpan,
   diagnosis::{Diag, DiagData::*, Severity},
   types::{

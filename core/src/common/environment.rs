@@ -129,11 +129,8 @@ impl<'context> Environment<'context> {
     symbol: SymbolRef<'context>,
   ) -> SymbolRef<'context> {
     // overwrite cache
-    self
-      .cache
-      .borrow_mut()
-      .insert(name.as_str(), Rc::downgrade(&symbol));
-    self.symbols.declare(name.as_str(), symbol.clone())
+    self.cache.borrow_mut().insert(name, Rc::downgrade(&symbol));
+    self.symbols.declare(name, symbol.clone())
   }
 }
 impl<'context> Symbol<'context> {
@@ -157,7 +154,7 @@ impl<'context> Symbol<'context> {
       qualified_type,
       storage_class,
       declkind,
-      name: name.as_str(),
+      name,
     }
   }
 

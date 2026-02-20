@@ -9,6 +9,6 @@ mod folding;
 mod testing;
 
 pub use self::{
-  analyzer::Analyzer,
+  analyzer::Sema,
   folding::{Folding, FoldingResult},
 };

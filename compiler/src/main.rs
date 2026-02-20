@@ -1,11 +1,11 @@
 use ::bumpalo::Bump;
 use ::rcc_core::{
-  analyzer::Analyzer,
   common::{ASTDumper, SourceManager},
   diagnosis::Diagnosis,
   ir::ModuleBuilder,
   lexer::Lexer,
   parser::Parser,
+  sema::Sema,
   session::Session,
   types::Context,
 };
@@ -102,7 +102,7 @@ fn pipeline(session: Session, stage: Stage, pretty_print: bool) -> i32 {
     return 0;
   }
 
-  let mut analyzer = Analyzer::new(program, &session);
+  let mut analyzer = Sema::new(program, &session);
   let translation_unit = analyzer.analyze();
   if session.diagnosis.has_errors() {
     eprintln!("Analyzer errors:");

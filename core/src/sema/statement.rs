@@ -1,12 +1,10 @@
 use ::rcc_utils::interconvert;
 
-use crate::{
-  analyzer::{
-    declaration::ExternalDeclaration,
-    expression::{ConstantLiteral, Expression},
-  },
-  blueprints::type_alias_stmt,
+use super::{
+  declaration::ExternalDeclaration,
+  expression::{ConstantLiteral, Expression},
 };
+use crate::blueprints::type_alias_stmt;
 // no additional info like that one we do in Expression?
 // alright, just repeat the same structure again -- stop abstracting here
 #[derive(Debug)]

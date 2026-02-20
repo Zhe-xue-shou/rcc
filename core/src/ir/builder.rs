@@ -7,12 +7,12 @@ use super::{
   module::{self, BasicBlock, Module},
 };
 use crate::{
-  analyzer::{
+  common::{SourceSpan, StrRef},
+  sema::{
     declaration as ad,
     expression::{self as ae, ValueCategory},
     statement as astmt,
   },
-  common::{SourceSpan, StrRef},
   session::Session,
   types::{Context, QualifiedType},
 };
@@ -59,7 +59,7 @@ impl<'session, 'context, 'source> ModuleBuilder<'session, 'context, 'source> {
   fn push_block(&mut self, label: &str) {
     self.seal_current_block();
     self.current_block = Some(BasicBlock {
-      label: SmallString::from(label),
+      label: label.into(),
       instructions: ilist_type::new(),
     });
   }
@@ -138,7 +138,7 @@ impl<'session, 'context, 'source> ModuleBuilder<'session, 'context, 'source> {
       self.compound(body);
       self.seal_current_block();
     }
-    //locals clear, mamtake would take care of cur blocks
+    // locals clear, mamtake would take care of cur blocks
     self.locals.clear();
 
     module::Function {
@@ -166,7 +166,7 @@ impl<'session, 'context, 'source> ModuleBuilder<'session, 'context, 'source> {
     if statements.is_empty() {
       self.push_block("noop");
     } else {
-      self.push_block("b");
+      self.push_block("entry");
     }
     for statement in statements {
       self.statement(statement);
@@ -250,19 +250,23 @@ impl<'session, 'context, 'source> ModuleBuilder<'session, 'context, 'source> {
       Some(self.reg())
     };
 
-    let callee_name =
-      callee.raw_expr().as_variable_unchecked().name.borrow().name;
+    let callee_name = callee
+      .raw_expr()
+      .as_variable()
+      .expect("not implemented for complex callee!")
+      .name
+      .borrow()
+      .name;
 
-    //  match &callee_operand {
-    //   Some(Operand::Label(name)) => name.clone(),
-    //   _ => panic!("callee must be a global function reference"),
-    // };
     let func_sig = self
       .module
       .functions
       .iter()
       .find(|f| ::std::ptr::eq(f.name, callee_name))
-      .expect("callee not yet emitted — forward decls need a separate pass");
+      .expect(
+        "callee not yet emitted — maybe it's local funcdecl -- currently \
+         havent handled it!",
+      );
 
     self.emit(
       inst::Call::new(

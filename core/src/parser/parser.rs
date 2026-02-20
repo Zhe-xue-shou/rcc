@@ -764,7 +764,7 @@ impl<'session, 'context, 'source> Parser<'session, 'context, 'source> {
 
     if matches!(declspecs.storage_class, Some(Storage::Typedef)) {
       if let Some(name) = declarator.name {
-        self.typedefs.declare(name.as_str());
+        self.typedefs.declare(name);
       } else {
         self.add_warning(EmptyTypedef, declarator.span);
       }

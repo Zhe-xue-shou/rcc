@@ -76,7 +76,7 @@ pub enum Data<'context> {
   UnexpectedCharacter(Box<(String, Option<String>)>),
   #[error("Unterminated string literal")]
   UnterminatedString,
-  #[error("Invalid number format '{0}'")]
+  #[error("{0}")]
   InvalidNumberFormat(String),
   #[error("Expect '{0}'")]
   MissingOperator(Operator),
@@ -205,6 +205,8 @@ pub enum Data<'context> {
   DiscardingQualifiers(Qualifiers),
   #[error("Case label expression '{0}' is not an integer")]
   NonIntegerInCaseStmt(Constant<'context>),
+  #[error("Character '{0}' too long for it's corresponding type")]
+  CharacterTooLong(String),
   #[error("{0}")]
   InvalidConversion(CustomMessage),
   #[error("Cannot apply operator '{2}' to types '{0}' and '{1}'")]
@@ -269,6 +271,12 @@ pub enum Data<'context> {
      block."
   )]
   DeprecatedStmtDeclCvt,
+  #[error(
+    "Line continuation with backslash should not be followed by whitespace"
+  )]
+  WhitespaceAfterLineEscape,
+  #[error("Invalid escape sequence '{0}' in character literal")]
+  InvalidEscapeSequence(String),
   #[error("Typedef defines nothing")]
   EmptyTypedef,
   #[error("Empty statement")]

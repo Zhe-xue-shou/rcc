@@ -1043,7 +1043,9 @@ impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
       callee,
       span,
     } = call;
-    let analyzed_callee = self.expression(*callee)?;
+    let analyzed_callee = self.expression(*callee)?
+    // .decay(self.context()) // this `should` decay, but clang decay only if the return result is assigned to a variable.
+    ;
 
     let function_proto = match analyzed_callee.unqualified_type() {
       Type::FunctionProto(proto) => proto,
@@ -1073,9 +1075,20 @@ impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
       contract_violation!("argument count mismatch");
     }
     let expr_type = function_proto.return_type;
-    // todo: type promotion, currently just match the exact/compatible types
+
+    let converted_analyzed_arguments = analyzed_arguments
+      .into_iter()
+      .zip(function_proto.parameter_types)
+      .map(|(actual, formal)| {
+        actual
+          .lvalue_conversion()
+          .decay(self.context())
+          .assignment_conversion(formal)
+          .handle_or_default(self)
+      })
+      .collect();
     Ok(ae::Expression::new_rvalue(
-      ae::Call::new(analyzed_callee, analyzed_arguments, span).into(),
+      ae::Call::new(analyzed_callee, converted_analyzed_arguments, span).into(),
       expr_type,
     ))
   }

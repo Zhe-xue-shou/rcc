@@ -172,9 +172,9 @@ impl<'context> Expression<'context> {
     )
   }
 
-  /// Except when it is the operand of the sizeof operator, or typeof operators, or the unary & operator,
-  ///       or is a string literal used to initialize an array, an expression that has type "array of type" is converted
-  ///       to an expression with type "pointer to type" that points to the initial element of the array object and
+  /// Except when it is the operand of the `sizeof` operator, or `typeof` operators, or the unary `&` operator,
+  ///       or is a string literal used to initialize an array, an expression that has type `array of type` is converted
+  ///       to an expression with type `pointer to type` that points to the initial element of the array object and
   ///       is not an lvalue.
   #[must_use]
   pub fn array_to_pointer_decay(self, context: &Context<'context>) -> Self {

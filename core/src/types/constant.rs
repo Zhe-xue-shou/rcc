@@ -59,6 +59,7 @@ impl<'context> Constant<'context> {
   /// parse a numeric literal with optional suffix, if fails, return an error message and the default value of the Constant
   pub fn parse(
     num: &str,
+    base: u32,
     suffix: Option<&str>,
     is_floating: bool,
   ) -> (Self, Option<DiagMeta<'context>>) {
@@ -66,7 +67,7 @@ impl<'context> Constant<'context> {
 
     macro_rules! int_conv {
       ($t:ty, $signess:ident) => {
-        match num.parse::<$t>() {
+        match <$t>::from_str_radix(num, base) {
           Ok(v) => (Integral::from(v).into(), None),
           Err(e) => (
             Integral::new(

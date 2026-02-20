@@ -1,4 +1,4 @@
-use ::rcc_utils::IntoWith;
+use ::rcc_utils::{IntoWith, SmallString};
 use ::std::{
   iter::Peekable,
   str::{Chars, FromStr},
@@ -22,7 +22,7 @@ where
   'source: 'context,
   'context: 'session,
 {
-  /// the [`SourceManager`] owns the [`String`].
+  /// the [`SourceManager`](crate::common::SourceManager) owns the [`String`].
   source: &'source str,
 
   /// maybe 1~4 bytes
@@ -56,10 +56,9 @@ impl<'session, 'source, 'context> Lexer<'session, 'source, 'context> {
     self.chars.peek().is_none()
   }
 
-  /// look ahead without consuming
+  /// look ahead without consuming. returns '\0' if EOF
   #[inline]
   fn peek(&mut self) -> &char {
-    // returns '\0' if EOF, copied
     self.chars.peek().unwrap_or(&'\0')
   }
 
@@ -80,11 +79,12 @@ impl<'session, 'source, 'context> Lexer<'session, 'source, 'context> {
     iter.next().unwrap_or('\0')
   }
 
+  /// this is a worst case, but we only call this when we see a digit, so it should be fine in practice.
+  ///
+  /// Assuming it is ascii.
   #[inline]
-  fn recall(&self) -> char {
-    self.chars.clone().next_back().expect(
-      "should not fail, unless the number appears at the start of the file(?)",
-    )
+  fn peek_back(&self) -> char {
+    self.source.as_bytes()[self.cursor.saturating_sub(1)] as char
   }
 
   /// consumes the next character and updates position
@@ -131,6 +131,8 @@ impl<'session, 'source, 'context> Lexer<'session, 'source, 'context> {
     }
   }
 
+  /// this is random access, fast.
+  #[inline(always)]
   fn slice(&self, start: usize, end: usize) -> &str {
     &self.source[start..end]
   }
@@ -155,18 +157,18 @@ impl<'session, 'source, 'context> Lexer<'session, 'source, 'context> {
       ' ' | '\t' | '\r' | '\n' | '\0' => None,
 
       // identifiers and keywords
-      c if Self::is_ident_start(&c) => Some(self.lex_identifier(start)),
+      c if Self::is_ident_start(&c) => Some(self.identifier(start)),
 
       // numbers
-      '0'..='9' => Some(self.lex_number(start, false)),
+      '0'..='9' => Some(self.number(start, false)),
 
       // strings
-      '"' => Some(self.lex_string(start)),
+      '"' => self.string(start),
 
       // dot (operator/floating point)
       '.' =>
         if self.peek().is_ascii_hexdigit() {
-          Some(self.lex_number(start, true))
+          Some(self.number(start, true))
         } else {
           self.lex_compound_operator(start, Dot, &[("...", Ellipsis)])
         },
@@ -279,11 +281,12 @@ impl<'session, 'source, 'context> Lexer<'session, 'source, 'context> {
       '}' => Some(Token::operator(RightBrace, self.span(start))),
       '~' => Some(Token::operator(Tilde, self.span(start))),
       '?' => Some(Token::operator(Question, self.span(start))),
-      '\\' => todo!("escape character not implemented yet"),
+      '\'' => self.character(start),
+      '\\' => self.line_escape(start),
 
-      _ => {
+      ch => {
         self.session.diagnosis.add_error(
-          UnexpectedCharacter((self.recall().to_string(), None).into()),
+          UnexpectedCharacter((ch.to_string(), None).into()),
           self.span(start),
         );
         None
@@ -291,15 +294,17 @@ impl<'session, 'source, 'context> Lexer<'session, 'source, 'context> {
     }
   }
 
+  #[inline(always)]
   fn is_ident_start(c: &char) -> bool {
     c.is_alphabetic() || c == &'_'
   }
 
+  #[inline(always)]
   fn is_ident_continue(c: &char) -> bool {
     c.is_alphanumeric() || c == &'_'
   }
 
-  fn lex_identifier(&mut self, start: usize) -> Token<'context> {
+  fn identifier(&mut self, start: usize) -> Token<'context> {
     while matches!(self.peek(), c if Self::is_ident_continue(c)) {
       self.advance();
     }
@@ -316,33 +321,33 @@ impl<'session, 'source, 'context> Lexer<'session, 'source, 'context> {
     }
   }
 
-  fn lex_number(
+  fn number(
     &mut self,
     start: usize,
     started_with_dot: bool,
   ) -> Token<'context> {
-    let base = if !started_with_dot && self.cursor > 0 {
-      match (self.recall(), self.peek()) {
+    let (base, offset) = if !started_with_dot && self.cursor > 0 {
+      match (self.peek_back(), self.peek()) {
         ('0', 'x' | 'X') => {
           self.advance();
-          16
+          (16, 2)
         },
         ('0', 'b' | 'B') => {
           self.advance();
-          2
+          (2, 2)
         },
         ('0', 'd' | 'D') => {
           self.advance();
-          10
+          (10, 2)
         },
         ('0', '0'..'7') => {
           self.advance();
-          8
+          (8, 2)
         },
-        _ => 10,
+        _ => (10, 0),
       }
     } else {
-      10
+      (10, 0)
     };
 
     // digits
@@ -454,7 +459,8 @@ impl<'session, 'source, 'context> Lexer<'session, 'source, 'context> {
       None
     };
 
-    let (constant, error) = NumberConstant::parse(&num, suffix, is_floating);
+    let (constant, error) =
+      NumberConstant::parse(&num[offset..], base, suffix, is_floating);
     if let Some(e) = error {
       self
         .session
@@ -465,6 +471,7 @@ impl<'session, 'source, 'context> Lexer<'session, 'source, 'context> {
     Token::number(constant, self.span(start))
   }
 
+  #[inline]
   fn is_digit_of_base(c: &char, base: u32) -> bool {
     match base {
       2 => matches!(c, '0' | '1'),
@@ -475,7 +482,99 @@ impl<'session, 'source, 'context> Lexer<'session, 'source, 'context> {
     }
   }
 
-  fn lex_string(&mut self, start: usize) -> Token<'context> {
+  fn line_escape(&mut self, start: usize) -> Option<Token<'context>> {
+    match self.peek() {
+      '\n' => {
+        self.advance();
+        None
+      },
+      ' ' => {
+        self
+          .session
+          .diagnosis
+          .add_warning(WhitespaceAfterLineEscape, self.span(start));
+        while self.peek() == &' ' {
+          self.advance();
+        }
+        None
+      },
+
+      _ => None,
+    }
+  }
+
+  /// handles escape sequences in character literals, called after consuming the backslash.
+  ///
+  /// note: this is only for escape sequences in character literals, line continuation should not use this.
+  fn escape_character(&mut self, start: usize) -> Option<char> {
+    // 1. \n, \t, etc.
+    // 2. \e \033, \x1b, ... todo.
+    // 3. \U or \u -- not supported.
+    match self.advance() {
+      'n' => Some('\n'),
+      't' => Some('\t'),
+      'r' => Some('\r'),
+      '\\' => Some('\\'),
+      '\'' => Some('\''),
+      '"' => Some('"'),
+      '0' => Some('\0'),
+
+      c => {
+        self
+          .session
+          .diagnosis
+          .add_error(InvalidEscapeSequence(format!("\\{c}")), self.span(start));
+        None
+      },
+    }
+  }
+
+  /// currently only supports ascii char.
+  fn character(&mut self, start: usize) -> Option<Token<'context>> {
+    let mut char_content = SmallString::default();
+    while !self.is_at_end() && self.peek() != &'\'' {
+      let ch = if self.peek() == &'\\' {
+        self.advance();
+        self.escape_character(start).unwrap_or('\0')
+      } else {
+        self.advance()
+      };
+      char_content.push(ch);
+    }
+
+    if self.is_at_end() {
+      self
+        .session
+        .diagnosis
+        .add_error(UnterminatedString, self.span(start));
+      return None;
+    }
+
+    self.advance(); // consume closing quote
+
+    match char_content.len() {
+      0 => {
+        self
+          .session
+          .diagnosis
+          .add_error(Custom("Expect expression".into()), self.span(start));
+        None
+      },
+      1 => {
+        let ch = char_content.chars().next().unwrap();
+        Some(Token::character(ch, self.span(start)))
+      },
+      _ => {
+        self
+          .session
+          .diagnosis
+          .add_error(CharacterTooLong(char_content.into()), self.span(start));
+        None
+      },
+    }
+  }
+
+  fn string(&mut self, start: usize) -> Option<Token<'context>> {
     while !self.is_at_end() && self.peek() != (&'"') {
       self.advance();
     }
@@ -485,18 +584,17 @@ impl<'session, 'source, 'context> Lexer<'session, 'source, 'context> {
         .session
         .diagnosis
         .add_error(UnterminatedString, self.span(start));
-      let text = self.slice(start, self.cursor);
-      return Token::string(
-        self.session.context.intern_str(text),
-        self.span(start),
-      );
+      return None;
     }
 
     let end = self.cursor;
     self.advance(); // consume closing quote
 
     let text = self.slice(start, end);
-    Token::string(self.session.context.intern_str(text), self.span(start))
+    Some(Token::string(
+      self.session.context.intern_str(text),
+      self.span(start),
+    ))
   }
 
   fn skip_block_comment(&mut self) {

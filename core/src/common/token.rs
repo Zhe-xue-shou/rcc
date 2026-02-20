@@ -29,6 +29,13 @@ pub struct Token<'context> {
 ensure_is_pod!(Token);
 
 impl<'context> Token<'context> {
+  pub fn character(character: char, location: SourceSpan) -> Self {
+    Self {
+      literal: Literal::Number(Constant::Character(character)),
+      location,
+    }
+  }
+
   pub fn string(literal: StrRef<'context>, location: SourceSpan) -> Self {
     Self {
       literal: Literal::String(literal),

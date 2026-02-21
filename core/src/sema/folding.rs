@@ -536,7 +536,7 @@ impl<'context> Folding<'context> for ImplicitCast<'context> {
             c.value
               .as_integral_unchecked()
               .cast(
-                target_primitive.size() as u8,
+                target_primitive.size_bits() as u8,
                 target_primitive.is_signed().into(),
               )
               .into(),
@@ -589,14 +589,13 @@ impl<'context> Folding<'context> for ImplicitCast<'context> {
       IntegralToPointer => contract_violation!(
         "no such implicit cast in C -- only for explicit casts!"
       ),
-      NullptrToIntegral =>
-        match *target_type.unqualified_type {
-          Type::Primitive(p) => Success(
-            Integral::new(0, p.size() as u8, p.is_signed().into()).into(),
-          ),
-          _ => contract_violation!("unreachable"),
-        }
-        .map(|c: CL| c.into_with(self.span)),
+      NullptrToIntegral => match *target_type.unqualified_type {
+        Type::Primitive(p) => Success(
+          Integral::new(0, p.size_bits() as u8, p.is_signed().into()).into(),
+        ),
+        _ => contract_violation!("unreachable"),
+      }
+      .map(|c: CL| c.into_with(self.span)),
       NullptrToBoolean => Success(Integral::from_bool(false).into())
         .map(|c: CL| c.into_with(self.span)),
     }

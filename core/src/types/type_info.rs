@@ -7,6 +7,11 @@ pub trait TypeInfo {
   fn size(&self) -> usize;
   #[must_use]
   fn is_scalar(&self) -> bool;
+  #[must_use]
+  #[inline(always)]
+  fn size_bits(&self) -> usize {
+    self.size() * 8
+  }
 }
 
 impl<'context> TypeInfo for QualifiedType<'context> {

@@ -504,6 +504,15 @@ impl<'context> Expression<'context> {
 impl<'context> Expression<'context> {
   #[must_use]
   fn get_cast_type(from: &Type, to: &Type) -> CastType {
+    if cfg!(debug_assertions) && !::std::ptr::eq(from, to) && from == to {
+      eprintln!(
+        "INTERNAL INVARIANT: comparing types by pointer but they are actually \
+         the same: {:p}: {:?} and {:p}: {:?}. This is known bug in CallExpr's \
+         function formal and actual params.",
+        from, from, to, to
+      );
+      return CastType::Noop;
+    }
     match (from, to) {
       (from, to) if ::std::ptr::eq(from, to) => CastType::Noop,
       (Type::Primitive(from_prim), Type::Primitive(to_prim)) => {

@@ -31,7 +31,7 @@ ensure_is_pod!(Token);
 impl<'context> Token<'context> {
   pub fn character(character: char, location: SourceSpan) -> Self {
     Self {
-      literal: Literal::Number(Constant::Integral((character as u32).into())),
+      literal: Literal::Number(Constant::Integral((character as i32).into())),
       location,
     }
   }

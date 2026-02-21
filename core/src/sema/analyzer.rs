@@ -268,7 +268,13 @@ impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
     let parameters = self.parse_parameters(function_signature.parameters);
     let parameter_types = parameters
       .iter()
-      .map(|param| param.symbol.borrow().qualified_type)
+      .map(|param| {
+        let ty = param.symbol.borrow().qualified_type;
+        self
+          .context()
+          .intern_type(ty.unqualified_type.clone())
+          .into_with(ty.qualifiers)
+      })
       .collect_in::<ArenaVec<_>>(self.context().arena());
     let is_variadic = function_signature.is_variadic;
 
@@ -409,67 +415,35 @@ impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
       [TS::Short]
       | [TS::Short, TS::Int]
       | [TS::Signed, TS::Short]
-      | [TS::Signed, TS::Short, TS::Int] => Ok(
-        Type::Primitive(Primitive::Short)
-          .lookup(self.context())
-          .into(),
-      ),
-      [TS::Unsigned, TS::Short] | [TS::Unsigned, TS::Short, TS::Int] => Ok(
-        Type::Primitive(Primitive::UShort)
-          .lookup(self.context())
-          .into(),
-      ),
+      | [TS::Signed, TS::Short, TS::Int] =>
+        Ok(self.context().short_type().into()),
+      [TS::Unsigned, TS::Short] | [TS::Unsigned, TS::Short, TS::Int] =>
+        Ok(self.context().ushort_type().into()),
 
-      [TS::Int] | [TS::Signed] | [TS::Signed, TS::Int] => Ok(
-        Type::Primitive(Primitive::Int)
-          .lookup(self.context())
-          .into(),
-      ),
-      [TS::Unsigned] | [TS::Unsigned, TS::Int] => Ok(
-        Type::Primitive(Primitive::UInt)
-          .lookup(self.context())
-          .into(),
-      ),
+      [TS::Int] | [TS::Signed] | [TS::Signed, TS::Int] =>
+        Ok(self.context().int_type().into()),
+      [TS::Unsigned] | [TS::Unsigned, TS::Int] =>
+        Ok(self.context().uint_type().into()),
 
       [TS::Long]
       | [TS::Long, TS::Int]
       | [TS::Signed, TS::Long]
-      | [TS::Signed, TS::Long, TS::Int] => Ok(
-        Type::Primitive(Primitive::Long)
-          .lookup(self.context())
-          .into(),
-      ),
-      [TS::Unsigned, TS::Long] | [TS::Unsigned, TS::Long, TS::Int] => Ok(
-        Type::Primitive(Primitive::ULong)
-          .lookup(self.context())
-          .into(),
-      ),
+      | [TS::Signed, TS::Long, TS::Int] =>
+        Ok(self.context().long_type().into()),
+      [TS::Unsigned, TS::Long] | [TS::Unsigned, TS::Long, TS::Int] =>
+        Ok(self.context().ulong_type().into()),
 
       [TS::Long, TS::Long]
       | [TS::Long, TS::Long, TS::Int]
       | [TS::Signed, TS::Long, TS::Long]
-      | [TS::Signed, TS::Long, TS::Long, TS::Int] => Ok(
-        Type::Primitive(Primitive::LongLong)
-          .lookup(self.context())
-          .into(),
-      ),
+      | [TS::Signed, TS::Long, TS::Long, TS::Int] =>
+        Ok(self.context().long_long_type().into()),
       [TS::Unsigned, TS::Long, TS::Long]
-      | [TS::Unsigned, TS::Long, TS::Long, TS::Int] => Ok(
-        Type::Primitive(Primitive::ULongLong)
-          .lookup(self.context())
-          .into(),
-      ),
+      | [TS::Unsigned, TS::Long, TS::Long, TS::Int] =>
+        Ok(self.context().ulong_long_type().into()),
 
-      [TS::Float] => Ok(
-        Type::Primitive(Primitive::Float)
-          .lookup(self.context())
-          .into(),
-      ),
-      [TS::Double] => Ok(
-        Type::Primitive(Primitive::Double)
-          .lookup(self.context())
-          .into(),
-      ),
+      [TS::Float] => Ok(self.context().float_type().into()),
+      [TS::Double] => Ok(self.context().double_type().into()),
       [TS::Long, TS::Double] => Ok(
         Type::Primitive(Primitive::LongDouble)
           .lookup(self.context())
@@ -867,6 +841,7 @@ impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
         .expression(*expression)
         .map(|expr| {
           expr
+            .decay(self.context())
             .assignment_conversion(target_type)
             .handle_or_default(self)
         })
@@ -1312,6 +1287,7 @@ impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
       .lvalue_conversion()
       .decay(self.context());
 
+    // TODO: (-1)[ptr] is allowed, but not handlede.
     if !analyzed_index.unqualified_type().is_integer() {
       Err(
         NonIntegerSubscript(analyzed_index.to_string())

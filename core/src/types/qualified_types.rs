@@ -1,4 +1,4 @@
-use ::rcc_utils::ensure_is_pod;
+use ::rcc_utils::{IntoWith, ensure_is_pod};
 
 use super::{Type, TypeRef};
 
@@ -92,5 +92,10 @@ impl<'context> From<&'context mut Type<'context>> for QualifiedType<'context> {
   #[inline(always)]
   fn from(inner: &'context mut Type<'context>) -> Self {
     Self::new_unqualified(inner)
+  }
+}
+impl<'a> IntoWith<Qualifiers, QualifiedType<'a>> for TypeRef<'a> {
+  fn into_with(self, with: Qualifiers) -> QualifiedType<'a> {
+    QualifiedType::new(with, self)
   }
 }

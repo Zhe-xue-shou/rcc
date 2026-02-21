@@ -22,10 +22,12 @@ pub struct Context<'context> {
   char_type: TypeRef<'context>,
   short_type: TypeRef<'context>,
   int_type: TypeRef<'context>,
+  long_type: TypeRef<'context>,
   long_long_type: TypeRef<'context>,
   uchar_type: TypeRef<'context>,
   ushort_type: TypeRef<'context>,
   uint_type: TypeRef<'context>,
+  ulong_type: TypeRef<'context>,
   ulong_long_type: TypeRef<'context>,
   ptrdiff_type: TypeRef<'context>,
   uintptr_type: TypeRef<'context>,
@@ -52,6 +54,8 @@ impl<'context> Context<'context> {
       ushort_type: arena.alloc(Type::Primitive(Primitive::UShort)),
       uint_type: arena.alloc(Type::Primitive(Primitive::UInt)),
       ulong_long_type: arena.alloc(Type::Primitive(Primitive::ULongLong)),
+      long_type: arena.alloc(Type::Primitive(Primitive::Long)),
+      ulong_type: arena.alloc(Type::Primitive(Primitive::ULong)),
       nullptr_type: arena.alloc(Type::Primitive(Primitive::Nullptr)),
       double_type: arena.alloc(Type::Primitive(Primitive::Double)),
       bool_type: arena.alloc(Type::Primitive(Primitive::Bool)),
@@ -186,6 +190,14 @@ impl<'context> Context<'context> {
 
   pub fn uint_type(&self) -> TypeRef<'context> {
     self.uint_type
+  }
+
+  pub fn long_type(&self) -> TypeRef<'context> {
+    self.long_type
+  }
+
+  pub fn ulong_type(&self) -> TypeRef<'context> {
+    self.ulong_type
   }
 
   pub fn ulong_long_type(&self) -> TypeRef<'context> {

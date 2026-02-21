@@ -13,5 +13,5 @@ int main(int, char **) {
   putchar('l');
   putchar('d');
   putchar('!');
-  (*putchar)('\n');
+  putchar('\n');
 }

@@ -1,4 +1,4 @@
-use ::rcc_utils::SmallString;
+use ::rcc_utils::{SmallString, contract_violation};
 use ::std::collections::HashMap;
 
 use super::{
@@ -207,13 +207,13 @@ impl<'session, 'context, 'source> ModuleBuilder<'session, 'context, 'source> {
       .destructure();
     type RE<'a> = ae::RawExpr<'a>;
     match raw_expr {
-      RE::Empty(_) => None,
+      RE::Empty(_) => contract_violation!(),
       RE::Constant(constant) =>
         self.constant(constant, qualified_type, value_category),
       RE::Unary(unary) => todo!(),
       RE::Binary(binary) => todo!(),
       RE::Call(call) => self.call(call, qualified_type, value_category),
-      RE::Paren(paren) => todo!(),
+      RE::Paren(paren) => self.paren(paren, qualified_type, value_category),
       RE::MemberAccess(member_access) => todo!(),
       RE::Ternary(ternary) => todo!(),
       RE::SizeOf(size_of) => todo!(),
@@ -289,7 +289,16 @@ impl<'session, 'context, 'source> ModuleBuilder<'session, 'context, 'source> {
     value_category: ValueCategory, // should be RValue
   ) -> Option<Operand<'context>> {
     debug_assert!(value_category == ValueCategory::RValue);
-    let ae::Constant { value, span } = constant;
-    Some(Operand::Imm(value))
+    Some(Operand::Imm(constant.value))
+  }
+
+  #[inline]
+  fn paren(
+    &mut self,
+    paren: ae::Paren<'context>,
+    qualified_type: QualifiedType<'context>,
+    value_category: ValueCategory,
+  ) -> Option<Operand<'context>> {
+    self.expression(*paren.expr)
   }
 }

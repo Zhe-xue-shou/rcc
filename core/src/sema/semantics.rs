@@ -14,11 +14,7 @@ use crate::{
     Diagnosis, Severity,
   },
   parse::{declaration as pd, expression as pe, statement as ps},
-  sema::{
-    declaration as sd,
-    expression::{self as se},
-    statement as ss,
-  },
+  sema::{declaration as sd, expression as se, statement as ss},
   session::Session,
   types::{
     ArenaVec, Array, ArraySize, Compatibility, Context, FunctionProto,
@@ -154,8 +150,8 @@ impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
     translation_unit
   }
 }
-impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
-  /// TODO: currently, caller shoould check:
+impl<'context> Sema<'_, 'context, '_> {
+  /// IMPORTANT: currently, caller shoould check:
   /// 1. whether the `restrict` is valid; (it's only valid for pointers and non-static local variable.)
   /// 2. the type is complete or not, via [`TypeInfo::size`].
   fn apply_modifiers_for_varty(
@@ -505,7 +501,7 @@ impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
   }
 }
 
-impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
+impl<'context> Sema<'_, 'context, '_> {
   fn externaldecl(&mut self) -> Vec<sd::ExternalDeclaration<'context>> {
     let mut declarations = Vec::new();
     std::mem::take(&mut self.program)
@@ -940,7 +936,7 @@ impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
   }
 }
 
-impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
+impl<'context> Sema<'_, 'context, '_> {
   fn expression(
     &self,
     expression: pe::Expression<'context>,
@@ -1323,7 +1319,7 @@ impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
     todo!()
   }
 }
-impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
+impl<'context> Sema<'_, 'context, '_> {
   /// unary arithmetic operators: `+`, `-`
   fn unary_arithmetic(
     &self,
@@ -1495,8 +1491,7 @@ impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
 
     let pointee_type =
       &operand.unqualified_type().as_pointer_unchecked().pointee;
-    if ::std::ptr::eq(pointee_type.unqualified_type, self.context().void_type())
-    {
+    if Type::ref_eq(pointee_type.unqualified_type, self.context().void_type()) {
       Err(
         DerefVoidPtr(operand.to_string())
           .into_with(Severity::Error)
@@ -1515,7 +1510,7 @@ impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
     }
   }
 }
-impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
+impl<'context> Sema<'_, 'context, '_> {
   /// assignment operator `=`
   fn assignment(
     &self,
@@ -1819,7 +1814,7 @@ impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
     ))
   }
 }
-impl<'session, 'context, 'source> Sema<'session, 'context, 'source> {
+impl<'context> Sema<'_, 'context, '_> {
   fn statements(
     &mut self,
     statements: Vec<ps::Statement<'context>>,

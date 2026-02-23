@@ -45,7 +45,6 @@ where
 }
 
 /// utility functions -- allow unused to suppress those annoying warnings.
-#[allow(unused)]
 impl<'session, 'context, 'source> Parser<'session, 'context, 'source> {
   pub fn new(
     tokens: Vec<Token<'context>>,
@@ -63,7 +62,9 @@ impl<'session, 'context, 'source> Parser<'session, 'context, 'source> {
       session,
     }
   }
-
+}
+#[allow(unused)]
+impl<'context> Parser<'_, 'context, '_> {
   pub fn parse(&mut self) -> Program<'context> {
     let mut program = Program::new();
 
@@ -228,7 +229,7 @@ impl<'session, 'context, 'source> Parser<'session, 'context, 'source> {
   }
 }
 /// diagnostic functions
-impl<'session, 'context, 'source> Parser<'session, 'context, 'source> {
+impl<'context> Parser<'_, 'context, '_> {
   fn add_error(&self, data: DiagData<'context>, span: SourceSpan) {
     self.session.diagnosis.add_error(data, span);
   }
@@ -238,7 +239,7 @@ impl<'session, 'context, 'source> Parser<'session, 'context, 'source> {
   }
 }
 /// opt checks
-impl<'session, 'context, 'source> Parser<'session, 'context, 'source> {
+impl<'context> Parser<'_, 'context, '_> {
   fn ios_c_strict_check_for_decl(&self, statement: &Statement) {
     if matches!(statement, Statement::Declaration(_)) {
       self.add_warning(DeprecatedStmtDeclCvt, *self.peek_loc());
@@ -246,7 +247,7 @@ impl<'session, 'context, 'source> Parser<'session, 'context, 'source> {
   }
 }
 /// meta parse
-impl<'session, 'context, 'source> Parser<'session, 'context, 'source> {
+impl<'context> Parser<'_, 'context, '_> {
   fn parse_type_specifier(&self) -> Option<TypeSpecifier<'context>> {
     match self.peek_lit() {
       Literal::Keyword(Keyword::Struct) => todo!(),
@@ -687,7 +688,7 @@ impl<'session, 'context, 'source> Parser<'session, 'context, 'source> {
   }
 }
 /// declarations
-impl<'session, 'context, 'source> Parser<'session, 'context, 'source> {
+impl<'context> Parser<'_, 'context, '_> {
   fn next_vardef(
     &mut self,
     declspecs: DeclSpecs<'context>,
@@ -792,7 +793,7 @@ impl<'session, 'context, 'source> Parser<'session, 'context, 'source> {
   }
 }
 /// statements
-impl<'session, 'context, 'source> Parser<'session, 'context, 'source> {
+impl<'context> Parser<'_, 'context, '_> {
   fn next_function_body(
     &mut self,
     declspecs: DeclSpecs<'context>,
@@ -1164,7 +1165,7 @@ impl<'session, 'context, 'source> Parser<'session, 'context, 'source> {
   }
 }
 /// expressions
-impl<'session, 'context, 'source> Parser<'session, 'context, 'source> {
+impl<'context> Parser<'_, 'context, '_> {
   fn next_factor(&mut self) -> Expression<'context> {
     let location = *self.peek_loc();
     match self.peek_lit().clone() {

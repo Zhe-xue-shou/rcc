@@ -17,12 +17,7 @@ pub enum Type<'context> {
   Union(Union<'context>),
 }
 /// Indicates a reference to [`Type`] which stores in the `'context`.
-///
-///
-/// TODO: it's HARD and I tried 4 times...
-/// make a wrapprt [`TypeRef`] and use [`Eq`] for comparison.
-///
-/// If so, it's INCORRECT to store the new [`TypeRef`] wrapper inside [`QualifiedType`], [`Hash`] would FAIL.
+/// Call [`Type::ref_eq`] to check two [`Type`] are equal or not -- dont use [`Eq`]/`==`.
 pub type TypeRef<'context> = &'context Type<'context>;
 pub type TypeRefMut<'context> = &'context mut Type<'context>;
 
@@ -68,6 +63,20 @@ impl<'context> Type<'context> {
 
   pub fn lookup(self, context: &Context<'context>) -> TypeRef<'context> {
     context.intern_type(self)
+  }
+
+  #[inline]
+  pub fn ref_eq(lhs: TypeRef<'context>, rhs: TypeRef<'context>) -> bool {
+    if cfg!(debug_assertions) && !::std::ptr::eq(lhs, rhs) && lhs == rhs {
+      eprintln!(
+        "INTERNAL INVARIANT: comparing types by pointer but they are actually \
+         the same: {:p}: {:?} and {:p}: {:?}. This is known bug in CallExpr's \
+         function formal and actual params.",
+        lhs, lhs, rhs, rhs
+      );
+      return true;
+    }
+    ::std::ptr::eq(lhs, rhs)
   }
 }
 impl Integral {

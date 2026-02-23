@@ -60,7 +60,7 @@ mod fmt {
 
   use super::Statement;
 
-  impl<'context> Display for Statement<'context> {
+  impl Display for Statement<'_> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
       static_dispatch!(
         self.fmt(f),

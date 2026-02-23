@@ -33,7 +33,7 @@ impl Display for FunctionSpecifier {
     write!(f, "{}", specifiers.join(" "))
   }
 }
-impl<'context> Display for QualifiedType<'context> {
+impl Display for QualifiedType<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     if self.qualifiers.is_empty() {
       write!(f, "{}", self.unqualified_type)
@@ -42,7 +42,7 @@ impl<'context> Display for QualifiedType<'context> {
     }
   }
 }
-impl<'context> Display for Array<'context> {
+impl Display for Array<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{}[", self.element_type)?;
     match &self.size {
@@ -54,7 +54,7 @@ impl<'context> Display for Array<'context> {
   }
 }
 
-impl<'context> Display for FunctionProto<'context> {
+impl Display for FunctionProto<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{}(", self.return_type)?;
     for (i, param) in self.parameter_types.iter().enumerate() {
@@ -67,7 +67,7 @@ impl<'context> Display for FunctionProto<'context> {
   }
 }
 
-impl<'context> Display for Type<'context> {
+impl Display for Type<'_> {
   fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
     static_dispatch!(
       self.fmt(f),
@@ -76,28 +76,28 @@ impl<'context> Display for Type<'context> {
   }
 }
 
-impl<'context> Display for Pointer<'context> {
+impl Display for Pointer<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "*{}", self.pointee)
   }
 }
-impl<'context> Display for Enum<'context> {
+impl Display for Enum<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "<enum {}>", self.name.unwrap_or("<unnamed>"))
   }
 }
-impl<'context> Display for Record<'context> {
+impl Display for Record<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "<struct {}>", self.name.unwrap_or("<unnamed>"))
   }
 }
-impl<'context> Display for Union<'context> {
+impl Display for Union<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "<union {}>", self.name.unwrap_or("<unnamed>"))
   }
 }
 
-impl<'context> Display for Constant<'context> {
+impl Display for Constant<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     use Constant::*;
     match self {

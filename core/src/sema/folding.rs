@@ -323,7 +323,7 @@ impl<'context> Folding<'context> for Binary<'context> {
       "only implemented for constant var of constant eval"
     );
     assert!(
-      ::std::ptr::eq(
+      Type::ref_eq(
         folded_lhs.unqualified_type(),
         folded_rhs.unqualified_type()
       ),
@@ -337,7 +337,7 @@ impl<'context> Folding<'context> for Binary<'context> {
     let (rhs_expr, rhs_type, rhs_value_category) = folded_rhs.destructure();
 
     assert!(
-      ::std::ptr::eq(lhs_type.unqualified_type, rhs_type.unqualified_type),
+      Type::ref_eq(lhs_type.unqualified_type, rhs_type.unqualified_type),
       "type checker ensures both sides have the same types!"
     );
 

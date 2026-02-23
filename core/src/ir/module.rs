@@ -1,35 +1,35 @@
-use ::rcc_utils::SmallString;
+use ::slotmap::SlotMap;
 
-use super::instruction::{Instruction, Operand};
+use super::{
+  instruction::Instruction,
+  value::{BlockID, FuncID, GlobalID, InstID, ValueData, ValueID},
+};
 use crate::{
   common::StrRef,
   types::{Constant, QualifiedType},
 };
 
-/// keep it an alias type for latter convenience if choosing to optimize a lot
-/// (e.g., switch to VecDeque, LinkedList or intrusive list. since now it's better for me to focus on the compiler design, not ADT.)
-///
-/// This name is from `llvm/ADT/ilist.h` and `llvm/ADT/ilist_node.h`, which is a doubly-linked intrusive list used to increase efficiency.
-#[allow(non_camel_case_types)]
-pub type ilist_type<T> = Vec<T>;
-
 #[derive(Debug, Default)]
 pub struct Module<'context> {
-  pub functions: ilist_type<Function<'context>>,
-  pub globals: Vec<Variable<'context>>,
+  pub values: SlotMap<ValueID, ValueData<'context>>,
+  pub instructions: SlotMap<InstID, Instruction<'context>>,
+  pub blocks: SlotMap<BlockID, BasicBlock>,
+  pub functions: SlotMap<FuncID, Function<'context>>,
+  pub globals: SlotMap<GlobalID, Variable<'context>>,
 }
 
 /// **Global** function in TAC-SSA form
 #[derive(Debug)]
 pub struct Function<'context> {
   pub name: StrRef<'context>,
-  pub params: Vec<Operand<'context>>,
-  pub blocks: ilist_type<BasicBlock<'context>>,
   pub return_type: QualifiedType<'context>,
+  pub params: Vec<ValueID>,
+
+  pub blocks: Vec<BlockID>,
   pub is_variadic: bool,
 }
 
-/// **Global** Variable. Non-static local variable won't be stored here, but exists as [`Operand`].
+/// **Global** variable.
 #[derive(Debug)]
 pub struct Variable<'context> {
   pub name: StrRef<'context>,
@@ -38,9 +38,9 @@ pub struct Variable<'context> {
 }
 
 #[derive(Debug)]
-pub struct BasicBlock<'context> {
-  pub label: SmallString,
-  pub instructions: ilist_type<Instruction<'context>>,
+pub struct BasicBlock {
+  pub instructions: Vec<InstID>,
+  pub terminator: InstID,
 }
 
 /// **Static** initializer.

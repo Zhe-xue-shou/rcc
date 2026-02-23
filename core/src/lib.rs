@@ -12,6 +12,7 @@
 #![allow(internal_features)]
 #![feature(core_intrinsics)]
 pub(crate) mod blueprints;
+pub mod codegen;
 pub mod common;
 pub mod diagnosis;
 pub mod ir;

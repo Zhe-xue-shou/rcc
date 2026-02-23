@@ -73,7 +73,7 @@ mod fmt {
 
   use super::*;
 
-  impl<'context> Display for Expression<'context> {
+  impl Display for Expression<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       static_dispatch!(
         self.fmt(f),
@@ -81,12 +81,12 @@ mod fmt {
       )
     }
   }
-  impl<'context> Display for Variable<'context> {
+  impl Display for Variable<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       write!(f, "{}", self.name)
     }
   }
-  impl<'context> Display for UnprocessedType<'context> {
+  impl Display for UnprocessedType<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       write!(f, "{} {}", self.declspecs, self.declarator)
     }

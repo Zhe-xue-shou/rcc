@@ -388,7 +388,7 @@ impl<'context> Compatibility<'context> for Type<'context> {
 impl<'context> Compatibility<'context> for QualifiedType<'context> {
   fn compatible(lhs: &QualifiedType, rhs: &QualifiedType) -> bool {
     // 6.2.7.1: Two types are compatible types if they are the same.
-    if ::std::ptr::eq(lhs, rhs) {
+    if Type::ref_eq(lhs, rhs) {
       return true;
     }
     // 6.7.4.1.11: For two qualified types to be compatible, both shall have the identically qualified version of a compatible type.

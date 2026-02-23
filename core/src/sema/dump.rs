@@ -205,7 +205,8 @@ impl<'context> Dumpable for TranslationUnit<'context> {
           i == self.declarations.len() - 1,
           palette,
         )
-      })
+      })?;
+    dumper.reset()
   }
 }
 impl<'context> Dumpable for ExternalDeclaration<'context> {

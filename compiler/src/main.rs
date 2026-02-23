@@ -136,7 +136,7 @@ fn pipeline(session: Session, stage: Stage, pretty_print: bool) -> i32 {
   assert!(matches!(stage, Stage::Ir));
   let builder = ModuleBuilder::new(&session);
   let m = builder.build(translation_unit);
-  println!("{m:?}");
+  println!("{m}");
 
   0
 }

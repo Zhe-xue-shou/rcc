@@ -3,6 +3,7 @@ mod builder;
 mod fmt;
 mod instruction;
 mod module;
+mod types;
 mod value;
 
 pub use self::{

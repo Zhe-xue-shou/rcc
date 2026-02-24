@@ -529,7 +529,10 @@ impl<'context> Folding<'context> for ImplicitCast<'context> {
             target_type.unqualified_type.as_primitive_unchecked();
           let expr_primitive =
             expr_type.unqualified_type.as_primitive_unchecked();
-          if target_primitive.size() < expr_primitive.size() {
+          if target_primitive.size() < expr_primitive.size()
+            && !target_primitive.is_void()
+            && !target_primitive.is_bool()
+          {
             diag.add_warning(CastDown(expr_type, target_type), self.span)
           }
           Success(

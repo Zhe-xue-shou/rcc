@@ -1114,10 +1114,15 @@ impl<'context> Sema<'_, 'context, '_> {
       span,
     } = constant;
     let unqualified_type = constant.unqualified_type(self.context());
-
-    Ok(se::Expression::new_rvalue(
+    let value_category = if constant.is_char_array() {
+      se::ValueCategory::LValue
+    } else {
+      se::ValueCategory::RValue
+    };
+    Ok(se::Expression::new(
       se::Constant::new(constant, span).into(),
       unqualified_type.into(),
+      value_category,
     ))
   }
 

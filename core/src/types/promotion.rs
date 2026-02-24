@@ -106,6 +106,10 @@ impl Primitive {
     matches!(self, Void)
   }
 
+  pub fn is_bool(&self) -> bool {
+    matches!(self, Bool)
+  }
+
   pub fn is_nullptr(&self) -> bool {
     matches!(self, Nullptr)
   }

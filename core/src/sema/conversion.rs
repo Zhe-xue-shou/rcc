@@ -304,10 +304,11 @@ impl<'context> Expression<'context> {
           || rhs.pointee.unqualified_type.is_void()
         {
           // no need to create composite type -- pointer types are the same except for qualifiers
-          Ok(Self::new_rvalue(
-            ImplicitCast::new(self.into(), CastType::BitCast, span).into(),
-            *target_type,
-          ))
+          // Ok(Self::new_rvalue(
+          //   ImplicitCast::new(self.into(), CastType::BitCast, span).into(),
+          //   *target_type,
+          // ))
+          Ok(self) // Noop? not sure
         } else {
           Err(
             IncompatiblePointerTypes(

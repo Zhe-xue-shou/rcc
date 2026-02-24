@@ -10,7 +10,7 @@ use super::{
 };
 use crate::common::{DumpRes, Dumpable, Dumper, Palette};
 
-impl<'context> Dumpable for Expression<'context> {
+impl Dumpable for Expression<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -180,7 +180,7 @@ impl<'context> Dumpable for Expression<'context> {
     }
   }
 }
-impl<'context> Dumpable for TranslationUnit<'context> {
+impl Dumpable for TranslationUnit<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -209,7 +209,7 @@ impl<'context> Dumpable for TranslationUnit<'context> {
     dumper.reset()
   }
 }
-impl<'context> Dumpable for ExternalDeclaration<'context> {
+impl Dumpable for ExternalDeclaration<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -227,7 +227,7 @@ impl<'context> Dumpable for ExternalDeclaration<'context> {
   }
 }
 
-impl<'context> Dumpable for VarDef<'context> {
+impl Dumpable for VarDef<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -277,7 +277,7 @@ impl<'context> Dumpable for VarDef<'context> {
     Ok(())
   }
 }
-impl<'context> Dumpable for Function<'context> {
+impl Dumpable for Function<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -325,7 +325,7 @@ impl<'context> Dumpable for Function<'context> {
   }
 }
 
-impl<'context> Dumpable for Initializer<'context> {
+impl Dumpable for Initializer<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -351,7 +351,7 @@ impl<'context> Dumpable for Initializer<'context> {
   }
 }
 
-impl<'context> Dumpable for Statement<'context> {
+impl Dumpable for Statement<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -403,7 +403,7 @@ macro_rules! headers {
   }};
 }
 
-impl<'context> Dumpable for Return<'context> {
+impl Dumpable for Return<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -424,7 +424,7 @@ impl<'context> Dumpable for Return<'context> {
   }
 }
 
-impl<'context> Dumpable for Compound<'context> {
+impl Dumpable for Compound<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -448,7 +448,7 @@ impl<'context> Dumpable for Compound<'context> {
   }
 }
 
-impl<'context> Dumpable for If<'context> {
+impl Dumpable for If<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -476,7 +476,7 @@ impl<'context> Dumpable for If<'context> {
   }
 }
 
-impl<'context> Dumpable for While<'context> {
+impl Dumpable for While<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -495,7 +495,7 @@ impl<'context> Dumpable for While<'context> {
   }
 }
 
-impl<'context> Dumpable for DoWhile<'context> {
+impl Dumpable for DoWhile<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -514,7 +514,7 @@ impl<'context> Dumpable for DoWhile<'context> {
   }
 }
 
-impl<'context> Dumpable for For<'context> {
+impl Dumpable for For<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -541,7 +541,7 @@ impl<'context> Dumpable for For<'context> {
   }
 }
 
-impl<'context> Dumpable for Switch<'context> {
+impl Dumpable for Switch<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -570,7 +570,7 @@ impl<'context> Dumpable for Switch<'context> {
     Ok(())
   }
 }
-impl<'context> Dumpable for Case<'context> {
+impl Dumpable for Case<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -591,7 +591,7 @@ impl<'context> Dumpable for Case<'context> {
     })
   }
 }
-impl<'context> Dumpable for statement::Default<'context> {
+impl Dumpable for statement::Default<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -611,7 +611,7 @@ impl<'context> Dumpable for statement::Default<'context> {
   }
 }
 
-impl<'context> Dumpable for Goto<'context> {
+impl Dumpable for Goto<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -631,7 +631,7 @@ impl<'context> Dumpable for Goto<'context> {
   }
 }
 
-impl<'context> Dumpable for Label<'context> {
+impl Dumpable for Label<'_> {
   fn dump<'t, 's>(
     &self,
     dumper: &mut impl Dumper<'t, 's>,
@@ -657,7 +657,7 @@ impl<'context> Dumpable for Label<'context> {
   }
 }
 
-impl<'context> Dumpable for Break<'context> {
+impl Dumpable for Break<'_> {
   #[inline]
   fn dump<'t, 's>(
     &self,
@@ -673,7 +673,7 @@ impl<'context> Dumpable for Break<'context> {
   }
 }
 
-impl<'context> Dumpable for Continue<'context> {
+impl Dumpable for Continue<'_> {
   #[inline]
   fn dump<'t, 's>(
     &self,

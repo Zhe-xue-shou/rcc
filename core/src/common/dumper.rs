@@ -18,47 +18,36 @@ pub struct Palette {
   pub skeleton: ColorSpec, // tree
   pub error: ColorSpec,    // overflow info, error nodes
 }
-::rcc_utils::static_assert!(::std::mem::needs_drop::<Palette>() == false);
+::rcc_utils::ensure_is_pod!(Palette);
 impl Palette {
   pub fn colored() -> Self {
-    let mut node_type = ColorSpec::new();
-    node_type.set_fg(Some(Color::Cyan)).set_bold(true);
-
-    let mut operator = ColorSpec::new();
-    operator.set_fg(Some(Color::Yellow));
-
-    let mut literal = ColorSpec::new();
-    literal.set_fg(Some(Color::Green));
-
-    let mut meta = ColorSpec::new();
-    meta.set_fg(Some(Color::Blue));
-
-    let mut kind = ColorSpec::new();
-    kind.set_fg(Some(Color::Magenta)).set_bold(true);
-
-    // light blue
-    let mut info = ColorSpec::new();
-    info.set_fg(Some(Color::Rgb(173, 216, 230)));
-
-    let mut dim = ColorSpec::new();
-    dim.set_fg(Some(Color::Yellow)).set_intense(false); // let it be grey-ish
-
-    let mut skeleton = ColorSpec::new();
-    skeleton.set_fg(Some(Color::White)).set_intense(false); // let it be grey-ish
-
-    let mut error = ColorSpec::new();
-    error.set_fg(Some(Color::Red)).set_bold(true);
-
     Self {
-      node_type,
-      operator,
-      literal,
-      meta,
-      kind,
-      info,
-      dim,
-      skeleton,
-      error,
+      node_type: ColorSpec::new()
+        .set_fg(Some(Color::Cyan))
+        .set_bold(true)
+        .to_owned(),
+      operator: ColorSpec::new().set_fg(Some(Color::Yellow)).to_owned(),
+      literal: ColorSpec::new().set_fg(Some(Color::Green)).to_owned(),
+      meta: ColorSpec::new().set_fg(Some(Color::Blue)).to_owned(),
+      kind: ColorSpec::new()
+        .set_fg(Some(Color::Magenta))
+        .set_bold(true)
+        .to_owned(),
+      info: ColorSpec::new()
+        .set_fg(Some(Color::Rgb(173, 216, 230)))
+        .to_owned(),
+      dim: ColorSpec::new()
+        .set_fg(Some(Color::Yellow))
+        .set_intense(false)
+        .to_owned(),
+      skeleton: ColorSpec::new()
+        .set_fg(Some(Color::White))
+        .set_intense(false)
+        .to_owned(),
+      error: ColorSpec::new()
+        .set_fg(Some(Color::Red))
+        .set_bold(true)
+        .to_owned(),
     }
   }
 }

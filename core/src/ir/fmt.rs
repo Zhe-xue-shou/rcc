@@ -15,7 +15,7 @@ impl Display for Module<'_> {
       let mut counter = 0;
       writeln!(
         f,
-        "{} @{} {}: ({})",
+        "{} @{} {}: ({}) {}",
         if func.blocks.is_empty() {
           "declare"
         } else {
@@ -39,6 +39,7 @@ impl Display for Module<'_> {
           })
           .collect::<Vec<_>>()
           .join(", "),
+        if func.blocks.is_empty() { "" } else { "{" },
       )?;
       func.blocks.iter().try_for_each(|block_id| {
         writeln!(f, "  {}:", {
@@ -57,7 +58,12 @@ impl Display for Module<'_> {
               .expect("not implemented for others!");
             writeln!(
               f,
-              "    call @{}({})",
+              "    %{} = call @{}({})",
+              {
+                let id = counter;
+                counter += 1;
+                id
+              },
               match self.lookup(inst.callee).value {
                 Value::Function(f) => {
                   self.functions[f].name
@@ -68,8 +74,8 @@ impl Display for Module<'_> {
                 .args
                 .iter()
                 .map(|arg_id| {
-                  let id = counter;
-                  counter += 1;
+                  // let id = counter;
+                  // counter += 1;
                   match &self.lookup(arg_id).value {
                     Value::Instruction(inst_id) => todo!(),
                     Value::Argument(func_id, _) => todo!(),
@@ -82,7 +88,8 @@ impl Display for Module<'_> {
                 .join(", ")
             )
           })
-      })
+      })?;
+      writeln!(f, "{}", if func.blocks.is_empty() { "" } else { "}" })
     })
   }
 }

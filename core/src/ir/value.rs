@@ -94,7 +94,7 @@ impl<'context> ValueData<'context> {
     Self {
       qualified_type,
       value,
-      users: Vec::new(),
+      users: Default::default(),
     }
   }
 }

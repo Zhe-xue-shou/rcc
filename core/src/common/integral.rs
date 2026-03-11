@@ -1,6 +1,6 @@
 use ::rcc_utils::{
-  BuiltinFloat, BuiltinIntegerOrBoolean, NumFrom, NumTo, ToU128,
-  signed_type_of, static_assert,
+  BuiltinFloat, BuiltinIntegerOrBoolean, NumFrom, NumTo, ToU128, ensure_is_pod,
+  signed_type_of,
 };
 
 type Underlying = u128;
@@ -28,11 +28,7 @@ impl Signedness {
 
 impl From<bool> for Signedness {
   fn from(signed: bool) -> Self {
-    if signed {
-      Signedness::Signed
-    } else {
-      Signedness::Unsigned
-    }
+    if signed { Signed } else { Unsigned }
   }
 }
 
@@ -64,7 +60,7 @@ pub struct Integral {
   signedness: Signedness,
 }
 
-static_assert!(::std::mem::needs_drop::<Integral>() == false);
+ensure_is_pod!(Integral);
 
 impl Integral {
   pub const WIDTH_BOOL: u8 = 1;
@@ -96,7 +92,7 @@ impl Integral {
     value: T,
     width: u8,
   ) -> Self {
-    Self::new(value, width, Signedness::Signed)
+    Self::new(value, width, Signed)
   }
 
   #[inline]
@@ -104,18 +100,18 @@ impl Integral {
     value: T,
     width: u8,
   ) -> Self {
-    Self::new(value, width, Signedness::Unsigned)
+    Self::new(value, width, Unsigned)
   }
 
   // Convenience constructors for C types
   #[inline]
   pub fn from_bool(value: bool) -> Self {
-    Self::new(value, Self::WIDTH_BOOL, Signedness::Unsigned)
+    Self::new(value, Self::WIDTH_BOOL, Unsigned)
   }
 
   #[inline]
   pub const fn from_uintptr(value: usize) -> Self {
-    Self::new(value, Self::WIDTH_UINTPTR, Signedness::Unsigned)
+    Self::new(value, Self::WIDTH_UINTPTR, Unsigned)
   }
 }
 impl Integral {
@@ -207,8 +203,8 @@ impl Integral {
   /// Get the minimum value for this width and signedness.
   pub const fn min_value(width: u8, signedness: Signedness) -> Self {
     match signedness {
-      Signedness::Unsigned => Self::new(0, width, signedness),
-      Signedness::Signed => {
+      Unsigned => Self::new(0, width, signedness),
+      Signed => {
         let min = 1u128 << (width - 1);
         Self::new(min, width, signedness)
       },
@@ -218,10 +214,8 @@ impl Integral {
   /// Get the maximum value for this width and signedness.
   pub const fn max_value(width: u8, signedness: Signedness) -> Self {
     match signedness {
-      Signedness::Unsigned =>
-        Self::new(Self::max_unsigned(width), width, signedness),
-      Signedness::Signed =>
-        Self::new((1u128 << (width - 1)) - 1, width, signedness),
+      Unsigned => Self::new(Self::max_unsigned(width), width, signedness),
+      Signed => Self::new((1u128 << (width - 1)) - 1, width, signedness),
     }
   }
 
@@ -257,14 +251,14 @@ impl Integral {
   #[inline]
   pub const fn zext(self, new_width: u8) -> Self {
     debug_assert!(new_width >= self.width);
-    Self::new(self.bits, new_width, Signedness::Unsigned)
+    Self::new(self.bits, new_width, Unsigned)
   }
 
   /// Sign-extend to a wider type.
   #[inline]
   pub const fn sext(self, new_width: u8) -> Self {
     debug_assert!(new_width >= self.width);
-    self.cast(new_width, Signedness::Signed)
+    self.cast(new_width, Signed)
   }
 
   /// Truncate to a narrower type.
@@ -641,14 +635,14 @@ mod tests {
   #[test]
   fn test_truncation() {
     let big = Integral::from(0x12345678 as i32);
-    let small = big.trunc(8, Signedness::Unsigned);
+    let small = big.trunc(8, Unsigned);
     assert_eq!(small.bits(), 0x78);
   }
 
   #[test]
   fn test_overflow_detection() {
-    let max_i8 = Integral::new(127, 8, Signedness::Signed);
-    let one = Integral::new(1, 8, Signedness::Signed);
+    let max_i8 = Integral::new(127, 8, Signed);
+    let one = Integral::new(1, 8, Signed);
     let (result, overflow) = max_i8.overflowing_add(one);
     assert!(overflow);
     assert_eq!(result.as_signed(), -128);

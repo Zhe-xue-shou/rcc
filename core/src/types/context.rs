@@ -6,10 +6,7 @@ use super::{
   Array, ArraySize, Compatibility, FunctionProto, FunctionSpecifier, Pointer,
   Primitive, QualifiedType, Type, TypeRef,
 };
-use crate::{
-  common::StrRef,
-  diagnosis::{DiagData::MainFunctionProtoMismatch, DiagMeta, Severity},
-};
+use crate::common::StrRef;
 #[derive(Debug)]
 pub struct Context<'context> {
   arena: &'context Bump,
@@ -39,30 +36,30 @@ pub struct Context<'context> {
 }
 impl<'context> Context<'context> {
   pub fn new(arena: &'context Bump) -> Self {
+    let void_type = arena.alloc(Primitive::Void.into());
     Self {
       arena,
       type_interner: Default::default(),
       string_interner: Default::default(),
-      int_type: arena.alloc(Type::Primitive(Primitive::Int)),
-      float_type: arena.alloc(Type::Primitive(Primitive::Float)),
-      short_type: arena.alloc(Type::Primitive(Primitive::Short)),
-      ptrdiff_type: arena.alloc(Type::Primitive(Primitive::LongLong)),
-      uintptr_type: arena.alloc(Type::Primitive(Primitive::ULongLong)),
-      void_type: arena.alloc(Type::Primitive(Primitive::Void)),
-      char_type: arena.alloc(Type::Primitive(Primitive::Char)),
-      uchar_type: arena.alloc(Type::Primitive(Primitive::UChar)),
-      ushort_type: arena.alloc(Type::Primitive(Primitive::UShort)),
-      uint_type: arena.alloc(Type::Primitive(Primitive::UInt)),
-      ulong_long_type: arena.alloc(Type::Primitive(Primitive::ULongLong)),
-      long_type: arena.alloc(Type::Primitive(Primitive::Long)),
-      ulong_type: arena.alloc(Type::Primitive(Primitive::ULong)),
-      nullptr_type: arena.alloc(Type::Primitive(Primitive::Nullptr)),
-      double_type: arena.alloc(Type::Primitive(Primitive::Double)),
-      bool_type: arena.alloc(Type::Primitive(Primitive::Bool)),
-      long_long_type: arena.alloc(Type::Primitive(Primitive::LongLong)),
-      voidptr_type: arena.alloc(Type::Pointer(Pointer::new(
-        arena.alloc(Type::Primitive(Primitive::Void)).into(),
-      ))),
+      int_type: arena.alloc(Primitive::Int.into()),
+      float_type: arena.alloc(Primitive::Float.into()),
+      short_type: arena.alloc(Primitive::Short.into()),
+      ptrdiff_type: arena.alloc(Primitive::LongLong.into()),
+      uintptr_type: arena.alloc(Primitive::ULongLong.into()),
+      void_type,
+      char_type: arena.alloc(Primitive::Char.into()),
+      uchar_type: arena.alloc(Primitive::UChar.into()),
+      ushort_type: arena.alloc(Primitive::UShort.into()),
+      uint_type: arena.alloc(Primitive::UInt.into()),
+      ulong_long_type: arena.alloc(Primitive::ULongLong.into()),
+      long_type: arena.alloc(Primitive::Long.into()),
+      ulong_type: arena.alloc(Primitive::ULong.into()),
+      nullptr_type: arena.alloc(Primitive::Nullptr.into()),
+      double_type: arena.alloc(Primitive::Double.into()),
+      bool_type: arena.alloc(Primitive::Bool.into()),
+      long_long_type: arena.alloc(Primitive::LongLong.into()),
+      voidptr_type: arena
+        .alloc(Pointer::new(QualifiedType::new_unqualified(void_type)).into()),
       unnamed_str: arena.alloc_str("<unnamed>"),
     }
   }
@@ -75,7 +72,7 @@ impl<'context> Context<'context> {
 pub type ArenaVec<'a, T> = ::bumpalo::collections::Vec<'a, T>;
 
 impl<'context> Context<'context> {
-  pub fn intern_type(&self, value: Type<'context>) -> TypeRef<'context> {
+  fn do_intern(&self, value: Type<'context>) -> TypeRef<'context> {
     if let Some(&interned) = self.type_interner.borrow().get(&value) {
       interned
     } else {
@@ -96,6 +93,10 @@ impl<'context> Context<'context> {
     }
   }
 
+  pub fn intern<T: Into<Type<'context>>>(&self, value: T) -> TypeRef<'context> {
+    self.do_intern(value.into())
+  }
+
   pub fn alloc_vec<T>(&self, capacity: usize) -> ArenaVec<'context, T> {
     ArenaVec::with_capacity_in(capacity, self.arena)
   }
@@ -112,16 +113,14 @@ impl<'context> Context<'context> {
     is_variadic: bool,
   ) -> TypeRef<'context> {
     let params = self.alloc_slice(params);
-    let proto = FunctionProto::new(return_type, params, is_variadic);
-    self.intern_type(Type::FunctionProto(proto))
+    self.intern(FunctionProto::new(return_type, params, is_variadic))
   }
 
   pub fn make_pointer(
     &self,
     pointee: QualifiedType<'context>,
   ) -> TypeRef<'context> {
-    let pointer = Pointer::new(pointee);
-    self.intern_type(Type::Pointer(pointer))
+    self.intern(Pointer::new(pointee))
   }
 
   pub fn make_array(
@@ -129,7 +128,7 @@ impl<'context> Context<'context> {
     element_type: QualifiedType<'context>,
     size: ArraySize,
   ) -> TypeRef<'context> {
-    self.intern_type(Type::Array(Array::new(element_type, size)))
+    self.intern(Array::new(element_type, size))
   }
 
   pub fn int_type(&self) -> TypeRef<'context> {
@@ -203,12 +202,16 @@ impl<'context> Context<'context> {
   pub fn ulong_long_type(&self) -> TypeRef<'context> {
     self.ulong_long_type
   }
-
+}
+use crate::diagnosis::{DiagMeta, Severity};
+impl<'context> Context<'context> {
   pub fn main_proto_validate(
     &self,
     proto: &FunctionProto<'context>,
     function_specifier: FunctionSpecifier,
   ) -> Result<(), DiagMeta<'context>> {
+    use crate::diagnosis::DiagData::MainFunctionProtoMismatch;
+
     if proto.is_variadic {
       Err(
         MainFunctionProtoMismatch("main function cannot be variadic")
@@ -221,30 +224,26 @@ impl<'context> Context<'context> {
       )
     } else if !proto.compatible_with(
       self
-        .intern_type(Type::FunctionProto(FunctionProto::new(
+        .intern(FunctionProto::new(
           self.int_type.into(),
           self.alloc_slice(&[]),
           false,
-        )))
+        ))
         .as_functionproto_unchecked(),
     ) && !proto.compatible_with(
       self
-        .intern_type(Type::FunctionProto(FunctionProto::new(
+        .intern(FunctionProto::new(
           self.int_type.into(),
           self.alloc_slice(&[
             self.int_type.into(),
             self
-              .intern_type(Type::Pointer(Pointer::new(
-                self
-                  .intern_type(Type::Pointer(Pointer::new(
-                    self.char_type.into(),
-                  )))
-                  .into(),
-              )))
+              .intern(Pointer::new(
+                self.intern(Pointer::new(self.char_type.into())).into(),
+              ))
               .into(),
           ]),
           false,
-        )))
+        ))
         .as_functionproto_unchecked(),
     ) {
       Err(

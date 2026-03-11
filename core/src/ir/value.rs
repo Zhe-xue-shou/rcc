@@ -1,5 +1,3 @@
-use ::slotmap::new_key_type;
-
 use super::{
   BasicBlock, Module,
   instruction::Instruction,
@@ -7,7 +5,7 @@ use super::{
 };
 use crate::types::{Constant, QualifiedType};
 
-new_key_type! {
+::slotmap::new_key_type! {
     pub struct ValueID;
     pub struct BlockID;
     pub struct FuncID;
@@ -82,6 +80,7 @@ pub enum Value<'context> {
 #[derive(Debug)]
 pub struct ValueData<'context> {
   pub qualified_type: QualifiedType<'context>,
+  // pub ir_type
   pub value: Value<'context>,
   pub users: Vec<InstID>,
 }

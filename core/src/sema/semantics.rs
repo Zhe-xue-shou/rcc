@@ -225,12 +225,10 @@ impl<'context> Sema<'_, 'context, '_> {
             is_variadic,
           } = function_signature;
           let analyzed_parameter_types = self.parse_parameter_types(parameters);
-          let p = self.context().intern_type(Type::<'context>::FunctionProto(
-            FunctionProto::<'context>::new(
-              qualified_type,
-              analyzed_parameter_types.into_bump_slice(),
-              is_variadic,
-            ),
+          let p = self.context().intern(FunctionProto::<'context>::new(
+            qualified_type,
+            analyzed_parameter_types.into_bump_slice(),
+            is_variadic,
           ));
           qualified_type = p.into();
         },
@@ -269,19 +267,21 @@ impl<'context> Sema<'_, 'context, '_> {
         let ty = param.symbol.borrow().qualified_type;
         self
           .context()
-          .intern_type(ty.unqualified_type.clone())
+          .intern(ty.unqualified_type.clone())
           .into_with(ty.qualifiers)
       })
       .collect_in::<ArenaVec<_>>(self.context().arena());
-    let is_variadic = function_signature.is_variadic;
-
-    let functionproto = Type::FunctionProto(FunctionProto::new(
-      return_type,
-      parameter_types.into_bump_slice(),
-      is_variadic,
-    ));
-
-    Ok((self.context().intern_type(functionproto).into(), parameters))
+    Ok((
+      self
+        .context()
+        .make_function_proto(
+          return_type,
+          parameter_types.into_bump_slice(),
+          function_signature.is_variadic,
+        )
+        .into(),
+      parameters,
+    ))
   }
 
   fn parse_parameter_types(

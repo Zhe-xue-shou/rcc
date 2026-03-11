@@ -62,7 +62,7 @@ impl<'context> Type<'context> {
   }
 
   pub fn lookup(self, context: &Context<'context>) -> TypeRef<'context> {
-    context.intern_type(self)
+    context.intern(self)
   }
 
   #[inline]

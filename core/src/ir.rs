@@ -12,4 +12,5 @@ pub use self::{
     BasicBlock, Function as IRFunction, Initializer as IRStaticInitializer,
     Module, Variable as IRGlobalValue,
   },
+  types::{Type, TypeRef, TypeRefMut},
 };

@@ -1,5 +1,5 @@
 use ::rcc_utils::{
-  BuiltinFloat, NumTo, ToI128, ToU128, static_assert, underlying_type_of,
+  BuiltinFloat, NumTo, ToI128, ToU128, ensure_is_pod, underlying_type_of,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ::std::marker::ConstParamTy)]
@@ -24,10 +24,7 @@ pub struct Floating {
   format: Format,
 }
 
-static_assert!(
-  ::std::mem::needs_drop::<Floating>() == false,
-  "Floating should be a POD type without drop"
-);
+ensure_is_pod!(Floating);
 
 impl ::std::fmt::Display for Floating {
   fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {

@@ -56,3 +56,18 @@ impl<'ir> Function<'ir> {
 
 ::rcc_utils::interconvert!(Array, Type, 'ir);
 ::rcc_utils::interconvert!(Function, Type, 'ir);
+
+impl<'ir> Type<'ir> {
+  #[inline]
+  pub fn ref_eq(lhs: TypeRef<'ir>, rhs: TypeRef<'ir>) -> bool {
+    if cfg!(debug_assertions) && !::std::ptr::eq(lhs, rhs) && lhs == rhs {
+      eprintln!(
+        "INTERNAL INVARIANT: comparing types by pointer but they are actually \
+         the same: {:p}: {:?} and {:p}: {:?}.",
+        lhs, lhs, rhs, rhs
+      );
+      return true;
+    }
+    ::std::ptr::eq(lhs, rhs)
+  }
+}

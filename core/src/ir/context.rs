@@ -5,6 +5,7 @@ use super::{
   Type, TypeRef,
   types::{Array, Function},
 };
+/// Although the lifetime speficier here is `'ir`, but it should actually be the same as `'context` in [`crate::session::Session`] who owns it.
 #[derive(Debug)]
 pub struct Context<'ir> {
   void_type: TypeRef<'ir>,

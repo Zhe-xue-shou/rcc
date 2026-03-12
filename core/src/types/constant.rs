@@ -175,7 +175,6 @@ impl<'context> Constant<'context> {
       Self::String(s) => Constant::Integral(Integral::from_bool(s.is_empty())),
       Self::Nullptr(_) => Constant::Integral(Integral::from_bool(false)),
       Self::Address(_) => Constant::Integral(Integral::from_bool(true)),
-      // Self::Character(c) => Constant::Integral(Integral::from_bool(c == '\0')),
     }
   }
 

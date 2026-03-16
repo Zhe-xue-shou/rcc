@@ -40,7 +40,7 @@ impl Dumpable for Expression<'_> {
         header!($name, $raw, "")
       };
       ($name:expr, $raw:ident, $newline:literal) => {
-        dumper.write($name, &palette.node_type);
+        dumper.write($name, &palette.node);
         dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
         $raw.span.dump(dumper, prefix, is_last, palette);
         dumper.write_fmt(
@@ -60,7 +60,7 @@ impl Dumpable for Expression<'_> {
       Empty(_) => dumper.write("<<<Recovery/Invalid>>>\n", &palette.error),
 
       Constant(constant) => {
-        dumper.write("ConstantLiteral", &palette.node_type);
+        dumper.write("ConstantLiteral", &palette.node);
         dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
         constant.span.dump(dumper, prefix, is_last, palette);
         dumper.write_fmt(
@@ -195,7 +195,7 @@ impl Dumpable for TranslationUnit<'_> {
     'source: 'context,
     'context: 'session,
   {
-    dumper.write("TranslationUnit", &palette.node_type);
+    dumper.write("TranslationUnit", &palette.node);
     dumper.write_fmt(format_args!(" {:p}\n", self), &palette.dim);
     let subprefix = dumper.child_prefix(prefix, is_last);
     self.declarations.iter().enumerate().for_each(|(i, decl)| {
@@ -206,7 +206,6 @@ impl Dumpable for TranslationUnit<'_> {
         palette,
       )
     });
-    dumper.reset()
   }
 }
 impl Dumpable for ExternalDeclaration<'_> {
@@ -249,7 +248,7 @@ impl Dumpable for VarDef<'_> {
       } else {
         "VarDef"
       },
-      &palette.node_type,
+      &palette.node,
     );
     dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
     self.span.dump(dumper, prefix, is_last, palette);
@@ -289,7 +288,7 @@ impl Dumpable for Function<'_> {
     'context: 'session,
   {
     dumper.print_indent(prefix, is_last);
-    dumper.write("Function", &palette.node_type);
+    dumper.write("Function", &palette.node);
     dumper.write_fmt(format_args!(" {:p}", self), &palette.dim);
     self.span.dump(dumper, prefix, is_last, palette);
 
@@ -337,7 +336,7 @@ impl Dumpable for Initializer<'_> {
     'context: 'session,
   {
     dumper.print_indent(prefix, is_last);
-    dumper.write("Initializer", &palette.node_type);
+    dumper.write("Initializer", &palette.node);
     match self {
       Self::Scalar(expression) => {
         dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
@@ -384,7 +383,7 @@ impl Dumpable for statement::Empty {
     'context: 'session,
   {
     dumper.print_indent(prefix, is_last);
-    dumper.write("EmptyStmt", &palette.node_type);
+    dumper.write("EmptyStmt", &palette.node);
     dumper.write_fmt(format_args!(" {:p}\n", self), &palette.dim)
   }
 }
@@ -399,7 +398,7 @@ macro_rules! headers {
     $name:expr
   ) => {{
     $dumper.print_indent($prefix, $is_last);
-    $dumper.write($name, &$palette.node_type);
+    $dumper.write($name, &$palette.node);
     $dumper.write_fmt(format_args!(" {:p} ", $self), &$palette.dim);
     $self.span.dump($dumper, $prefix, $is_last, &$palette);
     $dumper.newline()
@@ -628,7 +627,7 @@ impl Dumpable for Goto<'_> {
     'context: 'session,
   {
     dumper.print_indent(prefix, is_last);
-    dumper.write("Goto", &palette.node_type);
+    dumper.write("Goto", &palette.node);
     dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
     self.span.dump(dumper, prefix, is_last, palette);
     dumper.write_fmt(format_args!("'{}'", self.label), &palette.literal);
@@ -649,7 +648,7 @@ impl Dumpable for Label<'_> {
     'context: 'session,
   {
     dumper.print_indent(prefix, is_last);
-    dumper.write("Label", &palette.node_type);
+    dumper.write("Label", &palette.node);
 
     dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
     self.span.dump(dumper, prefix, is_last, palette);

@@ -186,6 +186,22 @@ macro_rules! make_trio_for {
             _ => Err(self),
           }
         }
+
+        #[inline]
+        pub fn [<as_ $variant:lower _mut>](&mut self) -> Option<&mut $inner$($inner_lt)*> {
+          match self {
+            Self::$variant(v) => Some(v),
+            _ => None,
+          }
+        }
+
+        #[inline]
+        pub fn [<as_ $variant:lower _mut_unchecked>](&mut self) -> &mut $inner$($inner_lt)* {
+          match self {
+            Self::$variant(v) => v,
+            _ => unreachable!()
+          }
+        }
       }
     }
   };

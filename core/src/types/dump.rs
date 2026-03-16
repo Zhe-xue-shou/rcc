@@ -17,7 +17,7 @@ impl Dumpable for QualifiedType<'_> {
     'context: 'session,
   {
     dumper.print_indent(prefix, is_last);
-    dumper.write("QualifiedType", &palette.node_type);
+    dumper.write("QualifiedType", &palette.node);
     dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
 
     dumper.write_fmt(
@@ -64,7 +64,7 @@ impl Dumpable for Primitive {
     'context: 'session,
   {
     dumper.print_indent(prefix, is_last);
-    dumper.write("Primitive", &palette.node_type);
+    dumper.write("Primitive", &palette.node);
     dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
     dumper.write_fmt(format_args!("{}\n", self), &palette.meta)
   }
@@ -83,7 +83,7 @@ impl Dumpable for Pointer<'_> {
     'context: 'session,
   {
     dumper.print_indent(prefix, is_last);
-    dumper.write("Pointer", &palette.node_type);
+    dumper.write("Pointer", &palette.node);
     dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
     dumper.write_fmt(format_args!("{}\n", self), &palette.meta);
 
@@ -104,7 +104,7 @@ impl Dumpable for Array<'_> {
     'context: 'session,
   {
     dumper.print_indent(prefix, is_last);
-    dumper.write("Array", &palette.node_type);
+    dumper.write("Array", &palette.node);
     dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
     dumper.write_fmt(
       format_args!("{}, {} elements\n", self.element_type, self.size),
@@ -129,7 +129,7 @@ impl Dumpable for FunctionProto<'_> {
     'context: 'session,
   {
     dumper.print_indent(prefix, is_last);
-    dumper.write("FunctionProto", &palette.node_type);
+    dumper.write("FunctionProto", &palette.node);
     dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
     dumper.write_fmt(format_args!("{}\n", self), &palette.meta)
   }

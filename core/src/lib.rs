@@ -7,8 +7,6 @@
 #![feature(const_convert)]
 // for `impl const` traits
 #![feature(const_trait_impl)]
-// operator `?` overloading
-#![feature(try_trait_v2)]
 // NTTP
 #![feature(adt_const_params)]
 // for using core::intrinsics::breakpoint

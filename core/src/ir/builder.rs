@@ -38,7 +38,7 @@ where
   module: Module,
 }
 macro_rules! ir_type {
-  ($self:ident, $qualified_type:ident) => {
+  ($self:ident, $qualified_type:expr) => {
     $self.session.ir_context.ir_type(&$qualified_type)
   };
 }
@@ -165,7 +165,7 @@ impl<'context> Emitable<'context, Argument>
 impl<'context> ModuleBuilder<'_, 'context, '_> {
   fn push_block(&mut self) {
     self.seal_current_block();
-    self.current_block = Some(BasicBlock::default());
+    self.current_block = Some(Default::default());
   }
 
   fn seal_current_block(&mut self) {
@@ -179,6 +179,10 @@ impl<'context> ModuleBuilder<'_, 'context, '_> {
     }
     // do nothing
   }
+
+  fn is_global(&self) -> bool {
+    self.current_block.is_none()
+  }
 }
 
 impl<'context> ModuleBuilder<'_, 'context, '_> {
@@ -191,22 +195,11 @@ impl<'context> ModuleBuilder<'_, 'context, '_> {
     self.module.globals = Vec::with_capacity(declarations.len() / 4 + 1);
 
     // Pre-register all functions so forward references resolve.
-    for decl in &declarations {
-      if let sd::ExternalDeclaration::Function(f) = decl {
-        let sym = f.symbol.borrow();
-        let name = sym.name;
-        let qualified_type = sym.qualified_type;
-        let is_variadic =
-          qualified_type.as_functionproto_unchecked().is_variadic;
-        drop(sym);
-
-        let value_id = self.emit(
-          module::Function::new_empty(name, is_variadic),
-          qualified_type,
-        );
-        self.func_values.insert(name, value_id);
+    declarations.iter().for_each(|decl| {
+      if let sd::ExternalDeclaration::Function(function) = decl {
+        self.declare_global_function(function);
       }
-    }
+    });
 
     // Process all declarations (fill in function bodies, globals).
     for decl in declarations {
@@ -214,18 +207,68 @@ impl<'context> ModuleBuilder<'_, 'context, '_> {
         sd::ExternalDeclaration::Function(function) => {
           let name = function.symbol.borrow().name;
           let value_id = self.func_values[name];
-          let ir_func = self.function(function, value_id);
-          // replace the empty function with the one with body.
-          self.session.ir_context.get_mut(value_id).data = ir_func.into();
+          self.function(function, value_id);
         },
         sd::ExternalDeclaration::Variable(variable) => {
           let qualified_type = variable.symbol.borrow().qualified_type;
-          let variable = self.vardef(variable);
+          let variable = self.global_vardef(variable);
           self.emit(variable, qualified_type);
         },
       }
     }
     self.module
+  }
+
+  fn declare_global_function(
+    &mut self,
+    function: &sd::Function<'context>,
+  ) -> ValueID {
+    if let Some(&value_id) = self.func_values.get(function.symbol.borrow().name)
+    {
+      debug_assert!(
+        value_id != ValueID::null(),
+        "function should have been pre-registered"
+      );
+      debug_assert!(
+        self.session.ir_context.get(value_id).data.is_function(),
+        "pre-registered value should be a function"
+      );
+      value_id
+    } else {
+      let sym = function.symbol.borrow();
+      let name = sym.name;
+      let qualified_type = sym.qualified_type;
+      let is_variadic = qualified_type.as_functionproto_unchecked().is_variadic;
+      drop(sym);
+
+      let value_id = self.emit(
+        module::Function::new_empty(name, is_variadic),
+        qualified_type,
+      );
+      let params = function
+        .parameters
+        .iter()
+        .enumerate()
+        .map(|(index, p)| {
+          let sym = p.symbol.borrow();
+          let param_value_id =
+            self.emit(Argument::new(value_id, index), sym.qualified_type);
+          self.locals.insert(sym.name, param_value_id);
+          param_value_id
+        })
+        .collect::<Vec<_>>();
+
+      self
+        .session
+        .ir_context
+        .get_mut(value_id)
+        .data
+        .as_function_mut_unchecked()
+        .params = params;
+
+      self.func_values.insert(name, value_id);
+      value_id
+    }
   }
 }
 
@@ -234,7 +277,7 @@ impl<'context> ModuleBuilder<'_, 'context, '_> {
     &mut self,
     function: sd::Function<'context>,
     function_id: ValueID,
-  ) -> module::Function<'context> {
+  ) {
     let sd::Function {
       symbol,
       parameters,
@@ -242,46 +285,26 @@ impl<'context> ModuleBuilder<'_, 'context, '_> {
       ..
     } = function;
 
-    assert!(
-      self.locals.is_empty() && self.current_block.is_none(),
-      "not implemented for local func decl!"
-    );
-
     self.locals.clear();
     self.current_blocks = Vec::new();
-
-    // Bind parameters as Argument values.
-    let params: Vec<ValueID> = parameters
-      .into_iter()
-      .enumerate()
-      .map(|(index, p)| {
-        let sym = p.symbol.borrow();
-        let param_value_id =
-          self.emit(Argument::new(function_id, index), sym.qualified_type);
-        self.locals.insert(sym.name, param_value_id);
-        param_value_id
-      })
-      .collect();
 
     if let Some(body) = body {
       self.compound(body);
       self.seal_current_block();
     }
 
-    self.locals.clear();
+    self
+      .session
+      .ir_context
+      .get_mut(function_id)
+      .data
+      .as_function_mut_unchecked()
+      .blocks = ::std::mem::take(&mut self.current_blocks);
 
-    let sym = symbol.borrow();
-    let is_variadic =
-      sym.qualified_type.as_functionproto_unchecked().is_variadic;
-    module::Function::new(
-      sym.name,
-      params,
-      std::mem::take(&mut self.current_blocks),
-      is_variadic,
-    )
+    self.locals.clear();
   }
 
-  fn vardef(
+  fn global_vardef(
     &self,
     variable: sd::VarDef<'context>,
   ) -> module::Variable<'context> {
@@ -289,6 +312,29 @@ impl<'context> ModuleBuilder<'_, 'context, '_> {
     module::Variable::new(
       sym.name, None, // TODO: handle initializers
     )
+  }
+
+  fn local_decl(
+    &mut self,
+    external_declaration: sd::ExternalDeclaration<'context>,
+  ) {
+    debug_assert!(!self.is_global());
+    match external_declaration {
+      sd::ExternalDeclaration::Function(function) => {
+        debug_assert!(function.is_declaration());
+        self.declare_global_function(&function);
+      },
+      sd::ExternalDeclaration::Variable(var_def) => self.local_vardef(var_def),
+    }
+  }
+
+  fn local_vardef(&mut self, var_def: sd::VarDef<'context>) {
+    use inst::{Alloca, Memory, Store};
+    let sym = var_def.symbol.borrow();
+    let var_type = ir_type!(self, sym.qualified_type);
+    let alloca = Into::<Memory>::into(Alloca::new());
+    let value_id = self.emit(alloca, sym.qualified_type);
+    self.locals.insert(sym.name, value_id);
   }
 }
 
@@ -299,7 +345,8 @@ impl<'context> ModuleBuilder<'_, 'context, '_> {
       Empty(_) => (),
       Return(return_stmt) => self.returnstmt(return_stmt),
       Expression(expression) => self.exprstmt(expression),
-      Declaration(external_declaration) => todo!(),
+      Declaration(external_declaration) =>
+        self.local_decl(external_declaration),
       Compound(compound) => self.compound(compound),
       If(if_stmt) => todo!(),
       While(while_stmt) => todo!(),
@@ -401,15 +448,24 @@ impl<'context> ModuleBuilder<'_, 'context, '_> {
   fn implicit_cast(
     &mut self,
     cast: se::ImplicitCast<'context>,
-    _qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'context>,
   ) -> Option<ValueID> {
     match cast.cast_type {
       // These casts don't change the value representation at IR level.
-      CastType::LValueToRValue
-      | CastType::FunctionToPointerDecay
+      CastType::LValueToRValue => {
+        let value_id = self.expression(*cast.expr);
+        Some(self.emit(
+          Into::<inst::Memory>::into(inst::Load::new(value_id.expect(
+            "The value_id is an address -- Global Function or Variable, \
+             should never fails",
+          ))),
+          qualified_type,
+        ))
+      },
+      CastType::FunctionToPointerDecay
       | CastType::ArrayToPointerDecay
       | CastType::Noop => self.expression(*cast.expr),
-      // int <-> int: transparent for now (same-width or promotion)
+      // todo: int <-> int: transparent for now (same-width or promotion)
       CastType::IntegralCast => self.expression(*cast.expr),
       _ => todo!("implicit cast: {:?}", cast.cast_type),
     }

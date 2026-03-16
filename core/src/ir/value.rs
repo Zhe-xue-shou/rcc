@@ -40,6 +40,7 @@ pub enum Data<'context> {
 
 #[derive(Debug)]
 pub struct Value<'context> {
+  /// AST Type.
   pub qualified_type: QualifiedType<'context>,
   pub ir_type: TypeRef<'context>,
   pub data: Data<'context>,

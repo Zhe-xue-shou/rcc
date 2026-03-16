@@ -109,16 +109,34 @@ pub struct Store {
   pub value: ValueID,
 }
 
+impl Store {
+  pub fn new(addr: ValueID, value: ValueID) -> Self {
+    Self { addr, value }
+  }
+}
+
 /// Load value from address: result = *addr
 #[derive(Debug)]
 pub struct Load {
   pub addr: ValueID,
+}
+
+impl Load {
+  pub fn new(addr: ValueID) -> Self {
+    Self { addr }
+  }
 }
 /// Stack allocation.
 /// result = alloca typeof(type)
 /// Used for local variables that must live in memory (e.g., if their address is taken).
 #[derive(Debug)]
 pub struct Alloca {}
+
+impl Alloca {
+  pub fn new() -> Self {
+    Self {}
+  }
+}
 /// memory opeartion's `addr` must have type [`super::Type::Pointer`]
 /// and the pointee type cannot be [`super::Type::Function`] or [`super::Type::Label`] (opaque pointer, we cannotr know, MUST check at construction),
 /// which means the `Value` behind `ValueID` cannnot be a [`super::module::Function`] or [`super::BasicBlock`].
@@ -158,6 +176,9 @@ pub enum Instruction {
   ICmp(ICmp),
   // etc...
 }
+::rcc_utils::interconvert!(Alloca, Memory);
+::rcc_utils::interconvert!(Load, Memory);
+::rcc_utils::interconvert!(Store, Memory);
 
 ::rcc_utils::interconvert!(Phi, Instruction);
 ::rcc_utils::interconvert!(Terminator, Instruction);
@@ -169,3 +190,5 @@ pub enum Instruction {
 ::rcc_utils::interconvert!(ICmp, Instruction);
 
 ::rcc_utils::make_trio_for!(Call, Instruction);
+::rcc_utils::make_trio_for!(Phi, Instruction);
+::rcc_utils::make_trio_for!(Terminator, Instruction);

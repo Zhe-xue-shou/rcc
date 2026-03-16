@@ -17,30 +17,6 @@ pub enum FoldingResult<T> {
   Success(T),
   Failure(T),
 }
-impl<T> ::std::ops::FromResidual for FoldingResult<T> {
-  #[inline]
-  fn from_residual(residual: <Self as ::std::ops::Try>::Residual) -> Self {
-    residual
-  }
-}
-
-impl<T> ::std::ops::Try for FoldingResult<T> {
-  type Output = T;
-  type Residual = FoldingResult<T>;
-
-  #[inline]
-  fn from_output(output: Self::Output) -> Self {
-    Self::Success(output)
-  }
-
-  #[inline]
-  fn branch(self) -> ::std::ops::ControlFlow<Self::Residual, Self::Output> {
-    match self {
-      Self::Success(v) => ::std::ops::ControlFlow::Continue(v),
-      _ => ::std::ops::ControlFlow::Break(self),
-    }
-  }
-}
 
 impl<T> FoldingResult<T> {
   #[inline]
@@ -229,7 +205,19 @@ impl<'context> Folding<'context> for Unary<'context> {
       "not an unary operator! should not happen!"
     );
 
-    let folded_operand = self.operand.fold(diag)?;
+    let folded_operand = match self.operand.fold(diag) {
+      Success(folded) => folded,
+      Failure(original) =>
+        return Failure(Expression::new(
+          Self {
+            operand: original.into(),
+            ..self
+          }
+          .into(),
+          target_type,
+          value_category,
+        )),
+    };
     use OperatorCategory::*;
 
     contract_assert!(
@@ -511,7 +499,19 @@ impl<'context> Folding<'context> for ImplicitCast<'context> {
     value_category: ValueCategory,
     diag: &impl Diagnosis<'context>,
   ) -> FoldingResult<Expression<'context>> {
-    let folded_expr = self.expr.fold(diag)?;
+    let folded_expr = match self.expr.fold(diag) {
+      Success(folded) => folded,
+      Failure(original) =>
+        return Failure(Expression::new(
+          Self {
+            expr: original.into(),
+            ..self
+          }
+          .into(),
+          target_type,
+          value_category,
+        )),
+    };
     let (raw_expr, expr_type, _value_category) = folded_expr.destructure();
 
     use CastType::*;

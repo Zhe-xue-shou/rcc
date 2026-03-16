@@ -1,6 +1,9 @@
 int putchar(int);
 int main(int, char **) {
+  int putchar(int);
   putchar('H');
   putchar('i');
-  return 0 + 4;
+  int x;
+  putchar(x);
+  return x;
 }

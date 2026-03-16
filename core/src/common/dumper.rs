@@ -45,7 +45,7 @@ impl<W: Write> StickyWriter<W> {
     }
   }
 
-  fn finish(self) -> DumpRes {
+  fn finalize(self) -> DumpRes {
     self.error
   }
 }
@@ -105,23 +105,36 @@ impl<W: Write + WriteColor> WriteColor for FlushOnDropRAII<W> {
     self.inner.reset()
   }
 }
+/// A palette of colors for different parts of the dump output.
+/// The dumper will use the appropriate color from the palette when printing different parts of the output.
+///  This allows for consistent and customizable coloring of the dump output across different dumpable types.
 #[derive(Default, Clone)]
 pub struct Palette {
-  pub node_type: ColorSpec, // "BinaryExpr"
-  pub operator: ColorSpec,  // "+"/"*"
-  pub literal: ColorSpec,   // "42", "'a'"
-  pub meta: ColorSpec,      // types, offsets
-  pub kind: ColorSpec, // enums like `LValueConversion` in `ImplicitCastExpr`
-  pub info: ColorSpec, // span info, pointers
+  /// The color for node headers, e.g., "BinaryExpr", "ArrayType", etc.
+  pub node: ColorSpec,
+  /// The color for various operators, like "+", "*", "->".
+  pub operator: ColorSpec,
+  /// The color for literals and identifiers.
+  pub literal: ColorSpec,
+  /// The color for metadata like types, offsets, etc.
+  pub meta: ColorSpec,
+  /// The color for kind info, usually an internal string describing the specific kind of node, like "LValueConversion" in `ImplicitCastExpr`.
+  pub kind: ColorSpec,
+  /// The color for additional info, e.g., source location, internal memory addresses.
+  pub info: ColorSpec,
+  /// The color for dimmed text, less important info.
   pub dim: ColorSpec,
-  pub skeleton: ColorSpec, // tree
-  pub error: ColorSpec,    // overflow info, error nodes
+  /// The color for the skeleton of the tree, like vertical bars.
+  pub skeleton: ColorSpec,
+  /// For error nodes and error messages.
+  pub error: ColorSpec,
 }
 ::rcc_utils::ensure_is_pod!(Palette);
 impl Palette {
+  /// A default colorful palette. Output of AST dumps of this palette resembles `clang -Xclang -ast-dump`.
   pub fn colored() -> Self {
     Self {
-      node_type: ColorSpec::new()
+      node: ColorSpec::new()
         .set_fg(Some(Color::Cyan))
         .set_bold(true)
         .to_owned(),
@@ -172,7 +185,7 @@ where
   ) -> FakeDumpRes;
 
   fn newline(&mut self) -> FakeDumpRes;
-  fn reset(&mut self) -> FakeDumpRes;
+
   fn print_indent(&mut self, prefix: &str, is_last: bool) -> FakeDumpRes;
 
   /// Build the new prefix for children based on whether the current node is the last child.
@@ -182,7 +195,7 @@ where
   #[must_use]
   fn palette(&self) -> &Palette;
 
-  fn finish(self) -> DumpRes;
+  fn finalize(self) -> DumpRes;
   #[must_use]
   fn session(&self) -> &'session Session<'source, 'context>;
 }
@@ -270,13 +283,10 @@ where
   }
 
   #[inline(always)]
-  fn reset(&mut self) -> FakeDumpRes {
-    let _ = self.stream.reset();
-  }
-
-  #[inline(always)]
-  fn finish(self) -> DumpRes {
-    self.stream.finish()
+  fn finalize(self) -> DumpRes {
+    let mut stream = self.stream;
+    stream.reset()?;
+    stream.finalize()
   }
 
   #[inline(always)]
@@ -323,8 +333,7 @@ impl<
     );
     let palette = dumper.palette().clone();
     dumpable.dump(&mut dumper, PREFIX_LEFT, true, &palette);
-    dumper.reset();
-    dumper.finish()
+    dumper.finalize()
   }
 }
 impl<

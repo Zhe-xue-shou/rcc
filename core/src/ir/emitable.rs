@@ -1,14 +1,17 @@
 use ::slotmap::Key;
 
-use super::{Argument, Constant, Emitter, ValueID, instruction, module};
-use crate::{
-  ir::{Value, instruction::Instruction},
-  types::QualifiedType,
+use super::{
+  Argument, Constant, Emitter, Value, ValueID, instruction as inst,
+  instruction::Instruction, module,
 };
+use crate::types::QualifiedType;
 
 /// Overload helper. I love overloading.
 pub trait Emitable<'a, ValueType> {
-  #[must_use]
+  #[must_use = "Usually the return value_id shall not be ignored; one \
+                exception is for store instruction, which returns void. use \
+                `_` to explicitly` ignore the return value_id if you don't \
+                need it."]
   fn emit(
     &mut self,
     value: ValueType,
@@ -16,12 +19,12 @@ pub trait Emitable<'a, ValueType> {
   ) -> ValueID;
 }
 
-impl<'context> Emitable<'context, instruction::Terminator>
+impl<'context> Emitable<'context, inst::Terminator>
   for Emitter<'_, 'context, '_>
 {
   fn emit(
     &mut self,
-    terminator: instruction::Terminator,
+    terminator: inst::Terminator,
     qualified_type: QualifiedType<'context>,
   ) -> ValueID {
     if let Some(block) = &mut self.current_block {
@@ -29,7 +32,7 @@ impl<'context> Emitable<'context, instruction::Terminator>
       let value_id = self.session.ir_context.insert(Value::new(
         qualified_type,
         ty!(self, qualified_type),
-        Into::<Instruction>::into(terminator).into(),
+        Instruction::from(terminator).into(),
       ));
       block.terminator = value_id;
       value_id
@@ -38,20 +41,17 @@ impl<'context> Emitable<'context, instruction::Terminator>
     }
   }
 }
-impl<'context> Emitable<'context, instruction::Alloca>
-  for Emitter<'_, 'context, '_>
-{
+impl<'context> Emitable<'context, inst::Alloca> for Emitter<'_, 'context, '_> {
   fn emit(
     &mut self,
-    alloca: instruction::Alloca,
+    alloca: inst::Alloca,
     qualified_type: QualifiedType<'context>,
   ) -> ValueID {
     if let Some(block) = &mut self.current_block {
       let value_id = self.session.ir_context.insert(Value::new(
         qualified_type,
         self.session.ir_context.pointer_type(),
-        Into::<Instruction>::into(Into::<instruction::Memory>::into(alloca))
-          .into(),
+        Instruction::from(inst::Memory::from(alloca)).into(),
       ));
 
       block.instructions.push(value_id);

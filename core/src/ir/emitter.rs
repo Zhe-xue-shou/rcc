@@ -6,13 +6,13 @@ use ::std::collections::HashMap;
 
 use super::{
   Argument,
-  emit::Emitable,
+  emitable::Emitable,
   instruction::{self as inst},
   module::{self, BasicBlock, Module},
   value::{Value, ValueID},
 };
 use crate::{
-  common::{Operator, RefEq, StrRef},
+  common::{Operator, RefEq, SourceSpan, StrRef},
   sema::{declaration as sd, expression as se, statement as ss},
   session::Session,
   types::{CastType, QualifiedType},
@@ -204,13 +204,20 @@ impl<'context> Emitter<'_, 'context, '_> {
 
     self.push_block();
     let params = {
-      // let return_type = lookup!(self, function_id)
-      //   .qualified_type
-      //   .as_functionproto_unchecked()
-      //   .return_type;
+      let return_type = lookup!(self, function_id)
+        .qualified_type
+        .as_functionproto_unchecked()
+        .return_type;
 
-      // // return value storage
-      // _ = self.emit(inst::Alloca::new(), return_type);
+      // return value storage
+      let _return_slot_id = self.emit(inst::Alloca::new(), return_type);
+      // _ = self.emit(
+      //   inst::Memory::Store(inst::Store::new(
+      //     _return_slot_id,
+      //     ???
+      //   )),
+      //   return_type,
+      // );
 
       // insert params into the local scope and allocate spaces
       parameters
@@ -359,7 +366,6 @@ impl<'context> Emitter<'_, 'context, '_> {
       Variable(variable) => self.variable(variable, qualified_type),
       ImplicitCast(implicit_cast) =>
         self.implicit_cast(implicit_cast, qualified_type),
-      Assignment(assignment) => self.assignment(assignment, qualified_type),
     }
   }
 
@@ -380,10 +386,20 @@ impl<'context> Emitter<'_, 'context, '_> {
       kind,
       operand,
       operator,
-      ..
+      span,
     } = unary;
-    debug_assert!(kind != se::UnaryKind::Postfix, "unimplemented");
-    todo!()
+    let operand = self.expression(*operand);
+    match operator {
+      Operator::Ampersand => self.addressof(operator, operand, span),
+      Operator::Star => self.indirect(operator, operand, span),
+      Operator::Not => self.logical_not(operator, operand, span),
+      Operator::Tilde => self.tilde(operator, operand, span),
+      Operator::Plus | Operator::Minus =>
+        self.unary_arithmetic(operator, operand, span),
+      Operator::PlusPlus | Operator::MinusMinus =>
+        self.ppmm(operator, operand, kind, span),
+      _ => unreachable!("operator is not unary: {:#?}", operator),
+    }
   }
 
   fn binary(
@@ -475,7 +491,7 @@ impl<'context> Emitter<'_, 'context, '_> {
       CastType::LValueToRValue => {
         let value_id = self.expression(*expr);
         self.emit(
-          Into::<inst::Memory>::into(inst::Load::new(value_id)),
+          inst::Memory::from(inst::Load::new(value_id)),
           qualified_type,
         )
       },
@@ -488,31 +504,31 @@ impl<'context> Emitter<'_, 'context, '_> {
     }
   }
 
-  fn assignment(
-    &mut self,
-    assignment: se::Assignment<'context>,
-    qualified_type: QualifiedType<'context>,
-  ) -> ValueID {
-    let se::Assignment {
-      left,
-      operator,
-      right,
-      ..
-    } = assignment;
-    let lhs_id = self.expression(*left);
-    let rhs_id = self.expression(*right);
-    assert!(
-      operator == Operator::Assign,
-      "unimplemented for other assignment operator!"
-    );
+  // fn assignment(
+  //   &mut self,
+  //   assignment: se::Expression<'context>,
+  //   qualified_type: QualifiedType<'context>,
+  // ) -> ValueID {
+  //   let se::Expression {
+  //     left,
+  //     operator,
+  //     right,
+  //     ..
+  //   } = assignment;
+  //   let lhs_id = self.expression(*left);
+  //   let rhs_id = self.expression(*right);
+  //   assert!(
+  //     operator == Operator::Assign,
+  //     "unimplemented for other assignment operator!"
+  //   );
 
-    assert!(lookup!(self, lhs_id).ir_type.is_pointer());
+  //   assert!(lookup!(self, lhs_id).ir_type.is_pointer());
 
-    self.emit(
-      inst::Memory::Store(inst::Store::new(lhs_id, rhs_id)),
-      qualified_type,
-    )
-  }
+  //   self.emit(
+  //     inst::Memory::Store(inst::Store::new(lhs_id, rhs_id)),
+  //     qualified_type,
+  //   )
+  // }
 
   fn call(
     &mut self,
@@ -538,5 +554,62 @@ impl<'context> Emitter<'_, 'context, '_> {
   #[inline]
   fn paren(&mut self, paren: se::Paren<'context>) -> ValueID {
     self.expression(*paren.expr)
+  }
+}
+impl<'context> Emitter<'_, 'context, '_> {
+  fn addressof(
+    &self,
+    operator: Operator,
+    operand: ValueID,
+    span: SourceSpan,
+  ) -> ValueID {
+    assert_eq!(operator, Operator::Ampersand);
+    todo!()
+  }
+
+  fn indirect(
+    &self,
+    operator: Operator,
+    operand: ValueID,
+    span: SourceSpan,
+  ) -> ValueID {
+    todo!()
+  }
+
+  fn logical_not(
+    &self,
+    operator: Operator,
+    operand: ValueID,
+    span: SourceSpan,
+  ) -> ValueID {
+    todo!()
+  }
+
+  fn tilde(
+    &self,
+    operator: Operator,
+    operand: ValueID,
+    span: SourceSpan,
+  ) -> ValueID {
+    todo!()
+  }
+
+  fn unary_arithmetic(
+    &self,
+    operator: Operator,
+    operand: ValueID,
+    span: SourceSpan,
+  ) -> ValueID {
+    todo!()
+  }
+
+  fn ppmm(
+    &self,
+    operator: Operator,
+    operand: ValueID,
+    kind: crate::blueprints::RawUnaryKind,
+    span: SourceSpan,
+  ) -> ValueID {
+    todo!()
   }
 }

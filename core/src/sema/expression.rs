@@ -1,10 +1,10 @@
 use crate::{
   blueprints::type_alias_expr,
-  common::{Operator, OperatorCategory, SourceSpan, Storage, SymbolRef},
+  common::{SourceSpan, Storage, SymbolRef},
   types::{CastType, QualifiedType, Qualifiers, Type, TypeRef},
 };
 
-type_alias_expr! {Expression<'context>, QualifiedType<'context>, Variable<'context> ImplicitCast<'context> Assignment<'context>}
+type_alias_expr! {Expression<'context>, QualifiedType<'context>, Variable<'context> ImplicitCast<'context>}
 #[derive(Debug, Clone, Copy, ::strum_macros::Display, PartialEq)]
 pub enum ValueCategory {
   LValue,
@@ -157,44 +157,6 @@ impl<'context> ImplicitCast<'context> {
     }
   }
 }
-/// assignment-expression:
-///    - conditional-expression
-///    - unary-expression assignment-operator assignment-expression
-#[derive(Debug)]
-pub struct Assignment<'context> {
-  pub operator: Operator,
-  pub left: Box<Expression<'context>>,
-  pub right: Box<Expression<'context>>,
-  pub span: SourceSpan,
-}
-impl<'context> Assignment<'context> {
-  pub fn from_operator(
-    operator: Operator,
-    left: Expression<'context>,
-    right: Expression<'context>,
-    span: SourceSpan,
-  ) -> Option<Self> {
-    match operator.category() {
-      OperatorCategory::Assignment => Some(Self {
-        operator,
-        left: left.into(),
-        right: right.into(),
-        span,
-      }),
-      _ => None,
-    }
-  }
-
-  pub fn new(
-    operator: Operator,
-    left: Expression<'context>,
-    right: Expression<'context>,
-    span: SourceSpan,
-  ) -> Self {
-    Self::from_operator(operator, left, right, span).unwrap()
-  }
-}
-
 impl<'context> Expression<'context> {
   /// 6.6.8: An integer constant expression shall have integer type and shall only have operands that are
   ///           integer constants, named and compound literal constants of integer type, character constants,
@@ -219,8 +181,7 @@ impl<'context> Expression<'context> {
       | RawExpr::CStyleCast(_)
       | RawExpr::ArraySubscript(_)
       | RawExpr::CompoundLiteral(_)
-      | RawExpr::ImplicitCast(_)
-      | RawExpr::Assignment(_) => false,
+      | RawExpr::ImplicitCast(_) => false,
     }
   }
 
@@ -278,13 +239,7 @@ mod fmt {
 
   use ::std::fmt::Display;
 
-  use super::{Assignment, Expression, ImplicitCast, Variable};
-
-  impl<'context> Display for Assignment<'context> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      write!(f, "({} {} {})", self.left, self.right, self.operator)
-    }
-  }
+  use super::{Expression, ImplicitCast, Variable};
 
   impl<'context> Display for Expression<'context> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

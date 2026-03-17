@@ -130,16 +130,6 @@ impl<'context> Dumpable<'context> for Expression<'_> {
         cast.expr.dump(dumper, &subprefix, true, palette)
       },
 
-      Assignment(assign) => {
-        header!("Assignment", assign);
-        dumper.write_fmt(
-          format_args!(" '{}'\n", assign.operator),
-          &palette.operator,
-        );
-        assign.left.dump(dumper, &subprefix, false, palette);
-        assign.right.dump(dumper, &subprefix, true, palette)
-      },
-
       MemberAccess(ma) => {
         header!("MemberAccess", ma);
         dumper.write_fmt(format_args!(" .{}\n", ma.member), &palette.literal);

@@ -59,6 +59,8 @@ pub struct Struct<'ir> {
 }
 use ::rcc_utils::{interconvert, make_trio_for, make_trio_for_unit_tuple};
 
+use crate::common::RefEq;
+
 interconvert!(Array, Type, 'ir);
 interconvert!(Function, Type, 'ir);
 interconvert!(Struct, Type, 'ir);
@@ -73,17 +75,24 @@ make_trio_for!(Array, Type, 'ir);
 make_trio_for!(Function, Type, 'ir);
 make_trio_for!(Struct, Type, 'ir);
 
-impl<'ir> Type<'ir> {
-  #[inline]
-  pub fn ref_eq(lhs: TypeRef<'ir>, rhs: TypeRef<'ir>) -> bool {
-    if cfg!(debug_assertions) && !::std::ptr::eq(lhs, rhs) && lhs == rhs {
-      eprintln!(
-        "INTERNAL INVARIANT: comparing types by pointer but they are actually \
-         the same: {:p}: {:?} and {:p}: {:?}.",
-        lhs, lhs, rhs, rhs
-      );
-      return true;
+impl RefEq for TypeRef<'_> {
+  fn ref_eq(lhs: Self, rhs: Self) -> bool
+  where
+    Self: PartialEq + Sized,
+  {
+    let ref_eq = ::std::ptr::eq(lhs, rhs);
+    if const { cfg!(debug_assertions) } {
+      let actual_eq = lhs == rhs;
+      if ref_eq != actual_eq {
+        eprintln!(
+          "INTERNAL ERROR: comparing by pointer address result did not match 
+          the actual result: {:p}: {:?} and {:p}: {:?}
+        ",
+          lhs, lhs, rhs, rhs
+        );
+      }
+      return actual_eq;
     }
-    ::std::ptr::eq(lhs, rhs)
+    ref_eq
   }
 }

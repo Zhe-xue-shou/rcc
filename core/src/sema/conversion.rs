@@ -66,10 +66,15 @@ impl<'context> Expression<'context> {
   ///
   /// unary.
   ///
-  /// Returned expression is always rvalue of type `int` -- well, cannot be `bool` since `sizeof` expression will be wrong!
+  /// # Important note
+  /// boolean conversion did not occur of the condition check in `if`, `while`, `for` and `do-while` statements,
+  /// and `!`, `&&` and `||` operators;
+  /// instead, at AST level, the condition is required to be contextually convertible to bool,
+  /// and the actual boolean conversion is performed at IR level.
+  ///
   #[must_use]
   #[inline]
-  pub fn conditional_conversion(
+  pub fn boolean_conversion(
     self,
     context: &'context Context,
   ) -> Result<Self, Diag<'context>> {
@@ -80,7 +85,47 @@ impl<'context> Expression<'context> {
       ),
       "perform decay first"
     );
-    Self::conditional_conversion_unchecked(self, context)
+    Self::boolean_conversion_unchecked(self, context)
+  }
+
+  #[must_use]
+  pub fn contextually_convertible_to_bool(
+    self,
+  ) -> Result<Self, Diag<'context>> {
+    match self.unqualified_type() {
+      Type::Pointer(_) => Ok(self),
+      Type::Primitive(p) if p.is_arithmetic() => Ok(self),
+      Type::Primitive(Primitive::Void) => Err(
+        InvalidConversion(
+          "cannot convert void to int in conditional conversion".to_string(),
+        )
+        .into_with(Severity::Error)
+        .into_with(self.span()),
+      ),
+      Type::Primitive(_) => Err(
+        InvalidConversion(format!(
+          "cannot convert '{}' to int in conditional conversion",
+          self.unqualified_type()
+        ))
+        .into_with(Severity::Error)
+        .into_with(self.span()),
+      ),
+      Type::Array(array) => panic!(
+        "should be decayed before conditional conversion: {:#?}",
+        array
+      ),
+
+      Type::FunctionProto(function_proto) => panic!(
+        "should be decayed before conditional conversion: {:#?}",
+        function_proto
+      ),
+      Type::Enum(e) => {
+        todo!("conditional conversion for enum types {:#?}", e)
+      },
+      Type::Record(_) | Type::Union(_) => {
+        todo!("conditional conversion for complex types")
+      },
+    }
   }
 
   /// If an expression of any other type is evaluated as a void expression, its value or designator is discarded.
@@ -360,7 +405,7 @@ impl<'context> Expression<'context> {
   }
 
   #[must_use]
-  fn conditional_conversion_unchecked(
+  fn boolean_conversion_unchecked(
     self,
     context: &'context Context,
   ) -> Result<Self, Diag<'context>> {
@@ -370,7 +415,7 @@ impl<'context> Expression<'context> {
       Type::Primitive(Primitive::Bool) =>
         Ok(Self::cast_if_needed(self, &context.bool_type().into())),
       Type::Primitive(p) if p.is_integer() =>
-        Ok(self.cast_if_needed(&context.bool_type().into())),
+        Ok(Self::cast_if_needed(self, &context.bool_type().into())),
       Type::Primitive(p) if p.is_floating_point() => Ok(Self::new_rvalue(
         ImplicitCast::new(self.into(), CastType::FloatingToIntegral, span)
           .into(),

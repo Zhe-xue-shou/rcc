@@ -66,17 +66,27 @@ impl<'context> Type<'context> {
   }
 }
 impl RefEq for TypeRef<'_> {
-  #[inline]
-  fn ref_eq(lhs: Self, rhs: Self) -> bool {
-    if cfg!(debug_assertions) && !::std::ptr::eq(lhs, rhs) && lhs == rhs {
-      eprintln!(
-        "INTERNAL INVARIANT: comparing types by pointer but they are actually \
-         the same: {:p}: {:?} and {:p}: {:?}.",
-        lhs, lhs, rhs, rhs
-      );
-      return true;
+  fn ref_eq(lhs: Self, rhs: Self) -> bool
+  where
+    Self: PartialEq + Sized,
+  {
+    {
+      let ref_eq = ::std::ptr::eq(lhs, rhs);
+      if const { cfg!(debug_assertions) } {
+        let actual_eq = lhs == rhs;
+        if ref_eq != actual_eq {
+          eprintln!(
+            "INTERNAL ERROR: comparing by pointer address result did not \
+             match 
+          the actual result: {:p}: {:?} and {:p}: {:?}
+        ",
+            lhs, lhs, rhs, rhs
+          );
+        }
+        return actual_eq;
+      }
+      ref_eq
     }
-    ::std::ptr::eq(lhs, rhs)
   }
 }
 impl Integral {

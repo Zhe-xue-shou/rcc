@@ -10,15 +10,16 @@ pub enum CastType {
 
   IntegralCast, // int -> long, unsigned -> int - bit widening/narrowing
   IntegralToFloating, // int -> float
-  IntegralToBoolean, // int -> bool (val != 0)
+  IntegralToBoolean, // int -> bool
 
   FloatingCast,       // float -> double
   FloatingToIntegral, // float -> int
-  FloatingToBoolean,  // float -> bool (val != 0.0)
+  /// this is *not* correct for conditional checks like `if (x)` where `x` is a float, but for explicit casts like `(bool)x`.
+  FloatingToBoolean, // float -> bool
 
   IntegralToPointer, // int -> ptr (addr 0 is null)
   PointerToIntegral,
-  PointerToBoolean, // ptr -> bool (ptr != 0)
+  PointerToBoolean, // ptr -> bool
   BitCast, // pesudo cast; no actual conversion, just reinterpret the bits
 
   // ^^^ those exist in Clang's frontend too

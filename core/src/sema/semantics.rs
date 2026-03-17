@@ -1429,10 +1429,10 @@ impl<'context> Sema<'_, 'context, '_> {
     assert_eq!(operator, Operator::Not);
     let operand = operand.lvalue_conversion().decay(self.context());
 
-    let converted_operand = operand.conditional_conversion(self.context())?;
+    let converted_operand = operand.contextually_convertible_to_bool()?;
     Ok(se::Expression::new_rvalue(
       se::Unary::prefix(operator, converted_operand, span).into(),
-      self.context().bool_type().into(),
+      self.context().converted_bool().into(),
     ))
   }
 
@@ -1535,7 +1535,7 @@ impl<'context> Sema<'_, 'context, '_> {
       .assignment_conversion(left.qualified_type())?;
     let expr_type = *left.qualified_type();
     Ok(se::Expression::new_rvalue(
-      se::Assignment::new(operator, left, assigned_expr, span).into(),
+      se::Binary::new(operator, left, assigned_expr, span).into(),
       expr_type,
     ))
   }
@@ -1555,11 +1555,11 @@ impl<'context> Sema<'_, 'context, '_> {
     let left = left.lvalue_conversion().decay(self.context());
     let right = right.lvalue_conversion().decay(self.context());
 
-    let lhs = left.conditional_conversion(self.context())?;
-    let rhs = right.conditional_conversion(self.context())?;
+    let lhs = left.contextually_convertible_to_bool()?;
+    let rhs = right.contextually_convertible_to_bool()?;
     Ok(se::Expression::new_rvalue(
       se::Binary::new(operator, lhs, rhs, span).into(),
-      self.context().bool_type().into(), // todo: this should be an `int` according to standard(?)
+      self.context().converted_bool().into(), // todo: this should be an `int` according to standard(?)
     ))
   }
 
@@ -1589,7 +1589,7 @@ impl<'context> Sema<'_, 'context, '_> {
 
       return Ok(se::Expression::new_rvalue(
         se::Binary::new(operator, lhs, rhs, span).into(),
-        self.context().bool_type().into(), // ditto
+        self.context().converted_bool().into(), // ditto
       ));
     }
     todo!()
@@ -1716,7 +1716,7 @@ impl<'context> Sema<'_, 'context, '_> {
         ) =>
         Ok(se::Expression::new_rvalue(
           se::Binary::new(operator, left, right, span).into(),
-          self.context().bool_type().into(),
+          self.context().converted_bool().into(),
         )),
       _ => Err(
         InvalidOprand(
@@ -1965,10 +1965,10 @@ impl<'context> Sema<'_, 'context, '_> {
     } = if_stmt;
     let analyzed_condition = self
       .expression(condition)
-      .and_then(|e| e.conditional_conversion(self.context()))
+      .and_then(|e| e.contextually_convertible_to_bool())
       .handle_with(
         self,
-        se::Expression::new_error_node(self.context().bool_type().into()),
+        se::Expression::new_error_node(self.context().converted_bool().into()),
       );
     let analyzed_then_branch =
       self.statement(*then_branch).handle_or_default(self).into();
@@ -1995,10 +1995,10 @@ impl<'context> Sema<'_, 'context, '_> {
     } = while_stmt;
     let analyzed_condition = self
       .expression(condition)
-      .and_then(|e| e.conditional_conversion(self.context()))
+      .and_then(|e| e.contextually_convertible_to_bool())
       .handle_with(
         self,
-        se::Expression::new_error_node(self.context().bool_type().into()),
+        se::Expression::new_error_node(self.context().converted_bool().into()),
       );
     let analyzed_body = self.statement(*body).handle_or_default(self).into();
     Ok(ss::While::new(
@@ -2022,10 +2022,10 @@ impl<'context> Sema<'_, 'context, '_> {
     let analyzed_body = self.statement(*body).handle_or_default(self).into();
     let analyzed_condition = self
       .expression(condition)
-      .and_then(|e| e.conditional_conversion(self.context()))
+      .and_then(|e| e.contextually_convertible_to_bool())
       .handle_with(
         self,
-        se::Expression::new_error_node(self.context().bool_type().into()),
+        se::Expression::new_error_node(self.context().converted_bool().into()),
       );
     Ok(ss::DoWhile::new(
       analyzed_body,
@@ -2052,7 +2052,7 @@ impl<'context> Sema<'_, 'context, '_> {
     let analyzed_condition = condition.map(|cond| {
       self.expression(cond).handle_with(
         self,
-        se::Expression::new_error_node(self.context().bool_type().into()),
+        se::Expression::new_error_node(self.context().converted_bool().into()),
       )
     });
     let analyzed_increment =

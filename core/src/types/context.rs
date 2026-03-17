@@ -29,14 +29,17 @@ pub struct Context<'context> {
   double_type: TypeRef<'context>,
   voidptr_type: TypeRef<'context>,
 
+  converted_bool: TypeRef<'context>, // shall be `int` according to C standard.
+
   unnamed_str: StrRef<'context>,
 }
 impl<'context> Context<'context> {
   pub fn new(storage: StorageRef<'context>) -> Self {
     let void_type = storage.ast_arena.alloc(Primitive::Void.into());
+    let int_type = storage.ast_arena.alloc(Primitive::Int.into());
     let this = Self {
       storage,
-      int_type: storage.ast_arena.alloc(Primitive::Int.into()),
+      int_type,
       float_type: storage.ast_arena.alloc(Primitive::Float.into()),
       short_type: storage.ast_arena.alloc(Primitive::Short.into()),
       ptrdiff_type: storage.ast_arena.alloc(Primitive::LongLong.into()),
@@ -56,6 +59,9 @@ impl<'context> Context<'context> {
       voidptr_type: storage
         .ast_arena
         .alloc(Pointer::new(QualifiedType::new_unqualified(void_type)).into()),
+
+      converted_bool: int_type,
+
       unnamed_str: storage.ast_arena.alloc_str("<unnamed>"),
     };
     {
@@ -77,6 +83,8 @@ impl<'context> Context<'context> {
       refmut.insert(this.double_type);
       refmut.insert(this.bool_type);
       refmut.insert(this.voidptr_type);
+
+      refmut.insert(this.converted_bool); // not needed actually, anyways
     }
     this
       .storage
@@ -105,6 +113,7 @@ impl<'context> Context<'context> {
     }
   }
 
+  #[must_use]
   pub fn intern_str(&self, value: &str) -> StrRef<'context> {
     if let Some(&interned) = self.storage.str_interner.borrow().get(value) {
       interned
@@ -116,19 +125,23 @@ impl<'context> Context<'context> {
     }
   }
 
+  #[must_use]
   pub fn intern<T: Into<Type<'context>>>(&self, value: T) -> TypeRef<'context> {
     self.do_intern(value.into())
   }
 
+  #[must_use]
   pub fn alloc_vec<T>(&self, capacity: usize) -> ArenaVec<'context, T> {
     ArenaVec::with_capacity_in(capacity, self.storage.ast_arena)
   }
 
-  // Helper to allocate slices
+  /// Helper to allocate slices
+  #[must_use]
   pub fn alloc_slice<T: Copy>(&self, values: &[T]) -> &'context [T] {
     self.storage.ast_arena.alloc_slice_copy(values)
   }
 
+  #[must_use]
   pub fn make_function_proto(
     &self,
     return_type: QualifiedType<'context>,
@@ -139,6 +152,7 @@ impl<'context> Context<'context> {
     self.intern(FunctionProto::new(return_type, params, is_variadic))
   }
 
+  #[must_use]
   pub fn make_pointer(
     &self,
     pointee: QualifiedType<'context>,
@@ -146,6 +160,7 @@ impl<'context> Context<'context> {
     self.intern(Pointer::new(pointee))
   }
 
+  #[must_use]
   pub fn make_array(
     &self,
     element_type: QualifiedType<'context>,
@@ -154,76 +169,100 @@ impl<'context> Context<'context> {
     self.intern(Array::new(element_type, size))
   }
 
+  #[must_use]
   pub fn int_type(&self) -> TypeRef<'context> {
     self.int_type
   }
 
+  #[must_use]
   pub fn float_type(&self) -> TypeRef<'context> {
     self.float_type
   }
 
+  #[must_use]
   pub fn ptrdiff_type(&self) -> TypeRef<'context> {
     self.ptrdiff_type
   }
 
+  #[must_use]
   pub fn uintptr_type(&self) -> TypeRef<'context> {
     self.uintptr_type
   }
 
+  #[must_use]
   pub fn void_type(&self) -> TypeRef<'context> {
     self.void_type
   }
 
+  #[must_use]
   pub fn char_type(&self) -> TypeRef<'context> {
     self.char_type
   }
 
+  #[must_use]
   pub fn nullptr_type(&self) -> TypeRef<'context> {
     self.nullptr_type
   }
 
+  #[must_use]
   pub fn double_type(&self) -> TypeRef<'context> {
     self.double_type
   }
 
+  /// Mostly this is not the correct choice for a converted bool: use [`Self::converted_bool`] instead.
+  #[must_use]
   pub fn bool_type(&self) -> TypeRef<'context> {
     self.bool_type
   }
 
+  #[must_use]
   pub fn voidptr_type(&self) -> TypeRef<'context> {
     self.voidptr_type
   }
 
+  #[must_use]
   pub fn long_long_type(&self) -> TypeRef<'context> {
     self.long_long_type
   }
 
+  #[must_use]
   pub fn short_type(&self) -> TypeRef<'context> {
     self.short_type
   }
 
+  #[must_use]
   pub fn uchar_type(&self) -> TypeRef<'context> {
     self.uchar_type
   }
 
+  #[must_use]
   pub fn ushort_type(&self) -> TypeRef<'context> {
     self.ushort_type
   }
 
+  #[must_use]
   pub fn uint_type(&self) -> TypeRef<'context> {
     self.uint_type
   }
 
+  #[must_use]
   pub fn long_type(&self) -> TypeRef<'context> {
     self.long_type
   }
 
+  #[must_use]
   pub fn ulong_type(&self) -> TypeRef<'context> {
     self.ulong_type
   }
 
+  #[must_use]
   pub fn ulong_long_type(&self) -> TypeRef<'context> {
     self.ulong_long_type
+  }
+
+  #[must_use]
+  pub fn converted_bool(&self) -> TypeRef<'context> {
+    self.converted_bool
   }
 }
 use crate::diagnosis::{DiagMeta, Severity};

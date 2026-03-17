@@ -1,10 +1,9 @@
 use ::rcc_utils::{IntoWith, contract_assert, contract_violation};
 
 use super::expression::{
-  ArraySubscript, Assignment, Binary, CStyleCast, Call, CompoundLiteral,
-  Constant, ConstantLiteral as CL, Empty, Expression, ImplicitCast,
-  MemberAccess, Paren, RawExpr, SizeOf, SizeOfKind, Ternary, Unary,
-  ValueCategory, Variable,
+  ArraySubscript, Binary, CStyleCast, Call, CompoundLiteral, Constant,
+  ConstantLiteral as CL, Empty, Expression, ImplicitCast, MemberAccess, Paren,
+  RawExpr, SizeOf, SizeOfKind, Ternary, Unary, ValueCategory, Variable,
 };
 use crate::{
   common::{Floating, Integral, Operator, OperatorCategory, RefEq, SourceSpan},
@@ -96,7 +95,7 @@ impl<'context> Folding<'context> for RawExpr<'context> {
     ::rcc_utils::static_dispatch!(
       self,
       |variant| variant.fold(target_type, value_category, diag) =>
-      Empty Constant Unary Binary Call Paren MemberAccess Ternary SizeOf CStyleCast ArraySubscript CompoundLiteral Variable ImplicitCast Assignment
+      Empty Constant Unary Binary Call Paren MemberAccess Ternary SizeOf CStyleCast ArraySubscript CompoundLiteral Variable ImplicitCast
     )
   }
 }
@@ -169,18 +168,6 @@ impl<'context> Folding<'context> for CompoundLiteral {
   }
 }
 
-impl<'context> Folding<'context> for Assignment<'context> {
-  /// assignment expr is not considered constant expr in C, but in C++ it is.
-  #[inline(always)]
-  fn fold(
-    self,
-    target_type: QualifiedType<'context>,
-    value_category: ValueCategory,
-    _diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
-    Failure(Expression::new(self.into(), target_type, value_category))
-  }
-}
 impl<'context> Folding<'context> for Constant<'context> {
   #[inline(always)]
   fn fold(
@@ -333,11 +320,12 @@ impl<'context> Folding<'context> for Binary<'context> {
     assert!(
       lhs_value_category == ValueCategory::RValue
         && rhs_value_category == ValueCategory::RValue,
-      "type checker ensures both sides are rvalues!"
+      "type checker ensures both sides are rvalues! 
+      Assignment is handled at start of this function."
     );
 
-    let lhs = lhs_expr.into_constant().expect("shall be constant").value;
-    let rhs = rhs_expr.into_constant().expect("shall be constant").value;
+    let lhs = lhs_expr.into_constant_unchecked().value;
+    let rhs = rhs_expr.into_constant_unchecked().value;
 
     use OperatorCategory::*;
     match (lhs, rhs) {

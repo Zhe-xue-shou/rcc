@@ -1,8 +1,8 @@
 #[macro_use]
-mod builder;
+mod emitter;
 mod context;
 mod dump;
-mod emit;
+mod emitable;
 mod fmt;
 mod instruction;
 mod module;
@@ -11,9 +11,9 @@ mod value;
 
 type Constant<'context> = crate::sema::expression::Constant<'context>;
 pub use self::{
-  builder::Emitter,
   context::Context,
   dump::IRDumper,
+  emitter::Emitter,
   module::{
     Argument, BasicBlock, Function as IRFunction,
     Initializer as IRStaticInitializer, Module, Variable as IRGlobalValue,

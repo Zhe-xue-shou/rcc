@@ -65,8 +65,15 @@ pub struct Binary {
   pub lhs: ValueID,
   pub rhs: ValueID,
 }
+
+impl Binary {
+  pub fn new(operator: BinaryOp, lhs: ValueID, rhs: ValueID) -> Self {
+    Self { operator, lhs, rhs }
+  }
+}
 // arithematic ops only consider integer for now
 #[derive(Debug, Clone, Copy, ::strum_macros::Display)]
+#[strum(serialize_all = "lowercase")]
 pub enum BinaryOp {
   Add,
   Sub,
@@ -75,7 +82,7 @@ pub enum BinaryOp {
   Mod,
   BitwiseAnd,
   BitwiseOr,
-  BitwiseXor,
+  Xor,
   LeftShift,
   RightShift,
 }
@@ -86,7 +93,18 @@ pub struct ICmp {
   pub lhs: ValueID,
   pub rhs: ValueID,
 }
+
+impl ICmp {
+  pub fn new(predicate: ICmpPredicate, lhs: ValueID, rhs: ValueID) -> Self {
+    Self {
+      predicate,
+      lhs,
+      rhs,
+    }
+  }
+}
 #[derive(Debug, Clone, Copy, ::strum_macros::Display)]
+#[strum(serialize_all = "lowercase")]
 pub enum ICmpPredicate {
   Eq,
   Ne,
@@ -145,10 +163,50 @@ pub enum Memory {
   Load(Load),
   Alloca(Alloca),
 }
+/// the target width must be smaller than the operand.
+#[derive(Debug)]
+pub struct Trunc {
+  /// operand type must be [`super::Type::Integer`].
+  pub operand: ValueID,
+}
+
+impl Trunc {
+  pub fn new(operand: ValueID) -> Self {
+    Self { operand }
+  }
+}
+/// the target width must be larger than the operand.
+// #[repr(align(0x10))]
+#[derive(Debug)]
+pub struct Zext {
+  /// operand type must be [`super::Type::Integer`].
+  pub operand: ValueID,
+}
+
+impl Zext {
+  pub fn new(operand: ValueID) -> Self {
+    Self { operand }
+  }
+}
+/// the target width must be larger than the operand.
+#[derive(Debug)]
+pub struct Sext {
+  /// operand type must be [`super::Type::Integer`].
+  pub operand: ValueID,
+}
+
+impl Sext {
+  pub fn new(operand: ValueID) -> Self {
+    Self { operand }
+  }
+}
 
 #[derive(Debug)]
 pub enum Cast {
-  // add later.
+  Trunc(Trunc),
+  Zext(Zext),
+  Sext(Sext),
+  // ...
 }
 
 /// Function call: result = call func(args)
@@ -181,19 +239,25 @@ pub enum Instruction {
   ICmp(ICmp),
   // etc...
 }
-::rcc_utils::interconvert!(Alloca, Memory);
-::rcc_utils::interconvert!(Load, Memory);
-::rcc_utils::interconvert!(Store, Memory);
+use ::rcc_utils::{interconvert, make_trio_for};
 
-::rcc_utils::interconvert!(Phi, Instruction);
-::rcc_utils::interconvert!(Terminator, Instruction);
-::rcc_utils::interconvert!(Unary, Instruction);
-::rcc_utils::interconvert!(Binary, Instruction);
-::rcc_utils::interconvert!(Memory, Instruction);
-::rcc_utils::interconvert!(Cast, Instruction);
-::rcc_utils::interconvert!(Call, Instruction);
-::rcc_utils::interconvert!(ICmp, Instruction);
+interconvert!(Trunc, Cast);
+interconvert!(Zext, Cast);
+interconvert!(Sext, Cast);
 
-::rcc_utils::make_trio_for!(Call, Instruction);
-::rcc_utils::make_trio_for!(Phi, Instruction);
-::rcc_utils::make_trio_for!(Terminator, Instruction);
+interconvert!(Alloca, Memory);
+interconvert!(Load, Memory);
+interconvert!(Store, Memory);
+
+interconvert!(Phi, Instruction);
+interconvert!(Terminator, Instruction);
+interconvert!(Unary, Instruction);
+interconvert!(Binary, Instruction);
+interconvert!(Memory, Instruction);
+interconvert!(Cast, Instruction);
+interconvert!(Call, Instruction);
+interconvert!(ICmp, Instruction);
+
+make_trio_for!(Call, Instruction);
+make_trio_for!(Phi, Instruction);
+make_trio_for!(Terminator, Instruction);

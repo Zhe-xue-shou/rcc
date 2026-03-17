@@ -71,7 +71,14 @@ impl Integral {
   pub const WIDTH_LONG_LONG: u8 = 64;
   pub const WIDTH_SHORT: u8 = 16;
   pub const WIDTH_UINTPTR: u8 = 64;
-
+}
+impl Integral {
+  pub const BIT_FALSE: Self = Self::new(0, 1, Unsigned);
+  pub const BIT_TRUE: Self = Self::new(1, 1, Unsigned);
+  pub const FALSE: Self = Self::new(0, Self::WIDTH_BOOL, Unsigned);
+  pub const TRUE: Self = Self::new(1, Self::WIDTH_BOOL, Unsigned);
+}
+impl Integral {
   /// Create a new integral value, automatically masking to the specified width.
   #[inline]
   pub const fn new<T: [const] ToU128 + BuiltinIntegerOrBoolean>(
@@ -105,7 +112,7 @@ impl Integral {
 
   // Convenience constructors for C types
   #[inline]
-  pub fn from_bool(value: bool) -> Self {
+  pub const fn from_bool(value: bool) -> Self {
     Self::new(value, Self::WIDTH_BOOL, Unsigned)
   }
 

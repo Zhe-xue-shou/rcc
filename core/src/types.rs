@@ -14,7 +14,7 @@ mod types;
 pub use self::{
   cast_type::CastType,
   compatible::Compatibility,
-  constant::Constant,
+  constant::{Constant, ConstantRef, ConstantRefMut},
   context::{ArenaVec, Context},
   meta::{
     Array, ArraySize, Enum, ExpressionId, FunctionProto, Pointer, Record, Union,

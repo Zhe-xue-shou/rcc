@@ -8,16 +8,18 @@ pub trait TypeInfo {
   #[must_use]
   fn is_scalar(&self) -> bool;
   #[must_use]
-  #[inline(always)]
-  fn size_bits(&self) -> usize {
-    self.size() * 8
-  }
+  fn size_bits(&self) -> usize;
 }
 
 impl<'context> TypeInfo for QualifiedType<'context> {
   #[inline(always)]
   fn size(&self) -> usize {
     self.unqualified_type.size()
+  }
+
+  #[inline(always)]
+  fn size_bits(&self) -> usize {
+    self.unqualified_type.size_bits()
   }
 
   #[inline(always)]
@@ -31,6 +33,15 @@ impl<'context> TypeInfo for Type<'context> {
     ::rcc_utils::static_dispatch!(
       self,
       |variant| variant.size() =>
+      Primitive Array Pointer FunctionProto Enum Record Union
+    )
+  }
+
+  #[inline]
+  fn size_bits(&self) -> usize {
+    ::rcc_utils::static_dispatch!(
+      self,
+      |variant| variant.size_bits() =>
       Primitive Array Pointer FunctionProto Enum Record Union
     )
   }
@@ -76,6 +87,14 @@ impl TypeInfo for Primitive {
   fn is_scalar(&self) -> bool {
     !matches!(self, Void)
   }
+
+  #[inline]
+  fn size_bits(&self) -> usize {
+    match self {
+      Bool => 1,
+      _ => self.size() * 8,
+    }
+  }
 }
 
 impl<'context> TypeInfo for Array<'context> {
@@ -85,6 +104,11 @@ impl<'context> TypeInfo for Array<'context> {
       ArraySize::Incomplete => 0,
       ArraySize::Variable(_id) => todo!(), // ignore for now
     }
+  }
+
+  #[inline(always)]
+  fn size_bits(&self) -> usize {
+    self.size() * 8
   }
 
   #[inline(always)]
@@ -100,6 +124,11 @@ impl<'context> TypeInfo for Record<'context> {
       .iter()
       .map(|f| f.field_type.unqualified_type.size())
       .sum() // rough, padding and alignment not considered -- incomplete type has no members anyway so this handles it too
+  }
+
+  #[inline(always)]
+  fn size_bits(&self) -> usize {
+    self.size() * 8
   }
 
   #[inline(always)]
@@ -119,6 +148,11 @@ impl<'context> TypeInfo for Union<'context> {
   }
 
   #[inline(always)]
+  fn size_bits(&self) -> usize {
+    self.size() * 8
+  }
+
+  #[inline(always)]
   fn is_scalar(&self) -> bool {
     false
   }
@@ -127,6 +161,11 @@ impl<'context> TypeInfo for Pointer<'context> {
   #[inline(always)]
   fn size(&self) -> usize {
     ULongLong.size() // x86_64 LLP64 Windows
+  }
+
+  #[inline(always)]
+  fn size_bits(&self) -> usize {
+    self.size() * 8
   }
 
   #[inline(always)]
@@ -142,6 +181,11 @@ impl<'context> TypeInfo for FunctionProto<'context> {
   }
 
   #[inline(always)]
+  fn size_bits(&self) -> usize {
+    self.size() * 8
+  }
+
+  #[inline(always)]
   fn is_scalar(&self) -> bool {
     false
   }
@@ -150,6 +194,11 @@ impl<'context> TypeInfo for Enum<'context> {
   #[inline(always)]
   fn size(&self) -> usize {
     self.underlying_type.size()
+  }
+
+  #[inline(always)]
+  fn size_bits(&self) -> usize {
+    self.size() * 8
   }
 
   #[inline(always)]

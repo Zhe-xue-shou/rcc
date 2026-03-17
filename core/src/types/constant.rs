@@ -2,7 +2,7 @@ use ::rcc_utils::ensure_is_pod;
 
 use crate::{
   blueprints::Placeholder as Nullptr,
-  common::{FloatFormat, Floating, Integral, Signedness, StrRef},
+  common::{FloatFormat, Floating, Integral, RefEq, Signedness, StrRef},
   diagnosis::{DiagData, DiagMeta, Severity},
 };
 
@@ -19,7 +19,7 @@ use crate::{
 /// (but in C++, it is, though. verified by clangd's AST: `const char[N]`.)
 ///
 /// TODO: named constants `constexpr` and constant integral
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Constant<'context> {
   Integral(Integral),
   Floating(Floating),
@@ -28,6 +28,29 @@ pub enum Constant<'context> {
   Address(StrRef<'context>),
 }
 ensure_is_pod!(Constant);
+pub type ConstantRef<'context> = &'context Constant<'context>;
+pub type ConstantRefMut<'context> = &'context mut Constant<'context>;
+impl RefEq for ConstantRef<'_> {
+  fn ref_eq(lhs: Self, rhs: Self) -> bool
+  where
+    Self: PartialEq + Sized,
+  {
+    let ref_eq = ::std::ptr::eq(lhs, rhs);
+    if const { cfg!(debug_assertions) } {
+      let actual_eq = lhs == rhs;
+      if ref_eq != actual_eq {
+        eprintln!(
+          "INTERNAL ERROR: comparing by pointer address result did not match 
+          the actual result: {:p}: {:?} and {:p}: {:?}
+        ",
+          lhs, lhs, rhs, rhs
+        );
+      }
+      return actual_eq;
+    }
+    ref_eq
+  }
+}
 impl<'context> Constant<'context> {
   pub const FLOATING_SUFFIXES: &'static [&'static str] = &[
     "f", "F", // float
@@ -54,6 +77,7 @@ impl<'context> Constant<'context> {
     "wb", "WB", // _BitInt
     "uwb", "uWB", "Uwb", "UWB", // unsigned _BitInt
   ];
+  pub const NULLPTR: Self = Self::Nullptr(Nullptr);
 
   /// parse a numeric literal with optional suffix, if fails, return an error message and the default value of the Constant
   pub fn parse(

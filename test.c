@@ -1,7 +1,7 @@
 int main() {
-  float x;
-  float y;
-  x = 0.9;
+  int x;
+  int y;
+  x = 2;
   y = !x;
   return y;
 }

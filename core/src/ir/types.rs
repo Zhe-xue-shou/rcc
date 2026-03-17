@@ -64,6 +64,7 @@ use crate::common::RefEq;
 interconvert!(Array, Type, 'ir);
 interconvert!(Function, Type, 'ir);
 interconvert!(Struct, Type, 'ir);
+interconvert!(u8, Type<'ir>, Integer);
 
 make_trio_for_unit_tuple!(Void, Type<'ir>);
 make_trio_for_unit_tuple!(Label, Type<'ir>);
@@ -71,6 +72,7 @@ make_trio_for_unit_tuple!(Float, Type<'ir>);
 make_trio_for_unit_tuple!(Double, Type<'ir>);
 make_trio_for_unit_tuple!(Pointer, Type<'ir>);
 
+make_trio_for!(u8, Type<'ir>, Integer);
 make_trio_for!(Array, Type, 'ir);
 make_trio_for!(Function, Type, 'ir);
 make_trio_for!(Struct, Type, 'ir);

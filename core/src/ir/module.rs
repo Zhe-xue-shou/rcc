@@ -1,10 +1,10 @@
-use super::{Constant, value::ValueID};
-use crate::common::StrRef;
-
+use super::value::ValueID;
+use crate::{common::StrRef, types::Constant};
 #[derive(Debug, Default)]
 pub struct Module {
   /// global function and variable entry. Shall be either [`Function`] or [`Variable`].
   pub globals: Vec<ValueID>,
+  // pub constants: Vec<ValueID>,
 }
 
 /// **Global** function in TAC-SSA form
@@ -104,9 +104,4 @@ impl Argument {
 pub enum Initializer<'context> {
   Scalar(Constant<'context>),
   Aggregate(Vec<Initializer<'context>>),
-}
-impl Clone for Constant<'_> {
-  fn clone(&self) -> Self {
-    Self::new(self.value.clone(), self.span)
-  }
 }

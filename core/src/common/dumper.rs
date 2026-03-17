@@ -199,8 +199,12 @@ where
   }
 
   #[inline(always)]
-  fn writeln(&mut self, text: &str, spec: &ColorSpec) -> FakeDumpRes {
-    self.write_fmt(format_args!("{}\n", text), spec)
+  fn writeln<T: ::std::fmt::Display>(
+    &mut self,
+    arg: T,
+    spec: &ColorSpec,
+  ) -> FakeDumpRes {
+    self.write_fmt(format_args!("{}\n", arg), spec)
   }
 
   fn write_fmt(

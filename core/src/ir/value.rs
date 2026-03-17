@@ -1,17 +1,18 @@
 use super::{
-  Argument, BasicBlock, Constant, TypeRef,
+  Argument, BasicBlock, TypeRef,
   instruction::Instruction,
   module::{Function, Variable},
 };
-use crate::types::QualifiedType;
+use crate::types::{Constant, QualifiedType};
 
 ::slotmap::new_key_type! {
+    /// size = 8 (0x08), align = 0x8, no Drop
     pub struct ValueID;
 }
 
-impl ::std::fmt::Display for ValueID {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    self.0.as_ffi().fmt(f)
+impl ValueID {
+  pub fn handle(&self) -> u64 {
+    self.0.as_ffi()
   }
 }
 

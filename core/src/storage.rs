@@ -1,3 +1,4 @@
+use ::bimap::BiMap;
 use ::bumpalo::Bump;
 use ::slotmap::SlotMap;
 use ::std::{cell::RefCell, collections::HashSet, ops::Deref};
@@ -13,6 +14,8 @@ pub struct Storage<'context> {
   pub ast_type_interner: Interner<types::TypeRef<'context>>,
   pub str_interner: Interner<StrRef<'context>>,
   pub ir_type_interner: Interner<ir::TypeRef<'context>>,
+  /// currently only for ir stage. use it in previous stage could cause unprecedented catastrophe. see the git stash.
+  pub constant_interner: RefCell<BiMap<ir::ValueID, types::Constant<'context>>>,
 }
 
 impl<'context> Storage<'context> {
@@ -23,6 +26,7 @@ impl<'context> Storage<'context> {
       ast_type_interner: Default::default(),
       ir_type_interner: Default::default(),
       str_interner: Default::default(),
+      constant_interner: Default::default(),
     }
   }
 }

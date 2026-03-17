@@ -2,7 +2,9 @@ use ::rcc_utils::{
   BuiltinFloat, NumTo, ToI128, ToU128, ensure_is_pod, underlying_type_of,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ::std::marker::ConstParamTy)]
+#[derive(
+  Debug, Clone, Copy, PartialEq, Eq, Hash, ::std::marker::ConstParamTy,
+)]
 pub enum Format {
   /// standard IEEE float.
   IEEE32 = 32,
@@ -18,7 +20,7 @@ use Format::*;
 /// That being said, I didn't reference
 /// [LLVM's APFloat](https://github.com/llvm/llvm-project/blob/main/llvm/include/llvm/ADT/APFloat.h) at all,
 /// which is a far more comprehensive and complex implementation.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Floating {
   bits: u128,
   format: Format,

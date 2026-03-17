@@ -36,7 +36,7 @@ pub trait RefEq {
 impl RefEq for StrRef<'_> {
   fn ref_eq(lhs: Self, rhs: Self) -> bool
   where
-    Self: PartialEq,
+    Self: PartialEq + Sized,
   {
     let ref_eq = ::std::ptr::eq(lhs, rhs);
     if const { cfg!(debug_assertions) } {

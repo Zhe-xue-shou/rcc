@@ -20,7 +20,7 @@ thiserror = "2.0.18"
 termcolor = "1.4.1"
 bumpalo = { version = "3.19.1", features = ["collections"] }
 slotmap = "1.1.1"
-
+bimap = "0.6.3"
 
 [lints.clippy]
 needless_pass_by_ref_mut = "warn"

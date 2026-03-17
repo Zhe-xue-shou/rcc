@@ -1,10 +1,10 @@
 use ::slotmap::Key;
 
 use super::{
-  Argument, Constant, Emitter, Value, ValueID, instruction as inst,
+  Argument, Emitter, Value, ValueID, instruction as inst,
   instruction::Instruction, module,
 };
-use crate::types::QualifiedType;
+use crate::types::{Constant, QualifiedType};
 
 /// Overload helper. I love overloading.
 pub trait Emitable<'a, ValueType> {
@@ -125,11 +125,12 @@ impl<'context> Emitable<'context, Constant<'context>>
     value: Constant<'context>,
     qualified_type: QualifiedType<'context>,
   ) -> ValueID {
-    self.session.ir_context.insert(Value::new(
-      qualified_type,
-      ty!(self, qualified_type),
-      value.into(),
-    ))
+    let value_id = self
+      .session
+      .ir_context
+      .intern_constant(value, qualified_type);
+    // self.module.constants.push(value_id);
+    value_id
   }
 }
 impl<'context> Emitable<'context, Argument> for Emitter<'_, 'context, '_> {

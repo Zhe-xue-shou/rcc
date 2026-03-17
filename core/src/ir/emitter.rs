@@ -1,5 +1,6 @@
 #![allow(unused)]
 #![deny(unused_must_use)]
+#![allow(clippy::needless_pass_by_ref_mut)]
 
 use ::rcc_utils::contract_violation;
 use ::std::collections::HashMap;
@@ -12,10 +13,11 @@ use super::{
   value::{Value, ValueID},
 };
 use crate::{
-  common::{Operator, RefEq, SourceSpan, StrRef},
+  common::{Integral, Operator, OperatorCategory, RefEq, SourceSpan, StrRef},
+  ir,
   sema::{declaration as sd, expression as se, statement as ss},
   session::Session,
-  types::{CastType, QualifiedType},
+  types::{CastType, Constant, QualifiedType, TypeInfo},
 };
 pub struct Emitter<'source, 'context, 'session>
 where
@@ -374,7 +376,7 @@ impl<'context> Emitter<'_, 'context, '_> {
     constant: se::Constant<'context>,
     qualified_type: QualifiedType<'context>,
   ) -> ValueID {
-    self.emit(constant, qualified_type)
+    self.emit(constant.value, qualified_type)
   }
 
   fn unary(
@@ -390,14 +392,16 @@ impl<'context> Emitter<'_, 'context, '_> {
     } = unary;
     let operand = self.expression(*operand);
     match operator {
-      Operator::Ampersand => self.addressof(operator, operand, span),
-      Operator::Star => self.indirect(operator, operand, span),
-      Operator::Not => self.logical_not(operator, operand, span),
-      Operator::Tilde => self.tilde(operator, operand, span),
+      Operator::Ampersand =>
+        self.addressof(operator, operand, qualified_type, span),
+      Operator::Star => self.indirect(operator, operand, qualified_type, span),
+      Operator::Not =>
+        self.logical_not(operator, operand, qualified_type, span),
+      Operator::Tilde => self.tilde(operator, operand, qualified_type, span),
       Operator::Plus | Operator::Minus =>
-        self.unary_arithmetic(operator, operand, span),
+        self.unary_arithmetic(operator, operand, qualified_type, span),
       Operator::PlusPlus | Operator::MinusMinus =>
-        self.ppmm(operator, operand, kind, span),
+        self.ppmm(operator, operand, kind, qualified_type, span),
       _ => unreachable!("operator is not unary: {:#?}", operator),
     }
   }
@@ -407,7 +411,30 @@ impl<'context> Emitter<'_, 'context, '_> {
     binary: se::Binary<'context>,
     qualified_type: QualifiedType<'context>,
   ) -> ValueID {
-    todo!()
+    let se::Binary {
+      left,
+      operator,
+      right,
+      span,
+    } = binary;
+
+    let left = self.expression(*left);
+    let right = self.expression(*right);
+
+    use OperatorCategory::*;
+    match operator.category() {
+      Assignment =>
+        self.assignment(operator, left, right, qualified_type, span),
+      Logical => self.logical(operator, left, right, qualified_type, span),
+      Relational =>
+        self.relational(operator, left, right, qualified_type, span),
+      Arithmetic =>
+        self.arithmetic(operator, left, right, qualified_type, span),
+      Bitwise => self.bitwise(operator, left, right, qualified_type, span),
+      BitShift => self.bitshift(operator, left, right, qualified_type, span),
+      Special => self.comma(operator, left, right, qualified_type, span),
+      Uncategorized => unreachable!("operator is not binary: {:#?}", operator),
+    }
   }
 
   fn member_access(
@@ -487,48 +514,47 @@ impl<'context> Emitter<'_, 'context, '_> {
     let se::ImplicitCast {
       cast_type, expr, ..
     } = implicit_cast;
+
+    let value_id = self.expression(*expr);
     match cast_type {
-      CastType::LValueToRValue => {
-        let value_id = self.expression(*expr);
-        self.emit(
-          inst::Memory::from(inst::Load::new(value_id)),
-          qualified_type,
-        )
-      },
       CastType::FunctionToPointerDecay
       | CastType::ArrayToPointerDecay
-      | CastType::Noop => self.expression(*expr),
+      | CastType::Noop => value_id,
+      CastType::LValueToRValue => self.emit(
+        inst::Memory::from(inst::Load::new(value_id)),
+        qualified_type,
+      ),
       // todo: int <-> int: transparent for now (same-width or promotion)
-      CastType::IntegralCast => self.expression(*expr),
+      CastType::IntegralCast => {
+        assert!(
+          qualified_type
+            .as_primitive()
+            .is_some_and(|p| p.is_integer())
+            && qualified_type.size_bits() > 0
+            && qualified_type.size_bits() <= 128
+        );
+        match Ord::cmp(
+          lookup!(self, value_id).ir_type.as_integer_unchecked(),
+          &(qualified_type.size_bits() as u8),
+        ) {
+          ::std::cmp::Ordering::Less => match qualified_type.is_signed() {
+            true => self.emit(
+              inst::Cast::from(inst::Sext::new(value_id)),
+              qualified_type,
+            ),
+            false => self.emit(
+              inst::Cast::from(inst::Zext::new(value_id)),
+              qualified_type,
+            ),
+          },
+          ::std::cmp::Ordering::Equal => value_id,
+          ::std::cmp::Ordering::Greater => self
+            .emit(inst::Cast::from(inst::Trunc::new(value_id)), qualified_type),
+        }
+      },
       _ => todo!("implicit cast: {:?}", implicit_cast.cast_type),
     }
   }
-
-  // fn assignment(
-  //   &mut self,
-  //   assignment: se::Expression<'context>,
-  //   qualified_type: QualifiedType<'context>,
-  // ) -> ValueID {
-  //   let se::Expression {
-  //     left,
-  //     operator,
-  //     right,
-  //     ..
-  //   } = assignment;
-  //   let lhs_id = self.expression(*left);
-  //   let rhs_id = self.expression(*right);
-  //   assert!(
-  //     operator == Operator::Assign,
-  //     "unimplemented for other assignment operator!"
-  //   );
-
-  //   assert!(lookup!(self, lhs_id).ir_type.is_pointer());
-
-  //   self.emit(
-  //     inst::Memory::Store(inst::Store::new(lhs_id, rhs_id)),
-  //     qualified_type,
-  //   )
-  // }
 
   fn call(
     &mut self,
@@ -557,10 +583,97 @@ impl<'context> Emitter<'_, 'context, '_> {
   }
 }
 impl<'context> Emitter<'_, 'context, '_> {
+  fn assignment(
+    &mut self,
+    operator: Operator,
+    left: ValueID,
+    right: ValueID,
+    qualified_type: QualifiedType<'context>,
+    span: SourceSpan,
+  ) -> ValueID {
+    assert!(
+      operator == Operator::Assign,
+      "unimplemented for other assignment operator!"
+    );
+    assert!(lookup!(self, left).ir_type.is_pointer());
+    self.emit(
+      inst::Memory::Store(inst::Store::new(left, right)),
+      qualified_type,
+    )
+  }
+
+  fn logical(
+    &mut self,
+    operator: Operator,
+    left: ValueID,
+    right: ValueID,
+    qualified_type: QualifiedType<'context>,
+    span: SourceSpan,
+  ) -> ValueID {
+    todo!()
+  }
+
+  fn relational(
+    &mut self,
+    operator: Operator,
+    left: ValueID,
+    right: ValueID,
+    qualified_type: QualifiedType<'context>,
+    span: SourceSpan,
+  ) -> ValueID {
+    todo!()
+  }
+
+  fn arithmetic(
+    &mut self,
+    operator: Operator,
+    left: ValueID,
+    right: ValueID,
+    qualified_type: QualifiedType<'context>,
+    span: SourceSpan,
+  ) -> ValueID {
+    todo!()
+  }
+
+  fn bitwise(
+    &mut self,
+    operator: Operator,
+    left: ValueID,
+    right: ValueID,
+    qualified_type: QualifiedType<'context>,
+    span: SourceSpan,
+  ) -> ValueID {
+    todo!()
+  }
+
+  fn bitshift(
+    &mut self,
+    operator: Operator,
+    left: ValueID,
+    right: ValueID,
+    qualified_type: QualifiedType<'context>,
+    span: SourceSpan,
+  ) -> ValueID {
+    todo!()
+  }
+
+  fn comma(
+    &mut self,
+    operator: Operator,
+    left: ValueID,
+    right: ValueID,
+    qualified_type: QualifiedType<'context>,
+    span: SourceSpan,
+  ) -> ValueID {
+    todo!()
+  }
+}
+impl<'context> Emitter<'_, 'context, '_> {
   fn addressof(
     &self,
     operator: Operator,
     operand: ValueID,
+    qualified_type: QualifiedType<'context>,
     span: SourceSpan,
   ) -> ValueID {
     assert_eq!(operator, Operator::Ampersand);
@@ -571,24 +684,62 @@ impl<'context> Emitter<'_, 'context, '_> {
     &self,
     operator: Operator,
     operand: ValueID,
+    qualified_type: QualifiedType<'context>,
     span: SourceSpan,
   ) -> ValueID {
     todo!()
   }
 
   fn logical_not(
-    &self,
+    &mut self,
     operator: Operator,
     operand: ValueID,
+    qualified_type: QualifiedType<'context>,
     span: SourceSpan,
   ) -> ValueID {
-    todo!()
+    assert!(operator == Operator::Not);
+    let typ = lookup!(self, operand).ir_type;
+
+    match typ {
+      ir::Type::Pointer() => todo!(),
+      ir::Type::Float() => todo!(),
+      ir::Type::Double() => todo!(),
+      ir::Type::Integer(width) => {
+        let i1_false: ValueID = self.emit(
+          Constant::Integral(Integral::new(
+            0,
+            1,
+            crate::common::Signedness::Unsigned,
+          )),
+          self.session.ast_context.bool_type().into(),
+        );
+        let cmp = self.emit(
+          inst::ICmp::new(inst::ICmpPredicate::Ne, operand, i1_false),
+          qualified_type,
+        );
+        let i1_true = self.emit(
+          Constant::Integral(Integral::new(
+            1,
+            1,
+            crate::common::Signedness::Unsigned,
+          )),
+          self.session.ast_context.bool_type().into(),
+        );
+        let xor = self.emit(
+          inst::Binary::new(inst::BinaryOp::Xor, cmp, i1_true),
+          self.session.ast_context.bool_type().into(),
+        );
+        self.emit(inst::Cast::Zext(inst::Zext::new(xor)), qualified_type)
+      },
+      _ => unreachable!(),
+    }
   }
 
   fn tilde(
     &self,
     operator: Operator,
     operand: ValueID,
+    qualified_type: QualifiedType<'context>,
     span: SourceSpan,
   ) -> ValueID {
     todo!()
@@ -598,6 +749,7 @@ impl<'context> Emitter<'_, 'context, '_> {
     &self,
     operator: Operator,
     operand: ValueID,
+    qualified_type: QualifiedType<'context>,
     span: SourceSpan,
   ) -> ValueID {
     todo!()
@@ -608,6 +760,7 @@ impl<'context> Emitter<'_, 'context, '_> {
     operator: Operator,
     operand: ValueID,
     kind: crate::blueprints::RawUnaryKind,
+    qualified_type: QualifiedType<'context>,
     span: SourceSpan,
   ) -> ValueID {
     todo!()

@@ -2,7 +2,7 @@ use super::{
   Type, TypeRef, Value, ValueID,
   types::{Array, Function},
 };
-/// Although the lifetime speficier here is `'context`, but it should actually be the same as `'context` in [`crate::session::Session`] who owns it.
+use crate::types::Constant;
 #[derive(Debug)]
 pub struct Context<'context> {
   void_type: TypeRef<'context>,
@@ -24,12 +24,12 @@ impl<'context> Context<'context> {
       float64_type: storage.ast_arena.alloc(Type::Double()),
       pointer_type: storage.ast_arena.alloc(Type::Pointer()),
       common_integer_types: [
-        storage.ast_arena.alloc(Type::Integer(1)),
-        storage.ast_arena.alloc(Type::Integer(8)),
-        storage.ast_arena.alloc(Type::Integer(16)),
-        storage.ast_arena.alloc(Type::Integer(32)),
-        storage.ast_arena.alloc(Type::Integer(64)),
-        storage.ast_arena.alloc(Type::Integer(128)),
+        storage.ast_arena.alloc(1.into()),
+        storage.ast_arena.alloc(8.into()),
+        storage.ast_arena.alloc(16.into()),
+        storage.ast_arena.alloc(32.into()),
+        storage.ast_arena.alloc(64.into()),
+        storage.ast_arena.alloc(128.into()),
       ],
 
       storage,
@@ -83,6 +83,41 @@ impl<'context> Context<'context> {
     self.do_intern(value.into())
   }
 
+  pub fn intern_constant<T: Into<Constant<'context>>>(
+    &self,
+    value: T,
+    qualified_type: QualifiedType<'context>,
+  ) -> ValueID {
+    let value = value.into();
+    if let Some(existing) =
+      self.storage.constant_interner.borrow().get_by_right(&value)
+    {
+      *existing
+    } else {
+      let value_id = self.storage.ir_arena.borrow_mut().insert(Value::new(
+        qualified_type,
+        self.ir_type(&qualified_type),
+        value.clone().into(),
+      ));
+      self
+        .storage
+        .constant_interner
+        .borrow_mut()
+        .insert(value_id, value);
+      value_id
+    }
+  }
+
+  pub fn get_by_constant_id(
+    &self,
+    id: &ValueID,
+  ) -> Option<Ref<'_, Constant<'context>>> {
+    Ref::filter_map(self.storage.constant_interner.borrow(), |interner| {
+      interner.get_by_left(id)
+    })
+    .ok()
+  }
+
   pub fn make_integer(&self, bits: u8) -> TypeRef<'context> {
     match bits {
       1 => self.common_integer_types[0],
@@ -128,7 +163,10 @@ impl<'context> Context<'context> {
     })
   }
 }
-use crate::{storage::StorageRef, types};
+use crate::{
+  storage::StorageRef,
+  types::{self, QualifiedType},
+};
 impl<'context> Context<'context> {
   pub fn ir_type(
     &self,

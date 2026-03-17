@@ -9,7 +9,6 @@ mod module;
 mod types;
 mod value;
 
-type Constant<'context> = crate::sema::expression::Constant<'context>;
 pub use self::{
   context::Context,
   dump::IRDumper,

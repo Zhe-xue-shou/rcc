@@ -8,20 +8,20 @@ use ::std::{
 use super::{Storage, StrRef};
 use crate::types::QualifiedType;
 
-pub type SymbolRef<'context> = shared_ptr<Symbol<'context>>;
-pub type WeakSymbolRef<'context> = weak_ptr<Symbol<'context>>;
+pub type SymbolRef<'c> = shared_ptr<Symbol<'c>>;
+pub type WeakSymbolRef<'c> = weak_ptr<Symbol<'c>>;
 
 /// a lexical scope.
-type ScopeAssoc<'context, T> = HashMap<StrRef<'context>, shared_ptr<T>>;
+type ScopeAssoc<'c, T> = HashMap<StrRef<'c>, shared_ptr<T>>;
 /// A lexical scope stack.
 #[derive(Debug)]
-pub struct Scope<'context, T> {
-  scopes: Vec<ScopeAssoc<'context, T>>,
+pub struct Scope<'c, T> {
+  scopes: Vec<ScopeAssoc<'c, T>>,
 }
 /// only tracks names
 #[derive(Debug, Default)]
-pub struct UnitScope<'context> {
-  scopes: Vec<HashSet<StrRef<'context>>>,
+pub struct UnitScope<'c> {
+  scopes: Vec<HashSet<StrRef<'c>>>,
 }
 #[derive(Debug, Eq, PartialEq, Clone, Copy, ::strum_macros::Display)]
 pub enum VarDeclKind {
@@ -57,8 +57,8 @@ impl VarDeclKind {
   }
 }
 #[derive(Debug)]
-pub struct Symbol<'context> {
-  pub qualified_type: QualifiedType<'context>,
+pub struct Symbol<'c> {
+  pub qualified_type: QualifiedType<'c>,
   /// for global variable, if the [`VarDeclKind`] is [`VarDeclKind::Definition`]
   /// and the [`Symbol::storage_class`] is [`Storage::Extern`], the [`Storage::Extern`] has no effect
   /// -- chossing not to wrap it into [`Option`] is just for convenience and now it's hard to change,
@@ -68,15 +68,15 @@ pub struct Symbol<'context> {
   ///   or one [`VarDeclKind::Tentative`] (one tantative counts as definition), add it as definition
   /// - else if only has [`Storage::Extern`] and [`VarDeclKind::Declaration`], it's declaration and let linker handle it.
   pub storage_class: Storage,
-  pub name: StrRef<'context>,
+  pub name: StrRef<'c>,
   pub declkind: VarDeclKind,
 }
 #[derive(Debug, Default)]
-pub struct Environment<'context> {
-  symbols: Scope<'context, Symbol<'context>>,
-  cache: RefCell<HashMap<StrRef<'context>, WeakSymbolRef<'context>>>,
+pub struct Environment<'c> {
+  symbols: Scope<'c, Symbol<'c>>,
+  cache: RefCell<HashMap<StrRef<'c>, WeakSymbolRef<'c>>>,
 }
-impl<'context> Environment<'context> {
+impl<'c> Environment<'c> {
   pub fn new() -> Self {
     Self::default()
   }
@@ -97,7 +97,7 @@ impl<'context> Environment<'context> {
   }
 
   /// look up symbol and potentially cache it
-  pub fn find(&self, name: StrRef<'context>) -> Option<SymbolRef<'context>> {
+  pub fn find(&self, name: StrRef<'c>) -> Option<SymbolRef<'c>> {
     if let Some(sym) = self.cache.borrow().get(name) {
       // upgrade weak ref, this already handles whether the ref is dead or not
       return sym.upgrade();
@@ -113,8 +113,8 @@ impl<'context> Environment<'context> {
   // we dont provide cache layer for shallow find, since it'll contain non-local symbols
   pub fn shallow_find(
     &self,
-    name: StrRef<'context>,
-  ) -> Option<SymbolRef<'context>> {
+    name: StrRef<'c>,
+  ) -> Option<SymbolRef<'c>> {
     let sym = self.symbols.shallow_get(name);
     if let Some(s) = &sym {
       self.cache.borrow_mut().insert(name, Rc::downgrade(s));
@@ -125,15 +125,15 @@ impl<'context> Environment<'context> {
   /// note: if the symbol already exists, it'll be updated.
   pub fn declare_symbol(
     &mut self,
-    name: StrRef<'context>,
-    symbol: SymbolRef<'context>,
-  ) -> SymbolRef<'context> {
+    name: StrRef<'c>,
+    symbol: SymbolRef<'c>,
+  ) -> SymbolRef<'c> {
     // overwrite cache
     self.cache.borrow_mut().insert(name, Rc::downgrade(&symbol));
     self.symbols.declare(name, symbol.clone())
   }
 }
-impl<'context> Symbol<'context> {
+impl<'c> Symbol<'c> {
   #[inline]
   pub fn is_typedef(&self) -> bool {
     self.storage_class.is_typedef()
@@ -145,9 +145,9 @@ impl<'context> Symbol<'context> {
   }
 
   pub fn new(
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     storage_class: Storage,
-    name: StrRef<'context>,
+    name: StrRef<'c>,
     declkind: VarDeclKind,
   ) -> Self {
     Self {
@@ -159,10 +159,10 @@ impl<'context> Symbol<'context> {
   }
 
   pub fn decl(
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     storage_class: Storage,
-    name: StrRef<'context>,
-  ) -> SymbolRef<'context> {
+    name: StrRef<'c>,
+  ) -> SymbolRef<'c> {
     Self::new_ref(Self::new(
       qualified_type,
       storage_class,
@@ -172,10 +172,10 @@ impl<'context> Symbol<'context> {
   }
 
   pub fn def(
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     storage_class: Storage,
-    name: StrRef<'context>,
-  ) -> SymbolRef<'context> {
+    name: StrRef<'c>,
+  ) -> SymbolRef<'c> {
     Self::new_ref(Self::new(
       qualified_type,
       storage_class,
@@ -185,10 +185,10 @@ impl<'context> Symbol<'context> {
   }
 
   pub fn tentative(
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     storage_class: Storage,
-    name: StrRef<'context>,
-  ) -> SymbolRef<'context> {
+    name: StrRef<'c>,
+  ) -> SymbolRef<'c> {
     Self::new_ref(Self::new(
       qualified_type,
       storage_class,
@@ -201,7 +201,7 @@ impl<'context> Symbol<'context> {
     Rc::new(RefCell::new(symbol))
   }
 }
-impl<'context> UnitScope<'context> {
+impl<'c> UnitScope<'c> {
   pub fn new() -> Self {
     Self::default()
   }
@@ -227,7 +227,7 @@ impl<'context> UnitScope<'context> {
     false
   }
 
-  pub fn declare(&mut self, name: StrRef<'context>) {
+  pub fn declare(&mut self, name: StrRef<'c>) {
     let current = self.scopes.last_mut();
     assert!(
       current.is_some(),
@@ -241,14 +241,14 @@ impl<'context> UnitScope<'context> {
     self.scopes.len() == 1
   }
 }
-impl<'context, T> Default for Scope<'context, T> {
+impl<'c, T> Default for Scope<'c, T> {
   fn default() -> Self {
     Self {
       scopes: Vec::default(),
     }
   }
 }
-impl<'context, T> Scope<'context, T> {
+impl<'c, T> Scope<'c, T> {
   #[allow(unused)]
   pub fn new() -> Self {
     Self::default()
@@ -280,7 +280,7 @@ impl<'context, T> Scope<'context, T> {
 
   pub fn declare(
     &mut self,
-    name: StrRef<'context>,
+    name: StrRef<'c>,
     val: shared_ptr<T>,
   ) -> shared_ptr<T> {
     let current = self.scopes.last_mut();
@@ -302,7 +302,7 @@ mod fmt {
 
   use super::*;
 
-  impl<'context> Display for Symbol<'context> {
+  impl<'c> Display for Symbol<'c> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       write!(f, "{}: {}", self.name, self.qualified_type)
     }

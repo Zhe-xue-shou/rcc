@@ -9,8 +9,8 @@ pub struct Module {
 
 /// **Global** function in TAC-SSA form
 #[derive(Debug)]
-pub struct Function<'context> {
-  pub name: StrRef<'context>,
+pub struct Function<'c> {
+  pub name: StrRef<'c>,
   /// Shall be [`Argument`].
   pub params: Vec<ValueID>,
   /// Shall be [`BasicBlock`].
@@ -18,9 +18,9 @@ pub struct Function<'context> {
   pub is_variadic: bool,
 }
 
-impl<'context> Function<'context> {
+impl<'c> Function<'c> {
   pub fn new(
-    name: StrRef<'context>,
+    name: StrRef<'c>,
     params: Vec<ValueID>,
     blocks: Vec<ValueID>,
     is_variadic: bool,
@@ -34,7 +34,7 @@ impl<'context> Function<'context> {
   }
 
   pub fn new_empty(
-    name: StrRef<'context>,
+    name: StrRef<'c>,
     params: Vec<ValueID>,
     is_variadic: bool,
   ) -> Self {
@@ -54,16 +54,13 @@ impl<'context> Function<'context> {
 
 /// **Global** variable.
 #[derive(Debug)]
-pub struct Variable<'context> {
-  pub name: StrRef<'context>,
-  pub initializer: Option<Initializer<'context>>,
+pub struct Variable<'c> {
+  pub name: StrRef<'c>,
+  pub initializer: Option<Initializer<'c>>,
 }
 
-impl<'context> Variable<'context> {
-  pub fn new(
-    name: StrRef<'context>,
-    initializer: Option<Initializer<'context>>,
-  ) -> Self {
+impl<'c> Variable<'c> {
+  pub fn new(name: StrRef<'c>, initializer: Option<Initializer<'c>>) -> Self {
     Self { name, initializer }
   }
 }
@@ -101,7 +98,7 @@ impl Argument {
 
 /// **Static** initializer.
 #[derive(Debug, Clone)]
-pub enum Initializer<'context> {
-  Scalar(Constant<'context>),
-  Aggregate(Vec<Initializer<'context>>),
+pub enum Initializer<'c> {
+  Scalar(Constant<'c>),
+  Aggregate(Vec<Initializer<'c>>),
 }

@@ -157,7 +157,7 @@ impl Primitive {
     }
   }
 }
-impl<'context> Type<'context> {
+impl<'c> Type<'c> {
   pub fn is_unsigned(&self) -> bool {
     match self {
       Type::Primitive(p) => p.is_unsigned(),
@@ -184,7 +184,7 @@ impl Promotion for Primitive {
     }
   }
 }
-impl<'context> Promotion for Type<'context> {
+impl<'c> Promotion for Type<'c> {
   fn promote(self) -> (Self, CastType) {
     match self {
       Self::Primitive(p) => {

@@ -3,9 +3,9 @@ use ::rcc_utils::{IntoWith, ensure_is_pod};
 use super::{TypeRef, TypeRefMut};
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub struct QualifiedType<'context> {
+pub struct QualifiedType<'c> {
   pub qualifiers: Qualifiers,
-  pub unqualified_type: TypeRef<'context>,
+  pub unqualified_type: TypeRef<'c>,
 }
 
 ensure_is_pod!(QualifiedType);
@@ -33,10 +33,10 @@ ensure_is_pod!(QualifiedType);
   }
 }
 
-impl<'context> QualifiedType<'context> {
+impl<'c> QualifiedType<'c> {
   pub const fn new(
     qualifiers: Qualifiers,
-    unqualified_type: TypeRef<'context>,
+    unqualified_type: TypeRef<'c>,
   ) -> Self {
     Self {
       qualifiers,
@@ -44,22 +44,22 @@ impl<'context> QualifiedType<'context> {
     }
   }
 
-  pub const fn new_unqualified(unqualified_type: TypeRef<'context>) -> Self {
+  pub const fn new_unqualified(unqualified_type: TypeRef<'c>) -> Self {
     Self {
       qualifiers: Qualifiers::empty(),
       unqualified_type,
     }
   }
 }
-impl<'context> ::std::ops::Deref for QualifiedType<'context> {
-  type Target = TypeRef<'context>;
+impl<'c> ::std::ops::Deref for QualifiedType<'c> {
+  type Target = TypeRef<'c>;
 
   fn deref(&self) -> &Self::Target {
     &self.unqualified_type
   }
 }
 
-impl<'context> QualifiedType<'context> {
+impl<'c> QualifiedType<'c> {
   pub fn with_qualifiers(mut self, qualifiers: Qualifiers) -> Self {
     self.qualifiers |= qualifiers;
     self
@@ -74,13 +74,13 @@ impl<'context> QualifiedType<'context> {
     self.unqualified_type.is_void()
   }
 
-  pub fn destructure(self) -> (Qualifiers, TypeRef<'context>) {
+  pub fn destructure(self) -> (Qualifiers, TypeRef<'c>) {
     (self.qualifiers, self.unqualified_type)
   }
 }
-impl<'context> const From<TypeRef<'context>> for QualifiedType<'context> {
+impl<'c> const From<TypeRef<'c>> for QualifiedType<'c> {
   #[inline]
-  fn from(value: TypeRef<'context>) -> Self {
+  fn from(value: TypeRef<'c>) -> Self {
     Self {
       qualifiers: Qualifiers::empty(),
       unqualified_type: value,
@@ -88,9 +88,9 @@ impl<'context> const From<TypeRef<'context>> for QualifiedType<'context> {
   }
 }
 
-impl<'context> From<TypeRefMut<'context>> for QualifiedType<'context> {
+impl<'c> From<TypeRefMut<'c>> for QualifiedType<'c> {
   #[inline(always)]
-  fn from(inner: TypeRefMut<'context>) -> Self {
+  fn from(inner: TypeRefMut<'c>) -> Self {
     Self::new_unqualified(inner)
   }
 }

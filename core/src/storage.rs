@@ -1,4 +1,4 @@
-use ::bimap::BiMap;
+use ::bimap::BiHashMap;
 use ::bumpalo::Bump;
 use ::slotmap::SlotMap;
 use ::std::{cell::RefCell, collections::HashSet, ops::Deref};
@@ -7,19 +7,19 @@ use crate::{common::StrRef, ir, types};
 
 type Interner<T> = RefCell<HashSet<T>>;
 #[derive(Debug)]
-pub struct Storage<'context> {
-  pub ast_arena: &'context Arena,
-  pub ir_arena: RefCell<SlotMap<ir::ValueID, ir::Value<'context>>>,
+pub struct Storage<'c> {
+  pub ast_arena: &'c Arena,
+  pub ir_arena: RefCell<SlotMap<ir::ValueID, ir::Value<'c>>>,
 
-  pub ast_type_interner: Interner<types::TypeRef<'context>>,
-  pub str_interner: Interner<StrRef<'context>>,
-  pub ir_type_interner: Interner<ir::TypeRef<'context>>,
+  pub ast_type_interner: Interner<types::TypeRef<'c>>,
+  pub str_interner: Interner<StrRef<'c>>,
+  pub ir_type_interner: Interner<ir::TypeRef<'c>>,
   /// currently only for ir stage. use it in previous stage could cause unprecedented catastrophe. see the git stash.
-  pub constant_interner: RefCell<BiMap<ir::ValueID, types::Constant<'context>>>,
+  pub constant_interner: RefCell<BiHashMap<ir::ValueID, types::Constant<'c>>>,
 }
 
-impl<'context> Storage<'context> {
-  pub fn new(arena: &'context Arena) -> Self {
+impl<'c> Storage<'c> {
+  pub fn new(arena: &'c Arena) -> Self {
     Self {
       ast_arena: arena,
       ir_arena: Default::default(),
@@ -31,7 +31,7 @@ impl<'context> Storage<'context> {
   }
 }
 
-pub type StorageRef<'context> = &'context Storage<'context>;
+pub type StorageRef<'c> = &'c Storage<'c>;
 
 type DropFn = unsafe fn(*mut u8);
 #[derive(Debug, Default)]

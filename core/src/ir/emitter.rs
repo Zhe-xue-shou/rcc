@@ -16,22 +16,18 @@ use crate::{
   common::{Integral, Operator, OperatorCategory, RefEq, SourceSpan, StrRef},
   ir,
   sema::{declaration as sd, expression as se, statement as ss},
-  session::Session,
+  session::SessionRef,
   types::{CastType, Constant, QualifiedType, TypeInfo},
 };
-pub struct Emitter<'source, 'context, 'session>
-where
-  'context: 'session,
-  'source: 'context,
-{
-  pub(super) session: &'session Session<'source, 'context>,
+pub struct Emitter<'c> {
+  pub(super) session: SessionRef<'c>,
   /// The basic block currently being written into
   pub(super) current_block: Option<BasicBlock>,
   /// Blocks finalized in the current function
   pub(super) current_blocks: Vec<ValueID>,
-  pub(super) locals: HashMap<StrRef<'context>, ValueID>,
+  pub(super) locals: HashMap<StrRef<'c>, ValueID>,
   /// function name → ValueID for call resolution
-  pub(super) functions: HashMap<StrRef<'context>, ValueID>,
+  pub(super) functions: HashMap<StrRef<'c>, ValueID>,
   pub(super) module: Module,
 }
 #[macro_use]
@@ -57,8 +53,8 @@ mod macros {
     };
   }
 }
-impl<'source, 'context, 'session> Emitter<'source, 'context, 'session> {
-  pub fn new(session: &'session Session<'source, 'context>) -> Self {
+impl<'c> Emitter<'c> {
+  pub fn new(session: SessionRef<'c>) -> Self {
     Self {
       session,
       current_block: Default::default(),
@@ -70,11 +66,11 @@ impl<'source, 'context, 'session> Emitter<'source, 'context, 'session> {
   }
 
   #[inline(always)]
-  pub(super) fn session(&self) -> &'session Session<'source, 'context> {
+  pub(super) fn session(&self) -> SessionRef<'c> {
     self.session
   }
 }
-impl<'context> Emitter<'_, 'context, '_> {
+impl<'c> Emitter<'c> {
   fn push_block(&mut self) {
     self.seal_current_block();
     self.current_block = Some(Default::default());
@@ -97,10 +93,10 @@ impl<'context> Emitter<'_, 'context, '_> {
   }
 }
 
-impl<'context> Emitter<'_, 'context, '_> {
+impl<'c> Emitter<'c> {
   pub fn build(
     mut self,
-    translation_unit: sd::TranslationUnit<'context>,
+    translation_unit: sd::TranslationUnit<'c>,
   ) -> Module {
     let declarations = translation_unit.declarations;
 
@@ -126,8 +122,8 @@ impl<'context> Emitter<'_, 'context, '_> {
   }
 }
 
-impl<'context> Emitter<'_, 'context, '_> {
-  fn global_funcdecl(&mut self, function: sd::Function<'context>) -> ValueID {
+impl<'c> Emitter<'c> {
+  fn global_funcdecl(&mut self, function: sd::Function<'c>) -> ValueID {
     if let Some(&value_id) = self.functions.get(function.symbol.borrow().name) {
       debug_assert!(
         lookup!(self, value_id).data.is_function(),
@@ -151,7 +147,7 @@ impl<'context> Emitter<'_, 'context, '_> {
     }
   }
 
-  fn global_funcdef(&mut self, function: sd::Function<'context>) {
+  fn global_funcdef(&mut self, function: sd::Function<'c>) {
     assert!(function.is_definition());
 
     let function_id = if let Some(&value_id) =
@@ -253,8 +249,8 @@ impl<'context> Emitter<'_, 'context, '_> {
 
   fn global_vardef(
     &self,
-    variable: sd::VarDef<'context>,
-  ) -> module::Variable<'context> {
+    variable: sd::VarDef<'c>,
+  ) -> module::Variable<'c> {
     let sym = variable.symbol.borrow();
     module::Variable::new(
       sym.name, None, // TODO: handle initializers
@@ -263,7 +259,7 @@ impl<'context> Emitter<'_, 'context, '_> {
 
   fn local_funcdecl(
     &mut self,
-    external_declaration: sd::ExternalDeclaration<'context>,
+    external_declaration: sd::ExternalDeclaration<'c>,
   ) {
     debug_assert!(!self.is_global());
     match external_declaration {
@@ -275,7 +271,7 @@ impl<'context> Emitter<'_, 'context, '_> {
     }
   }
 
-  fn local_vardef(&mut self, var_def: sd::VarDef<'context>) {
+  fn local_vardef(&mut self, var_def: sd::VarDef<'c>) {
     use inst::{Alloca, Memory, Store};
     let sym = var_def.symbol.borrow();
     let var_type = ty!(self, sym.qualified_type);
@@ -285,8 +281,8 @@ impl<'context> Emitter<'_, 'context, '_> {
   }
 }
 
-impl<'context> Emitter<'_, 'context, '_> {
-  fn statement(&mut self, statement: ss::Statement<'context>) {
+impl<'c> Emitter<'c> {
+  fn statement(&mut self, statement: ss::Statement<'c>) {
     use ss::Statement::*;
     match statement {
       Empty(_) => (),
@@ -308,11 +304,11 @@ impl<'context> Emitter<'_, 'context, '_> {
   }
 
   #[inline]
-  fn exprstmt(&mut self, expression: se::Expression<'context>) {
+  fn exprstmt(&mut self, expression: se::Expression<'c>) {
     self.expression(expression);
   }
 
-  fn returnstmt(&mut self, return_stmt: ss::Return<'context>) {
+  fn returnstmt(&mut self, return_stmt: ss::Return<'c>) {
     let ss::Return { expression, .. } = return_stmt;
     let qualified_type = expression
       .as_ref()
@@ -325,13 +321,13 @@ impl<'context> Emitter<'_, 'context, '_> {
     );
   }
 
-  fn compound(&mut self, body: ss::Compound<'context>) {
+  fn compound(&mut self, body: ss::Compound<'c>) {
     self.push_block();
     self.raw_compound(body);
     // self.seal_current_block();???
   }
 
-  fn raw_compound(&mut self, body: ss::Compound<'context>) {
+  fn raw_compound(&mut self, body: ss::Compound<'c>) {
     let ss::Compound { statements, .. } = body;
     statements
       .into_iter()
@@ -339,8 +335,8 @@ impl<'context> Emitter<'_, 'context, '_> {
   }
 }
 #[allow(clippy::needless_pass_by_ref_mut)]
-impl<'context> Emitter<'_, 'context, '_> {
-  fn expression(&mut self, expression: se::Expression<'context>) -> ValueID {
+impl<'c> Emitter<'c> {
+  fn expression(&mut self, expression: se::Expression<'c>) -> ValueID {
     // the fold here contains partial fold. e.g. `3 + 6 + func(4 + 5)` would be folded to `9 + func(9)`.
     let (raw_expr, qualified_type, ..) = expression
       .fold(&self.session.diagnosis)
@@ -373,16 +369,16 @@ impl<'context> Emitter<'_, 'context, '_> {
 
   fn constant(
     &mut self,
-    constant: se::Constant<'context>,
-    qualified_type: QualifiedType<'context>,
+    constant: se::Constant<'c>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     self.emit(constant.value, qualified_type)
   }
 
   fn unary(
     &mut self,
-    unary: se::Unary<'context>,
-    qualified_type: QualifiedType<'context>,
+    unary: se::Unary<'c>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     let se::Unary {
       kind,
@@ -408,8 +404,8 @@ impl<'context> Emitter<'_, 'context, '_> {
 
   fn binary(
     &mut self,
-    binary: se::Binary<'context>,
-    qualified_type: QualifiedType<'context>,
+    binary: se::Binary<'c>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     let se::Binary {
       left,
@@ -439,16 +435,16 @@ impl<'context> Emitter<'_, 'context, '_> {
 
   fn member_access(
     &mut self,
-    member_access: se::MemberAccess<'context>,
-    qualified_type: QualifiedType<'context>,
+    member_access: se::MemberAccess<'c>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     todo!()
   }
 
   fn ternary(
     &mut self,
-    ternary: se::Ternary<'context>,
-    qualified_type: QualifiedType<'context>,
+    ternary: se::Ternary<'c>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     let se::Ternary {
       condition,
@@ -461,24 +457,24 @@ impl<'context> Emitter<'_, 'context, '_> {
 
   fn sizeof(
     &mut self,
-    size_of: se::SizeOf<'context>,
-    qualified_type: QualifiedType<'context>,
+    size_of: se::SizeOf<'c>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     todo!()
   }
 
   fn cstyle_cast(
     &mut self,
-    cstyle_cast: se::CStyleCast<'context>,
-    qualified_type: QualifiedType<'context>,
+    cstyle_cast: se::CStyleCast<'c>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     todo!()
   }
 
   fn array_subscript(
     &mut self,
-    array_subscript: se::ArraySubscript<'context>,
-    qualified_type: QualifiedType<'context>,
+    array_subscript: se::ArraySubscript<'c>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     todo!()
   }
@@ -486,15 +482,15 @@ impl<'context> Emitter<'_, 'context, '_> {
   fn compound_literal(
     &mut self,
     compound_literal: se::CompoundLiteral,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     todo!()
   }
 
   fn variable(
     &self,
-    variable: se::Variable<'context>,
-    _qualified_type: QualifiedType<'context>,
+    variable: se::Variable<'c>,
+    _qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     let name = variable.name.borrow().name;
     if let Some(&vid) = self.locals.get(name) {
@@ -508,8 +504,8 @@ impl<'context> Emitter<'_, 'context, '_> {
 
   fn implicit_cast(
     &mut self,
-    implicit_cast: se::ImplicitCast<'context>,
-    qualified_type: QualifiedType<'context>,
+    implicit_cast: se::ImplicitCast<'c>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     let se::ImplicitCast {
       cast_type, expr, ..
@@ -558,8 +554,8 @@ impl<'context> Emitter<'_, 'context, '_> {
 
   fn call(
     &mut self,
-    call: se::Call<'context>,
-    qualified_type: QualifiedType<'context>,
+    call: se::Call<'c>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     let se::Call {
       callee, arguments, ..
@@ -578,21 +574,22 @@ impl<'context> Emitter<'_, 'context, '_> {
   }
 
   #[inline]
-  fn paren(&mut self, paren: se::Paren<'context>) -> ValueID {
+  fn paren(&mut self, paren: se::Paren<'c>) -> ValueID {
     self.expression(*paren.expr)
   }
 }
-impl<'context> Emitter<'_, 'context, '_> {
+impl<'c> Emitter<'c> {
   fn assignment(
     &mut self,
     operator: Operator,
     left: ValueID,
     right: ValueID,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
-    assert!(
-      operator == Operator::Assign,
+    assert_eq!(
+      operator,
+      Operator::Assign,
       "unimplemented for other assignment operator!"
     );
     assert!(lookup!(self, left).ir_type.is_pointer());
@@ -607,7 +604,7 @@ impl<'context> Emitter<'_, 'context, '_> {
     operator: Operator,
     left: ValueID,
     right: ValueID,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
     todo!()
@@ -618,7 +615,7 @@ impl<'context> Emitter<'_, 'context, '_> {
     operator: Operator,
     left: ValueID,
     right: ValueID,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
     todo!()
@@ -629,7 +626,7 @@ impl<'context> Emitter<'_, 'context, '_> {
     operator: Operator,
     left: ValueID,
     right: ValueID,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
     todo!()
@@ -640,7 +637,7 @@ impl<'context> Emitter<'_, 'context, '_> {
     operator: Operator,
     left: ValueID,
     right: ValueID,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
     todo!()
@@ -651,7 +648,7 @@ impl<'context> Emitter<'_, 'context, '_> {
     operator: Operator,
     left: ValueID,
     right: ValueID,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
     todo!()
@@ -662,18 +659,18 @@ impl<'context> Emitter<'_, 'context, '_> {
     operator: Operator,
     left: ValueID,
     right: ValueID,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
     todo!()
   }
 }
-impl<'context> Emitter<'_, 'context, '_> {
+impl<'c> Emitter<'c> {
   fn addressof(
     &self,
     operator: Operator,
     operand: ValueID,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
     assert_eq!(operator, Operator::Ampersand);
@@ -684,7 +681,7 @@ impl<'context> Emitter<'_, 'context, '_> {
     &self,
     operator: Operator,
     operand: ValueID,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
     todo!()
@@ -694,10 +691,10 @@ impl<'context> Emitter<'_, 'context, '_> {
     &mut self,
     operator: Operator,
     operand: ValueID,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
-    assert!(operator == Operator::Not);
+    assert_eq!(operator, Operator::Not);
     let typ = lookup!(self, operand).ir_type;
 
     match typ {
@@ -739,7 +736,7 @@ impl<'context> Emitter<'_, 'context, '_> {
     &self,
     operator: Operator,
     operand: ValueID,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
     todo!()
@@ -749,7 +746,7 @@ impl<'context> Emitter<'_, 'context, '_> {
     &self,
     operator: Operator,
     operand: ValueID,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
     todo!()
@@ -760,7 +757,7 @@ impl<'context> Emitter<'_, 'context, '_> {
     operator: Operator,
     operand: ValueID,
     kind: crate::blueprints::RawUnaryKind,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
     todo!()

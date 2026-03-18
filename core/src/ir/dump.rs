@@ -11,10 +11,8 @@ use crate::{
   types::Constant,
 };
 // no tree structure for IR
-pub type IRDumper<'source, 'context, 'session> = TreeDumper<
-  'source,
-  'context,
-  'session,
+pub type IRDumper<'c> = TreeDumper<
+  'c,
   /* "    ", */
   /* "    ", */
   /* "    ", */
@@ -32,18 +30,14 @@ macro_rules! id {
   };
 }
 
-impl<'context> Dumpable<'context> for Module {
-  fn dump<'source, 'session>(
+impl<'c> Dumpable<'c> for Module {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     self.globals.iter().for_each(|value_id| {
       Dumpable::dump(
         &*ctx!(dumper).get(*value_id),
@@ -56,18 +50,14 @@ impl<'context> Dumpable<'context> for Module {
   }
 }
 
-impl<'context> Dumpable<'context> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dumpable<'c> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     ::rcc_utils::static_dispatch!(
         ValueData: &self.data,
         |variant| Dump::dump(self, dumper, prefix, is_last, palette, variant) =>
@@ -75,58 +65,47 @@ impl<'context> Dumpable<'context> for Value<'context> {
     )
   }
 }
-trait Dump<'context, DataTy> {
+trait Dump<'c, DataTy> {
   /// This is a special version of [`Dumpable::dump`] for dumping a specific variant of [`ValueData`].
   ///
   /// Please refer to the doc of [`Dumpable::dump`] for the meaning of the parameters.
-  fn dump<'source, 'session>(
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
     variant: &DataTy,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session;
+  ) -> FakeDumpRes;
 }
 /// Useless stuffs toi bypass type checker for now.
 #[allow(unused)]
 macro_rules! please_dump_me {
   ($DataTy:ty) => {
     #[allow(unused)]
-    impl<'context> Dump<'context, $DataTy> for Value<'context> {
-      fn dump<'source, 'session>(
+    impl<'c> Dump<'c, $DataTy> for Value<'c> {
+      fn dump(
         &self,
-        dumper: &mut impl Dumper<'source, 'context, 'session>,
+        dumper: &mut impl Dumper<'c>,
         prefix: &str,
         is_last: bool,
         palette: &Palette,
         variant: &$DataTy,
-      ) -> FakeDumpRes
-      where
-        'source: 'context,
-        'context: 'session,
-      {
+      ) -> FakeDumpRes {
         todo!()
       }
     }
   };
 }
-impl<'context> Dump<'context, inst::Instruction> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, inst::Instruction> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
     variant: &inst::Instruction,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     // my static_dispatch uses `ident` instead of
     // `type` of the 1st arg(qual path is unstable and rust-analyzer is having a hard time to hightlighing that).
     // hence strip the `::` path here.
@@ -139,36 +118,28 @@ impl<'context> Dump<'context, inst::Instruction> for Value<'context> {
   }
 }
 
-impl<'context> Dump<'context, Constant<'_>> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, Constant<'_>> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
     variant: &Constant<'_>,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     dumper.write_fmt(suff!(" " => self.ir_type), &palette.meta);
     dumper.write(variant, &palette.literal);
   }
 }
-impl<'context> Dump<'context, module::Function<'_>> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, module::Function<'_>> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
     variant: &module::Function<'_>,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     dumper.write_fmt(
       format_args!(
         "{} ",
@@ -257,35 +228,27 @@ impl<'context> Dump<'context, module::Function<'_>> for Value<'context> {
     dumper.newline();
   }
 }
-impl<'context> Dump<'context, module::Variable<'_>> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, module::Variable<'_>> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
     variant: &module::Variable<'_>,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     todo!()
   }
 }
-impl<'context> Dump<'context, module::BasicBlock> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, module::BasicBlock> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
     variant: &module::BasicBlock,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     variant.instructions.iter().for_each(|inst_id| {
       dumper.write(prefix, &palette.dim);
       let value = ctx!(dumper).get(*inst_id);
@@ -319,19 +282,15 @@ impl<'context> Dump<'context, module::BasicBlock> for Value<'context> {
     );
   }
 }
-impl<'context> Dump<'context, module::Argument> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, module::Argument> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     index: &str, // coontext is actually an index
     is_last: bool,
     palette: &Palette,
     variant: &module::Argument,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     dumper.write_fmt(suff!(" " => self.ir_type), &palette.meta);
     dumper.write_fmt(pre!("%" => index), &palette.skeleton);
     dumper.write((if is_last { "" } else { ", " }), &palette.dim);
@@ -339,19 +298,15 @@ impl<'context> Dump<'context, module::Argument> for Value<'context> {
 }
 
 please_dump_me!(inst::Phi);
-impl<'context> Dump<'context, inst::Terminator> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, inst::Terminator> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
     variant: &inst::Terminator,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     use inst::Terminator;
     ::rcc_utils::static_dispatch!(
         Terminator : variant,
@@ -361,19 +316,15 @@ impl<'context> Dump<'context, inst::Terminator> for Value<'context> {
   }
 }
 please_dump_me!(inst::Unary);
-impl<'context> Dump<'context, inst::Binary> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, inst::Binary> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
     variant: &inst::Binary,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     dumper.write(suff!(" " => variant.operator), &palette.literal);
     dumper.write(suff!(" " => self.ir_type), &palette.meta);
     id!(variant.lhs, dumper, palette);
@@ -381,19 +332,15 @@ impl<'context> Dump<'context, inst::Binary> for Value<'context> {
     id!(variant.rhs, dumper, palette);
   }
 }
-impl<'context> Dump<'context, inst::Memory> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, inst::Memory> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
     variant: &inst::Memory,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     use inst::Memory;
     ::rcc_utils::static_dispatch!(
         Memory : variant,
@@ -402,19 +349,15 @@ impl<'context> Dump<'context, inst::Memory> for Value<'context> {
     )
   }
 }
-impl<'context> Dump<'context, inst::Cast> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, inst::Cast> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
     variant: &inst::Cast,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     use inst::Cast;
     ::rcc_utils::static_dispatch!(
         Cast : variant,
@@ -423,19 +366,15 @@ impl<'context> Dump<'context, inst::Cast> for Value<'context> {
     )
   }
 }
-impl<'context> Dump<'context, inst::Call> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, inst::Call> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
     variant: &inst::Call,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     dumper.write("call ", &palette.literal);
     match &ctx!(dumper).get(variant.callee).data {
       ValueData::Instruction(instruction) => todo!(),
@@ -466,19 +405,15 @@ impl<'context> Dump<'context, inst::Call> for Value<'context> {
     }
   }
 }
-impl<'context> Dump<'context, inst::ICmp> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, inst::ICmp> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
     variant: &inst::ICmp,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     dumper.write("icmp ", &palette.literal);
     dumper.write(suff!(" " => variant.predicate), &palette.literal);
     dumper.write(suff!(" " => self.ir_type), &palette.meta);
@@ -490,19 +425,15 @@ impl<'context> Dump<'context, inst::ICmp> for Value<'context> {
 
 please_dump_me!(inst::Jump);
 please_dump_me!(inst::Branch);
-impl<'context> Dump<'context, inst::Return> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, inst::Return> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     _is_last: bool,
     palette: &Palette,
     variant: &inst::Return,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     debug_assert!(_is_last);
     dumper.write("ret ", &palette.literal);
     dumper.write_fmt(suff!(" " => self.ir_type), &palette.meta);
@@ -512,19 +443,15 @@ impl<'context> Dump<'context, inst::Return> for Value<'context> {
   }
 }
 
-impl<'context> Dump<'context, inst::Alloca> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, inst::Alloca> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
     variant: &inst::Alloca,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     dumper.write("alloca ", &palette.literal);
     dumper.write(
       dumper.session().ir_context.ir_type(&self.qualified_type),
@@ -532,19 +459,15 @@ impl<'context> Dump<'context, inst::Alloca> for Value<'context> {
     )
   }
 }
-impl<'context> Dump<'context, inst::Load> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, inst::Load> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
     variant: &inst::Load,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     dumper.write("load ", &palette.literal);
     dumper.write((self.ir_type), &palette.meta);
     dumper.write(", ", &palette.skeleton);
@@ -555,19 +478,15 @@ impl<'context> Dump<'context, inst::Load> for Value<'context> {
     dumper.write_fmt(pre!("%" => variant.addr.handle()), &palette.skeleton);
   }
 }
-impl<'context> Dump<'context, inst::Store> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, inst::Store> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     _is_last: bool,
     palette: &Palette,
     variant: &inst::Store,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     dumper.write(prefix, &palette.dim);
     dumper.write("store ", &palette.literal);
     dumper.write(suff!(" " => self.ir_type), &palette.meta);
@@ -583,19 +502,15 @@ impl<'context> Dump<'context, inst::Store> for Value<'context> {
   }
 }
 
-impl<'context> Dump<'context, inst::Zext> for Value<'context> {
-  fn dump<'source, 'session>(
+impl<'c> Dump<'c, inst::Zext> for Value<'c> {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
     variant: &inst::Zext,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     dumper.write("zext ", &palette.literal);
 
     dumper.write(

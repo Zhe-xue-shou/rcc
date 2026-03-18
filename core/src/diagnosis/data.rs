@@ -23,24 +23,24 @@
 ///
 /// See module documentation for details.
 #[derive(Debug)]
-pub struct Diag<'context> {
-  pub(crate) metadata: Meta<'context>,
+pub struct Diag<'c> {
+  pub(crate) metadata: Meta<'c>,
   pub(crate) span: SourceSpan,
 }
 /// Message with [`Severity`].
 #[derive(Debug)]
-pub struct Meta<'context> {
+pub struct Meta<'c> {
   pub(crate) severity: Severity,
-  pub(crate) data: Data<'context>,
+  pub(crate) data: Data<'c>,
 }
-impl<'context> Meta<'context> {
-  pub fn new(severity: Severity, data: Data<'context>) -> Self {
+impl<'c> Meta<'c> {
+  pub fn new(severity: Severity, data: Data<'c>) -> Self {
     Self { severity, data }
   }
 }
-impl<'context> IntoWith<SourceSpan, Diag<'context>> for Meta<'context> {
+impl<'c> IntoWith<SourceSpan, Diag<'c>> for Meta<'c> {
   #[inline]
-  fn into_with(self, span: SourceSpan) -> Diag<'context> {
+  fn into_with(self, span: SourceSpan) -> Diag<'c> {
     Diag::new(span, self.severity, self.data)
   }
 }
@@ -71,7 +71,7 @@ type Elem = String;
 ///
 /// TODO: reduce the size of this enum.
 #[derive(Debug, ::thiserror::Error)]
-pub enum Data<'context> {
+pub enum Data<'c> {
   #[error("Unexpected character '{}'{expected}", &.0.0, expected = format_expected(&.0.1))]
   UnexpectedCharacter(Box<(String, Option<String>)>),
   #[error("Unterminated string literal")]
@@ -95,9 +95,9 @@ pub enum Data<'context> {
   #[error("{0}")]
   UnclosedParameterList(CustomMessage),
   #[error("Expect '(' after {0}")]
-  MissingOpenParen(Literal<'context>),
+  MissingOpenParen(Literal<'c>),
   #[error("Expect ')' after {0}")]
-  MissingCloseParen(Literal<'context>),
+  MissingCloseParen(Literal<'c>),
   #[error("{0}")]
   ExprNotConstant(CustomMessage),
   #[error("{0}")]
@@ -123,7 +123,7 @@ pub enum Data<'context> {
   #[error("{0}")]
   InvalidControlFlowStmt(CustomMessage),
   #[error("Label '{0}' not found")]
-  LabelNotFound(StrRef<'context>),
+  LabelNotFound(StrRef<'c>),
   #[error("Variable '{0}' cannot have function specifiers")]
   FunctionSpecsInVariableDecl(Elem),
   #[error("Variable '{0}' already defined")]
@@ -133,11 +133,11 @@ pub enum Data<'context> {
   #[error("Local extern variable '{0}' cannot have initializer")]
   LocalExternVarWithInitializer(Elem),
   #[error("expression '{0}' is not callable")]
-  InvalidCallee(QualifiedType<'context>),
+  InvalidCallee(QualifiedType<'c>),
   #[error("'{0}' is not a variable")]
   NotVariable(Elem),
   #[error("Variable '{0}' is not defined")]
-  UndefinedVariable(StrRef<'context>),
+  UndefinedVariable(StrRef<'c>),
   #[error("Incompatible types '{0}' and '{1}' in ternary expression")]
   TenaryTypeIncompatible(Elem, Elem),
   #[error("Operand of unary operator '{0}' must be arithmetic type, got '{1}'")]
@@ -173,7 +173,7 @@ pub enum Data<'context> {
   #[error(
     "variable declared with 'register' can only have pointer type, got '{0}'"
   )]
-  InvalidRegVarDecl(QualifiedType<'context>),
+  InvalidRegVarDecl(QualifiedType<'c>),
   #[error("Operand of indirection operator must be pointer type, got '{0}'")]
   DerefNonPtr(Elem),
   #[error("Array subscript is not an integer, got '{0}'")]
@@ -185,15 +185,15 @@ pub enum Data<'context> {
   #[error("Return type mismatch: {0}")]
   ReturnTypeMismatch(CustomMessage),
   #[error("Duplicate label '{0}'")]
-  DuplicateLabel(StrRef<'context>),
+  DuplicateLabel(StrRef<'c>),
   #[error(
     "Incompatible types in declaration of '{0}': '{1}' is not compatible with \
      '{2}'"
   )]
   IncompatibleType(
-    StrRef<'context>,
-    QualifiedType<'context>,
-    QualifiedType<'context>,
+    StrRef<'c>,
+    QualifiedType<'c>,
+    QualifiedType<'c>,
   ),
   #[error("Incompatible pointer types '{0}' and '{1}'")]
   IncompatiblePointerTypes(Elem, Elem),
@@ -204,13 +204,13 @@ pub enum Data<'context> {
   #[error("Discarding qualifiers '{0}' during conversion is not allowed")]
   DiscardingQualifiers(Qualifiers),
   #[error("Case label expression '{0}' is not an integer")]
-  NonIntegerInCaseStmt(Constant<'context>),
+  NonIntegerInCaseStmt(Constant<'c>),
   #[error("Character '{0}' too long for it's corresponding type")]
   CharacterTooLong(String),
   #[error("{0}")]
   InvalidConversion(CustomMessage),
   #[error("Cannot apply operator '{2}' to types '{0}' and '{1}'")]
-  InvalidOprand(QualifiedType<'context>, QualifiedType<'context>, Operator),
+  InvalidOprand(QualifiedType<'c>, QualifiedType<'c>, Operator),
   #[error("{0}")]
   Placeholder(CustomMessage),
   #[error("{0}")]
@@ -240,12 +240,12 @@ pub enum Data<'context> {
   #[error(
     "Applying unary operator '{}' may cause overflow on constant '{}'", &.0.1, &.0.0
   )]
-  ArithmeticUnaryOpOverflow(Box<(Constant<'context>, Operator)>),
+  ArithmeticUnaryOpOverflow(Box<(Constant<'c>, Operator)>),
   #[error(
     "Arithmetic overflow in operation '{}' between '{}' and '{}'", &.0.2, &.0.0, &.0.1
   )]
   ArithmeticBinOpOverflow(
-    Box<(Constant<'context>, Constant<'context>, Operator)>,
+    Box<(Constant<'c>, Constant<'c>, Operator)>,
   ),
   #[error(
     "'{}' is used in a logical operation, {}", &.0, if let Some(suggest) = &.1 {
@@ -259,9 +259,9 @@ pub enum Data<'context> {
   )]
   LogicalOpMisuse(Operator /* got */, Option<Operator> /* suggest */),
   #[error("Possible data loss in implicit cast from '{0}' to '{1}'")]
-  CastDown(QualifiedType<'context>, QualifiedType<'context>),
+  CastDown(QualifiedType<'c>, QualifiedType<'c>),
   #[error("Operation '{}' between '{}' and '{}' results in NaN", &.0.2, &.0.0, &.0.1)]
-  NotANumber(Box<(Constant<'context>, Constant<'context>, Operator)>),
+  NotANumber(Box<(Constant<'c>, Constant<'c>, Operator)>),
   #[error("Division by zero")]
   DivideByZero,
   #[error(
@@ -288,9 +288,9 @@ static_assert!(
   "Diagnostic Data too large!"
 );
 
-impl<'context> IntoWith<Severity, Meta<'context>> for Data<'context> {
+impl<'c> IntoWith<Severity, Meta<'c>> for Data<'c> {
   #[inline]
-  fn into_with(self, severity: Severity) -> Meta<'context> {
+  fn into_with(self, severity: Severity) -> Meta<'c> {
     Meta::new(severity, self)
   }
 }
@@ -302,12 +302,12 @@ fn format_expected(expected: &Option<String>) -> String {
   }
 }
 
-impl<'context> Diag<'context> {
+impl<'c> Diag<'c> {
   #[inline]
   pub fn new(
     span: SourceSpan,
     severity: Severity,
-    data: Data<'context>,
+    data: Data<'c>,
   ) -> Self {
     Self {
       metadata: Meta::new(severity, data),

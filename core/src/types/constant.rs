@@ -20,16 +20,16 @@ use crate::{
 ///
 /// TODO: named constants `constexpr` and constant integral
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Constant<'context> {
+pub enum Constant<'c> {
   Integral(Integral),
   Floating(Floating),
   Nullptr(Nullptr),
-  String(StrRef<'context>),
-  Address(StrRef<'context>),
+  String(StrRef<'c>),
+  Address(StrRef<'c>),
 }
 ensure_is_pod!(Constant);
-pub type ConstantRef<'context> = &'context Constant<'context>;
-pub type ConstantRefMut<'context> = &'context mut Constant<'context>;
+pub type ConstantRef<'c> = &'c Constant<'c>;
+pub type ConstantRefMut<'c> = &'c mut Constant<'c>;
 impl RefEq for ConstantRef<'_> {
   fn ref_eq(lhs: Self, rhs: Self) -> bool
   where
@@ -51,7 +51,7 @@ impl RefEq for ConstantRef<'_> {
     ref_eq
   }
 }
-impl<'context> Constant<'context> {
+impl<'c> Constant<'c> {
   pub const FLOATING_SUFFIXES: &'static [&'static str] = &[
     "f", "F", // float
     "l", "L", // long double
@@ -85,7 +85,7 @@ impl<'context> Constant<'context> {
     base: u32,
     suffix: Option<&str>,
     is_floating: bool,
-  ) -> (Self, Option<DiagMeta<'context>>) {
+  ) -> (Self, Option<DiagMeta<'c>>) {
     use ::rcc_utils::IntoWith;
 
     macro_rules! int_conv {
@@ -224,15 +224,15 @@ impl<'context> Constant<'context> {
     matches!(self, Constant::Address(_))
   }
 }
-::rcc_utils::interconvert!(Integral, Constant<'context>);
-::rcc_utils::interconvert!(Floating, Constant<'context>);
+::rcc_utils::interconvert!(Integral, Constant<'c>);
+::rcc_utils::interconvert!(Floating, Constant<'c>);
 // ::rcc_utils::interconvert!(???, Constant, String);
-::rcc_utils::interconvert!(Nullptr, Constant<'context>);
+::rcc_utils::interconvert!(Nullptr, Constant<'c>);
 // ::rcc_utils::interconvert!(???, Constant, Address);
 
-::rcc_utils::make_trio_for!(Integral, Constant<'context>);
-::rcc_utils::make_trio_for!(Floating, Constant<'context>);
-::rcc_utils::make_trio_for!(Nullptr, Constant<'context>);
+::rcc_utils::make_trio_for!(Integral, Constant<'c>);
+::rcc_utils::make_trio_for!(Floating, Constant<'c>);
+::rcc_utils::make_trio_for!(Nullptr, Constant<'c>);
 
 // ::rcc_utils::make_trio_for!(???, Constant, String);
 // ::rcc_utils::make_trio_for!(???, Constant, Address);

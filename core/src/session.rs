@@ -1,21 +1,20 @@
 use crate::{common::SourceManager, diagnosis::Operational, ir, types};
 
 #[derive(Debug)]
-pub struct Session<'source, 'context>
-where
-  'source: 'context,
-{
-  pub diagnosis: Operational<'context>,
-  pub manager: &'source SourceManager,
-  pub ast_context: &'context types::Context<'context>,
-  pub ir_context: &'context ir::Context<'context>,
+pub struct Session<'c> {
+  pub diagnosis: Operational<'c>,
+  pub manager: &'c SourceManager,
+  pub ast_context: &'c types::Context<'c>,
+  pub ir_context: &'c ir::Context<'c>,
 }
 
-impl<'source, 'context> Session<'source, 'context> {
+pub type SessionRef<'c> = &'c Session<'c>;
+
+impl<'c> Session<'c> {
   pub fn new(
-    manager: &'source SourceManager,
-    ast_context: &'context types::Context<'context>,
-    ir_context: &'context ir::Context<'context>,
+    manager: &'c SourceManager,
+    ast_context: &'c types::Context<'c>,
+    ir_context: &'c ir::Context<'c>,
   ) -> Self {
     Self {
       diagnosis: Operational::default(),

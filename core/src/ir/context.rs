@@ -4,19 +4,19 @@ use super::{
 };
 use crate::types::Constant;
 #[derive(Debug)]
-pub struct Context<'context> {
-  void_type: TypeRef<'context>,
-  label_type: TypeRef<'context>,
-  float32_type: TypeRef<'context>,
-  float64_type: TypeRef<'context>,
-  pointer_type: TypeRef<'context>,
-  common_integer_types: [TypeRef<'context>; 6],
+pub struct Context<'c> {
+  void_type: TypeRef<'c>,
+  label_type: TypeRef<'c>,
+  float32_type: TypeRef<'c>,
+  float64_type: TypeRef<'c>,
+  pointer_type: TypeRef<'c>,
+  common_integer_types: [TypeRef<'c>; 6],
 
-  storage: StorageRef<'context>,
+  storage: StorageRef<'c>,
 }
 
-impl<'context> Context<'context> {
-  pub fn new(storage: StorageRef<'context>) -> Self {
+impl<'c> Context<'c> {
+  pub fn new(storage: StorageRef<'c>) -> Self {
     let this = Self {
       void_type: storage.ast_arena.alloc(Type::Void()),
       label_type: storage.ast_arena.alloc(Type::Label()),
@@ -48,28 +48,28 @@ impl<'context> Context<'context> {
     this
   }
 }
-impl<'context> Context<'context> {
-  pub fn void_type(&self) -> TypeRef<'context> {
+impl<'c> Context<'c> {
+  pub fn void_type(&self) -> TypeRef<'c> {
     self.void_type
   }
 
-  pub fn label_type(&self) -> TypeRef<'context> {
+  pub fn label_type(&self) -> TypeRef<'c> {
     self.label_type
   }
 
-  pub fn float32_type(&self) -> TypeRef<'context> {
+  pub fn float32_type(&self) -> TypeRef<'c> {
     self.float32_type
   }
 
-  pub fn float64_type(&self) -> TypeRef<'context> {
+  pub fn float64_type(&self) -> TypeRef<'c> {
     self.float64_type
   }
 
-  pub fn pointer_type(&self) -> TypeRef<'context> {
+  pub fn pointer_type(&self) -> TypeRef<'c> {
     self.pointer_type
   }
 
-  fn do_intern(&self, value: Type<'context>) -> TypeRef<'context> {
+  fn do_intern(&self, value: Type<'c>) -> TypeRef<'c> {
     if let Some(existing) = self.storage.ir_type_interner.borrow().get(&value) {
       existing
     } else {
@@ -79,14 +79,14 @@ impl<'context> Context<'context> {
     }
   }
 
-  pub fn intern<T: Into<Type<'context>>>(&self, value: T) -> TypeRef<'context> {
+  pub fn intern<T: Into<Type<'c>>>(&self, value: T) -> TypeRef<'c> {
     self.do_intern(value.into())
   }
 
-  pub fn intern_constant<T: Into<Constant<'context>>>(
+  pub fn intern_constant<T: Into<Constant<'c>>>(
     &self,
     value: T,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     let value = value.into();
     if let Some(existing) =
@@ -111,14 +111,14 @@ impl<'context> Context<'context> {
   pub fn get_by_constant_id(
     &self,
     id: &ValueID,
-  ) -> Option<Ref<'_, Constant<'context>>> {
+  ) -> Option<Ref<'_, Constant<'c>>> {
     Ref::filter_map(self.storage.constant_interner.borrow(), |interner| {
       interner.get_by_left(id)
     })
     .ok()
   }
 
-  pub fn make_integer(&self, bits: u8) -> TypeRef<'context> {
+  pub fn make_integer(&self, bits: u8) -> TypeRef<'c> {
     match bits {
       1 => self.common_integer_types[0],
       8 => self.common_integer_types[1],
@@ -132,32 +132,32 @@ impl<'context> Context<'context> {
 
   pub fn make_array(
     &self,
-    element_type: TypeRef<'context>,
+    element_type: TypeRef<'c>,
     length: usize,
-  ) -> TypeRef<'context> {
+  ) -> TypeRef<'c> {
     self.intern(Array::new(element_type, length))
   }
 
   pub fn make_function(
     &self,
-    result_type: TypeRef<'context>,
-    params: &'context [TypeRef<'context>],
+    result_type: TypeRef<'c>,
+    params: &'c [TypeRef<'c>],
     is_variadic: bool,
-  ) -> TypeRef<'context> {
+  ) -> TypeRef<'c> {
     self.intern(Function::new(result_type, params, is_variadic))
   }
 }
 use ::std::cell::{Ref, RefMut};
-impl<'context> Context<'context> {
-  pub fn insert(&self, value: Value<'context>) -> ValueID {
+impl<'c> Context<'c> {
+  pub fn insert(&self, value: Value<'c>) -> ValueID {
     self.storage.ir_arena.borrow_mut().insert(value)
   }
 
-  pub fn get(&self, id: ValueID) -> Ref<'_, Value<'context>> {
+  pub fn get(&self, id: ValueID) -> Ref<'_, Value<'c>> {
     Ref::map(self.storage.ir_arena.borrow(), |slotmap| &slotmap[id])
   }
 
-  pub fn get_mut(&self, id: ValueID) -> RefMut<'_, Value<'context>> {
+  pub fn get_mut(&self, id: ValueID) -> RefMut<'_, Value<'c>> {
     RefMut::map(self.storage.ir_arena.borrow_mut(), |slotmap| {
       &mut slotmap[id]
     })
@@ -167,11 +167,11 @@ use crate::{
   storage::StorageRef,
   types::{self, QualifiedType},
 };
-impl<'context> Context<'context> {
+impl<'c> Context<'c> {
   pub fn ir_type(
     &self,
-    qualified_type: &types::QualifiedType<'context>,
-  ) -> TypeRef<'context> {
+    qualified_type: &types::QualifiedType<'c>,
+  ) -> TypeRef<'c> {
     use Primitive::*;
     use types::{Primitive, TypeInfo};
     match qualified_type.unqualified_type {

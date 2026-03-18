@@ -17,29 +17,29 @@ impl ValueID {
 }
 
 #[derive(Debug)]
-pub enum Data<'context> {
+pub enum Data<'c> {
   Instruction(Instruction),
-  Constant(Constant<'context>),
-  Function(Function<'context>),
-  Variable(Variable<'context>),
+  Constant(Constant<'c>),
+  Function(Function<'c>),
+  Variable(Variable<'c>),
   BasicBlock(BasicBlock),
   Argument(Argument),
 }
 
 #[derive(Debug)]
-pub struct Value<'context> {
+pub struct Value<'c> {
   /// AST Type.
-  pub qualified_type: QualifiedType<'context>,
-  pub ir_type: TypeRef<'context>,
-  pub data: Data<'context>,
+  pub qualified_type: QualifiedType<'c>,
+  pub ir_type: TypeRef<'c>,
+  pub data: Data<'c>,
   pub users: Vec<ValueID>,
 }
 
-impl<'context> Value<'context> {
+impl<'c> Value<'c> {
   pub fn new(
-    qualified_type: QualifiedType<'context>,
-    ir_type: TypeRef<'context>,
-    value: Data<'context>,
+    qualified_type: QualifiedType<'c>,
+    ir_type: TypeRef<'c>,
+    value: Data<'c>,
   ) -> Self {
     Self {
       qualified_type,
@@ -51,16 +51,16 @@ impl<'context> Value<'context> {
 }
 
 use ::rcc_utils::{interconvert, make_trio_for};
-interconvert!(Instruction, Data<'context>);
-interconvert!(Function, Data, 'context);
-interconvert!(Constant, Data, 'context);
-interconvert!(Variable, Data, 'context);
-interconvert!(BasicBlock, Data<'context>);
-interconvert!(Argument, Data<'context>);
+interconvert!(Instruction, Data<'c>);
+interconvert!(Function, Data, 'c);
+interconvert!(Constant, Data, 'c);
+interconvert!(Variable, Data, 'c);
+interconvert!(BasicBlock, Data<'c>);
+interconvert!(Argument, Data<'c>);
 
-make_trio_for!(Instruction, Data<'context>);
-make_trio_for!(Function, Data, 'context);
-make_trio_for!(Constant, Data, 'context);
-make_trio_for!(Variable, Data, 'context);
-make_trio_for!(BasicBlock, Data<'context>);
-make_trio_for!(Argument, Data<'context>);
+make_trio_for!(Instruction, Data<'c>);
+make_trio_for!(Function, Data, 'c);
+make_trio_for!(Constant, Data, 'c);
+make_trio_for!(Variable, Data, 'c);
+make_trio_for!(BasicBlock, Data<'c>);
+make_trio_for!(Argument, Data<'c>);

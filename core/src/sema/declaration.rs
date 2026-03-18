@@ -7,60 +7,60 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct TranslationUnit<'context> {
-  pub declarations: Vec<ExternalDeclaration<'context>>,
+pub struct TranslationUnit<'c> {
+  pub declarations: Vec<ExternalDeclaration<'c>>,
 }
 #[derive(Debug)]
-pub enum ExternalDeclaration<'context> {
-  Function(Function<'context>),
-  Variable(VarDef<'context>),
+pub enum ExternalDeclaration<'c> {
+  Function(Function<'c>),
+  Variable(VarDef<'c>),
 }
 
 #[derive(Debug)]
-pub struct Function<'context> {
+pub struct Function<'c> {
   /// contains name, storage, definition flag, and full QualifiedType.
-  pub symbol: SymbolRef<'context>, // function type is included in symbol's qualified_type
-  pub parameters: Vec<Parameter<'context>>, // some duplication with symbol's qualified_type, but we need this for param names
+  pub symbol: SymbolRef<'c>, // function type is included in symbol's qualified_type
+  pub parameters: Vec<Parameter<'c>>, // some duplication with symbol's qualified_type, but we need this for param names
   pub specifier: FunctionSpecifier,
-  pub body: Option<Compound<'context>>,
-  pub labels: HashSet<StrRef<'context>>, // just holds a name
-  pub gotos: HashSet<StrRef<'context>>,  // just holds a name
+  pub body: Option<Compound<'c>>,
+  pub labels: HashSet<StrRef<'c>>, // just holds a name
+  pub gotos: HashSet<StrRef<'c>>,  // just holds a name
   pub span: SourceSpan,
 }
 
 #[derive(Debug)]
-pub struct VarDef<'context> {
-  pub symbol: SymbolRef<'context>,
-  pub initializer: Option<Initializer<'context>>,
+pub struct VarDef<'c> {
+  pub symbol: SymbolRef<'c>,
+  pub initializer: Option<Initializer<'c>>,
   pub span: SourceSpan,
 }
 
 #[derive(Debug)]
-pub struct Parameter<'context> {
+pub struct Parameter<'c> {
   /// If the parameter is named, point to the symbol; otherwise the name was set to `<unnamed_n>`.
-  pub symbol: SymbolRef<'context>,
+  pub symbol: SymbolRef<'c>,
   pub span: SourceSpan,
 }
 
 #[derive(Debug)]
-pub enum Initializer<'context> {
+pub enum Initializer<'c> {
   /// Simple scalar initialization: `int x = val;`
-  Scalar(Expression<'context>),
+  Scalar(Expression<'c>),
   /// Aggregate initialization: `int arr[] = { 1, 2, 3 };`
   /// unimplemented: todo.
-  Aggregate(Vec<Initializer<'context>>),
+  Aggregate(Vec<Initializer<'c>>),
 }
-impl<'context> TranslationUnit<'context> {
-  pub fn new(declarations: Vec<ExternalDeclaration<'context>>) -> Self {
+impl<'c> TranslationUnit<'c> {
+  pub fn new(declarations: Vec<ExternalDeclaration<'c>>) -> Self {
     Self { declarations }
   }
 }
-impl<'context> Function<'context> {
+impl<'c> Function<'c> {
   pub fn new(
-    symbol: SymbolRef<'context>,
-    parameters: Vec<Parameter<'context>>,
+    symbol: SymbolRef<'c>,
+    parameters: Vec<Parameter<'c>>,
     specifier: FunctionSpecifier,
-    body: Option<Compound<'context>>,
+    body: Option<Compound<'c>>,
     span: SourceSpan,
   ) -> Self {
     Self {
@@ -96,10 +96,10 @@ impl<'context> Function<'context> {
     })
   }
 }
-impl<'context> VarDef<'context> {
+impl<'c> VarDef<'c> {
   pub fn new(
-    symbol: SymbolRef<'context>,
-    initializer: Option<Initializer<'context>>,
+    symbol: SymbolRef<'c>,
+    initializer: Option<Initializer<'c>>,
     span: SourceSpan,
   ) -> Self {
     Self {
@@ -110,8 +110,8 @@ impl<'context> VarDef<'context> {
   }
 }
 
-impl<'context> Parameter<'context> {
-  pub fn new(symbol: SymbolRef<'context>, span: SourceSpan) -> Self {
+impl<'c> Parameter<'c> {
+  pub fn new(symbol: SymbolRef<'c>, span: SourceSpan) -> Self {
     Self { symbol, span }
   }
 }
@@ -126,7 +126,7 @@ mod fmt {
   };
   use crate::types::Type;
 
-  impl<'context> Display for TranslationUnit<'context> {
+  impl<'c> Display for TranslationUnit<'c> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
       self
         .declarations
@@ -135,7 +135,7 @@ mod fmt {
     }
   }
 
-  impl<'context> Display for ExternalDeclaration<'context> {
+  impl<'c> Display for ExternalDeclaration<'c> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
       ::rcc_utils::static_dispatch!(
         self,
@@ -145,7 +145,7 @@ mod fmt {
     }
   }
 
-  impl<'context> Display for Function<'context> {
+  impl<'c> Display for Function<'c> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
       let sym = self.symbol.borrow();
 
@@ -176,14 +176,14 @@ mod fmt {
     }
   }
 
-  impl<'context> Display for Parameter<'context> {
+  impl<'c> Display for Parameter<'c> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
       // Show only the type for brevity; names are optional.
       write!(f, "{}", self.symbol.borrow().qualified_type)
     }
   }
 
-  impl<'context> Display for VarDef<'context> {
+  impl<'c> Display for VarDef<'c> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
       let sym = self.symbol.borrow();
       write!(
@@ -198,7 +198,7 @@ mod fmt {
     }
   }
 
-  impl<'context> Display for Initializer<'context> {
+  impl<'c> Display for Initializer<'c> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
       match self {
         Initializer::Scalar(expr) => write!(f, "{}", expr),

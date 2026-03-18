@@ -6,7 +6,7 @@
 //   types::QualifiedType,
 // };
 
-// impl<'context> Expression<'context> {
+// impl<'c> Expression<'c> {
 //   pub fn oneplusone() -> Self {
 //     Self::new_rvalue(
 //       Binary::new(

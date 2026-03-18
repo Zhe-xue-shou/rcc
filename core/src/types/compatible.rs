@@ -9,7 +9,7 @@ use super::{
 use crate::common::RefEq;
 
 /// rules about the `metadata`. used for declaration and definition.
-pub trait Compatibility<'context> {
+pub trait Compatibility<'c> {
   fn compatible(lhs: &Self, rhs: &Self) -> bool
   where
     Self: Sized;
@@ -23,7 +23,7 @@ pub trait Compatibility<'context> {
   fn composite(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Option<Self>
   where
     Self: Sized;
@@ -31,7 +31,7 @@ pub trait Compatibility<'context> {
   fn composite_with(
     &self,
     other: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Option<Self>
   where
     Self: Sized,
@@ -42,7 +42,7 @@ pub trait Compatibility<'context> {
   fn composite_unchecked(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Self
   where
     Self: Sized;
@@ -50,7 +50,7 @@ pub trait Compatibility<'context> {
   fn composite_unchecked_with(
     &self,
     other: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Self
   where
     Self: Sized,
@@ -58,7 +58,7 @@ pub trait Compatibility<'context> {
     Self::composite_unchecked(self, other, context)
   }
 }
-impl<'context> Compatibility<'context> for ArraySize {
+impl<'c> Compatibility<'c> for ArraySize {
   fn compatible(lhs: &Self, rhs: &Self) -> bool {
     match (lhs, rhs) {
       (Self::Constant(l), Self::Constant(r)) => l == r,
@@ -72,7 +72,7 @@ impl<'context> Compatibility<'context> for ArraySize {
   fn composite(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Option<Self>
   where
     Self: Sized,
@@ -94,7 +94,7 @@ impl<'context> Compatibility<'context> for ArraySize {
   fn composite_unchecked(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Self
   where
     Self: Sized,
@@ -109,7 +109,7 @@ impl<'context> Compatibility<'context> for ArraySize {
   }
 }
 
-impl<'context> Compatibility<'context> for Enum<'context> {
+impl<'c> Compatibility<'c> for Enum<'c> {
   fn compatible(lhs: &Self, rhs: &Self) -> bool {
     todo!()
   }
@@ -117,7 +117,7 @@ impl<'context> Compatibility<'context> for Enum<'context> {
   fn composite(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Option<Self>
   where
     Self: Sized,
@@ -128,7 +128,7 @@ impl<'context> Compatibility<'context> for Enum<'context> {
   fn composite_unchecked(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Self
   where
     Self: Sized,
@@ -137,7 +137,7 @@ impl<'context> Compatibility<'context> for Enum<'context> {
   }
 }
 
-impl<'context> Compatibility<'context> for Record<'context> {
+impl<'c> Compatibility<'c> for Record<'c> {
   fn compatible(lhs: &Self, rhs: &Self) -> bool {
     todo!()
   }
@@ -145,7 +145,7 @@ impl<'context> Compatibility<'context> for Record<'context> {
   fn composite(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Option<Self>
   where
     Self: Sized,
@@ -156,7 +156,7 @@ impl<'context> Compatibility<'context> for Record<'context> {
   fn composite_unchecked(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Self
   where
     Self: Sized,
@@ -165,7 +165,7 @@ impl<'context> Compatibility<'context> for Record<'context> {
   }
 }
 
-impl<'context> Compatibility<'context> for Pointer<'context> {
+impl<'c> Compatibility<'c> for Pointer<'c> {
   fn compatible(lhs: &Self, rhs: &Self) -> bool {
     Compatibility::compatible(&lhs.pointee, &rhs.pointee)
   }
@@ -173,7 +173,7 @@ impl<'context> Compatibility<'context> for Pointer<'context> {
   fn composite(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Option<Self>
   where
     Self: Sized,
@@ -192,7 +192,7 @@ impl<'context> Compatibility<'context> for Pointer<'context> {
   fn composite_unchecked(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Self
   where
     Self: Sized,
@@ -205,7 +205,7 @@ impl<'context> Compatibility<'context> for Pointer<'context> {
   }
 }
 
-impl<'context> Compatibility<'context> for Primitive {
+impl<'c> Compatibility<'c> for Primitive {
   #[inline]
   fn compatible(lhs: &Self, rhs: &Self) -> bool {
     lhs == rhs
@@ -215,7 +215,7 @@ impl<'context> Compatibility<'context> for Primitive {
   fn composite(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Option<Self>
   where
     Self: Sized,
@@ -231,7 +231,7 @@ impl<'context> Compatibility<'context> for Primitive {
   fn composite_unchecked(
     lhs: &Self,
     _rhs: &Self,
-    _context: &Context<'context>,
+    _context: &Context<'c>,
   ) -> Self
   where
     Self: Sized,
@@ -240,7 +240,7 @@ impl<'context> Compatibility<'context> for Primitive {
   }
 }
 
-impl<'context> Compatibility<'context> for FunctionProto<'context> {
+impl<'c> Compatibility<'c> for FunctionProto<'c> {
   fn compatible(lhs: &Self, rhs: &Self) -> bool {
     if lhs.is_variadic != rhs.is_variadic {
       return false;
@@ -278,7 +278,7 @@ impl<'context> Compatibility<'context> for FunctionProto<'context> {
   fn composite(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Option<Self>
   where
     Self: Sized,
@@ -293,7 +293,7 @@ impl<'context> Compatibility<'context> for FunctionProto<'context> {
   fn composite_unchecked(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Self
   where
     Self: Sized,
@@ -328,7 +328,7 @@ impl<'context> Compatibility<'context> for FunctionProto<'context> {
   }
 }
 
-impl<'context> Compatibility<'context> for Type<'context> {
+impl<'c> Compatibility<'c> for Type<'c> {
   fn compatible(lhs: &Self, rhs: &Self) -> bool {
     match (lhs, rhs) {
       (Type::Primitive(l), Type::Primitive(r)) =>
@@ -348,7 +348,7 @@ impl<'context> Compatibility<'context> for Type<'context> {
   fn composite(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Option<Self>
   where
     Self: Sized,
@@ -363,7 +363,7 @@ impl<'context> Compatibility<'context> for Type<'context> {
   fn composite_unchecked(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Self
   where
     Self: Sized,
@@ -391,7 +391,7 @@ impl<'context> Compatibility<'context> for Type<'context> {
   }
 }
 
-impl<'context> Compatibility<'context> for QualifiedType<'context> {
+impl<'c> Compatibility<'c> for QualifiedType<'c> {
   fn compatible(lhs: &QualifiedType, rhs: &QualifiedType) -> bool {
     // 6.2.7.1: Two types are compatible types if they are the same.
     if RefEq::ref_eq(lhs.unqualified_type, rhs.unqualified_type) {
@@ -408,7 +408,7 @@ impl<'context> Compatibility<'context> for QualifiedType<'context> {
   fn composite(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Option<Self> {
     if !Self::compatible(lhs, rhs) {
       None
@@ -420,7 +420,7 @@ impl<'context> Compatibility<'context> for QualifiedType<'context> {
   fn composite_unchecked(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Self
   where
     Self: Sized,
@@ -457,7 +457,7 @@ impl<'context> Compatibility<'context> for QualifiedType<'context> {
   }
 }
 
-impl<'context> Compatibility<'context> for Array<'context> {
+impl<'c> Compatibility<'c> for Array<'c> {
   #[inline]
   fn compatible(lhs: &Self, rhs: &Self) -> bool {
     if !Compatibility::compatible(&lhs.element_type, &rhs.element_type) {
@@ -471,7 +471,7 @@ impl<'context> Compatibility<'context> for Array<'context> {
   fn composite(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Option<Self>
   where
     Self: Sized,
@@ -486,7 +486,7 @@ impl<'context> Compatibility<'context> for Array<'context> {
   fn composite_unchecked(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Self
   where
     Self: Sized,
@@ -503,7 +503,7 @@ impl<'context> Compatibility<'context> for Array<'context> {
   }
 }
 
-impl<'context> Compatibility<'context> for Union<'context> {
+impl<'c> Compatibility<'c> for Union<'c> {
   fn compatible(lhs: &Self, rhs: &Self) -> bool {
     todo!()
   }
@@ -511,7 +511,7 @@ impl<'context> Compatibility<'context> for Union<'context> {
   fn composite(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Option<Self>
   where
     Self: Sized,
@@ -522,7 +522,7 @@ impl<'context> Compatibility<'context> for Union<'context> {
   fn composite_unchecked(
     lhs: &Self,
     rhs: &Self,
-    context: &Context<'context>,
+    context: &Context<'c>,
   ) -> Self
   where
     Self: Sized,

@@ -5,55 +5,55 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub enum Expression<'context> {
+pub enum Expression<'c> {
   Empty(Empty), // no-op for error recovery; for empty expr should use Option<Expression> instead
-  Constant(Constant<'context>),
-  Unary(Unary<'context>),
-  Binary(Binary<'context>),
-  Variable(Variable<'context>),
-  Call(Call<'context>),
-  Paren(Paren<'context>),
-  MemberAccess(MemberAccess<'context>),
-  Ternary(Ternary<'context>),
-  SizeOf(SizeOf<'context>),
-  CStyleCast(CStyleCast<'context>), // (int)x
-  ArraySubscript(ArraySubscript<'context>), // arr[i]
+  Constant(Constant<'c>),
+  Unary(Unary<'c>),
+  Binary(Binary<'c>),
+  Variable(Variable<'c>),
+  Call(Call<'c>),
+  Paren(Paren<'c>),
+  MemberAccess(MemberAccess<'c>),
+  Ternary(Ternary<'c>),
+  SizeOf(SizeOf<'c>),
+  CStyleCast(CStyleCast<'c>), // (int)x
+  ArraySubscript(ArraySubscript<'c>), // arr[i]
   CompoundLiteral(CompoundLiteral), // (struct Point){.x=1, .y=2}
 }
-type_alias_expr! {Expression<'context> , UnprocessedType<'context>, Variable<'context>}
-::rcc_utils::interconvert!(Variable, Expression, 'context);
-::rcc_utils::interconvert!(Constant, Expression,'context);
-::rcc_utils::interconvert!(Unary, Expression, 'context);
-::rcc_utils::interconvert!(Binary, Expression, 'context);
-::rcc_utils::interconvert!(Call, Expression, 'context);
-::rcc_utils::interconvert!(Paren, Expression, 'context);
-::rcc_utils::interconvert!(MemberAccess, Expression, 'context);
-::rcc_utils::interconvert!(Ternary, Expression, 'context);
-::rcc_utils::interconvert!(SizeOf, Expression, 'context);
-::rcc_utils::interconvert!(CStyleCast, Expression, 'context);
-::rcc_utils::interconvert!(ArraySubscript, Expression, 'context);
-::rcc_utils::interconvert!(CompoundLiteral, Expression<'context>);
-impl<'context> ::std::default::Default for Expression<'context> {
+type_alias_expr! {Expression<'c> , UnprocessedType<'c>, Variable<'c>}
+::rcc_utils::interconvert!(Variable, Expression, 'c);
+::rcc_utils::interconvert!(Constant, Expression,'c);
+::rcc_utils::interconvert!(Unary, Expression, 'c);
+::rcc_utils::interconvert!(Binary, Expression, 'c);
+::rcc_utils::interconvert!(Call, Expression, 'c);
+::rcc_utils::interconvert!(Paren, Expression, 'c);
+::rcc_utils::interconvert!(MemberAccess, Expression, 'c);
+::rcc_utils::interconvert!(Ternary, Expression, 'c);
+::rcc_utils::interconvert!(SizeOf, Expression, 'c);
+::rcc_utils::interconvert!(CStyleCast, Expression, 'c);
+::rcc_utils::interconvert!(ArraySubscript, Expression, 'c);
+::rcc_utils::interconvert!(CompoundLiteral, Expression<'c>);
+impl<'c> ::std::default::Default for Expression<'c> {
   #[inline(always)]
   fn default() -> Self {
     Expression::Empty(Empty::default())
   }
 }
 
-impl<'context> Variable<'context> {
-  pub fn new(name: StrRef<'context>, span: SourceSpan) -> Self {
+impl<'c> Variable<'c> {
+  pub fn new(name: StrRef<'c>, span: SourceSpan) -> Self {
     Self { name, span }
   }
 }
 #[derive(Debug)]
-pub struct UnprocessedType<'context> {
-  pub declspecs: DeclSpecs<'context>,
-  pub declarator: Declarator<'context>,
+pub struct UnprocessedType<'c> {
+  pub declspecs: DeclSpecs<'c>,
+  pub declarator: Declarator<'c>,
 }
-impl<'context> UnprocessedType<'context> {
+impl<'c> UnprocessedType<'c> {
   pub fn new(
-    declspecs: DeclSpecs<'context>,
-    declarator: Declarator<'context>,
+    declspecs: DeclSpecs<'c>,
+    declarator: Declarator<'c>,
   ) -> Self {
     Self {
       declspecs,
@@ -62,8 +62,8 @@ impl<'context> UnprocessedType<'context> {
   }
 }
 #[derive(Debug)]
-pub struct Variable<'context> {
-  pub name: StrRef<'context>,
+pub struct Variable<'c> {
+  pub name: StrRef<'c>,
   pub span: SourceSpan,
 }
 

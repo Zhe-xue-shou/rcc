@@ -64,7 +64,7 @@ impl From<&Keyword> for Storage {
   }
 }
 
-impl<'context> From<&Literal<'context>> for Storage {
+impl<'c> From<&Literal<'c>> for Storage {
   fn from(literal: &Literal) -> Self {
     match literal {
       Literal::Keyword(kw) => Storage::from(kw),
@@ -74,10 +74,10 @@ impl<'context> From<&Literal<'context>> for Storage {
 }
 
 impl Storage {
-  pub fn try_merge<'context>(
+  pub fn try_merge<'c>(
     lhs: &Storage,
     rhs: &Storage,
-  ) -> Result<Storage, DiagMeta<'context>> {
+  ) -> Result<Storage, DiagMeta<'c>> {
     match (lhs, rhs) {
       (lhs, rhs) if lhs == rhs => Ok(*lhs),
       (Constexpr, _) | (_, Constexpr) => Err(

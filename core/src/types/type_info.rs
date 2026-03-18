@@ -6,12 +6,12 @@ pub trait TypeInfo {
   #[must_use]
   fn size(&self) -> usize;
   #[must_use]
-  fn is_scalar(&self) -> bool;
-  #[must_use]
   fn size_bits(&self) -> usize;
+  #[must_use]
+  fn is_scalar(&self) -> bool;
 }
 
-impl<'context> TypeInfo for QualifiedType<'context> {
+impl<'c> TypeInfo for QualifiedType<'c> {
   #[inline(always)]
   fn size(&self) -> usize {
     self.unqualified_type.size()
@@ -27,7 +27,7 @@ impl<'context> TypeInfo for QualifiedType<'context> {
     self.unqualified_type.is_scalar()
   }
 }
-impl<'context> TypeInfo for Type<'context> {
+impl<'c> TypeInfo for Type<'c> {
   #[inline]
   fn size(&self) -> usize {
     ::rcc_utils::static_dispatch!(
@@ -97,7 +97,7 @@ impl TypeInfo for Primitive {
   }
 }
 
-impl<'context> TypeInfo for Array<'context> {
+impl<'c> TypeInfo for Array<'c> {
   fn size(&self) -> usize {
     match &self.size {
       ArraySize::Constant(sz) => sz * self.element_type.unqualified_type.size(),
@@ -117,7 +117,7 @@ impl<'context> TypeInfo for Array<'context> {
   }
 }
 
-impl<'context> TypeInfo for Record<'context> {
+impl<'c> TypeInfo for Record<'c> {
   fn size(&self) -> usize {
     self
       .fields
@@ -137,7 +137,7 @@ impl<'context> TypeInfo for Record<'context> {
   }
 }
 
-impl<'context> TypeInfo for Union<'context> {
+impl<'c> TypeInfo for Union<'c> {
   fn size(&self) -> usize {
     self
       .fields
@@ -157,7 +157,7 @@ impl<'context> TypeInfo for Union<'context> {
     false
   }
 }
-impl<'context> TypeInfo for Pointer<'context> {
+impl<'c> TypeInfo for Pointer<'c> {
   #[inline(always)]
   fn size(&self) -> usize {
     ULongLong.size() // x86_64 LLP64 Windows
@@ -174,7 +174,7 @@ impl<'context> TypeInfo for Pointer<'context> {
   }
 }
 
-impl<'context> TypeInfo for FunctionProto<'context> {
+impl<'c> TypeInfo for FunctionProto<'c> {
   #[inline(always)]
   fn size(&self) -> usize {
     0 // function types have no size
@@ -190,7 +190,7 @@ impl<'context> TypeInfo for FunctionProto<'context> {
     false
   }
 }
-impl<'context> TypeInfo for Enum<'context> {
+impl<'c> TypeInfo for Enum<'c> {
   #[inline(always)]
   fn size(&self) -> usize {
     self.underlying_type.size()

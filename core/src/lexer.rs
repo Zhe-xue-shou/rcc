@@ -11,22 +11,18 @@ use crate::{
     SourceSpan, Token,
   },
   diagnosis::{DiagData::*, Diagnosis},
-  session::Session,
+  session::SessionRef,
   // this isn't strictrly correct, i uses the same `Constant` type in lexer and the parser,
   //    yet the lexeer part distinguishes number and string, but the parser part does not
   types::Constant as NumberConstant,
 };
 
-pub struct Lexer<'source, 'context, 'session>
-where
-  'source: 'context,
-  'context: 'session,
-{
+pub struct Lexer<'c> {
   /// the [`SourceManager`](crate::common::SourceManager) owns the [`String`].
-  source: &'source str,
+  source: &'c str,
 
   /// maybe 1~4 bytes
-  chars: Peekable<Chars<'source>>,
+  chars: Peekable<Chars<'c>>,
 
   /// track position manually for Spans
   cursor: usize,
@@ -35,16 +31,21 @@ where
   coords: Coordinate,
 
   /// Context.
-  session: &'session Session<'source, 'context>,
+  session: SessionRef<'c>,
 }
-impl<'source, 'context, 'session> Lexer<'source, 'context, 'session> {
-  pub fn new(
-    source: &'source str,
-    session: &'session Session<'source, 'context>,
-  ) -> Self {
+impl<'c> Lexer<'c> {
+  pub fn new(session: SessionRef<'c>) -> Self {
+    let chars = session
+      .manager
+      .files
+      .first()
+      .unwrap()
+      .source
+      .chars()
+      .peekable();
     Self {
-      source,
-      chars: source.chars().peekable(),
+      source: &session.manager.files.first().unwrap().source,
+      chars,
       cursor: Default::default(),
       coords: Default::default(),
       session,
@@ -137,7 +138,7 @@ impl<'source, 'context, 'session> Lexer<'source, 'context, 'session> {
     &self.source[start..end]
   }
 
-  pub fn lex(&mut self) -> Vec<Token<'context>> {
+  pub fn lex(&mut self) -> Vec<Token<'c>> {
     let mut tokens = Vec::new();
     while !self.is_at_end() {
       if let Some(token) = self.next_token() {
@@ -149,7 +150,7 @@ impl<'source, 'context, 'session> Lexer<'source, 'context, 'session> {
     tokens
   }
 
-  fn next_token(&mut self) -> Option<Token<'context>> {
+  fn next_token(&mut self) -> Option<Token<'c>> {
     let start = self.cursor;
 
     match self.advance() {
@@ -308,7 +309,7 @@ impl<'source, 'context, 'session> Lexer<'source, 'context, 'session> {
     c.is_alphanumeric() || c == &'_'
   }
 
-  fn identifier(&mut self, start: usize) -> Token<'context> {
+  fn identifier(&mut self, start: usize) -> Token<'c> {
     while matches!(self.peek(), c if Self::is_ident_continue(c)) {
       self.advance();
     }
@@ -325,11 +326,7 @@ impl<'source, 'context, 'session> Lexer<'source, 'context, 'session> {
     }
   }
 
-  fn number(
-    &mut self,
-    start: usize,
-    started_with_dot: bool,
-  ) -> Token<'context> {
+  fn number(&mut self, start: usize, started_with_dot: bool) -> Token<'c> {
     let (base, offset) = if !started_with_dot && self.cursor > 0 {
       match (self.peek_back(), self.peek()) {
         ('0', 'x' | 'X') => {
@@ -486,7 +483,7 @@ impl<'source, 'context, 'session> Lexer<'source, 'context, 'session> {
     }
   }
 
-  fn line_escape(&mut self, start: usize) -> Option<Token<'context>> {
+  fn line_escape(&mut self, start: usize) -> Option<Token<'c>> {
     match self.peek() {
       '\n' => {
         self.advance();
@@ -534,7 +531,7 @@ impl<'source, 'context, 'session> Lexer<'source, 'context, 'session> {
   }
 
   /// currently only supports ascii char.
-  fn character(&mut self, start: usize) -> Option<Token<'context>> {
+  fn character(&mut self, start: usize) -> Option<Token<'c>> {
     let mut char_content = SmallString::default();
     while !self.is_at_end() && self.peek() != &'\'' {
       let ch = if self.peek() == &'\\' {
@@ -578,7 +575,7 @@ impl<'source, 'context, 'session> Lexer<'source, 'context, 'session> {
     }
   }
 
-  fn string(&mut self, start: usize) -> Option<Token<'context>> {
+  fn string(&mut self, start: usize) -> Option<Token<'c>> {
     while !self.is_at_end() && self.peek() != (&'"') {
       self.advance();
     }
@@ -623,7 +620,7 @@ impl<'source, 'context, 'session> Lexer<'source, 'context, 'session> {
     start: usize,
     default: Operator,
     patterns: &'static [(&'static str, Operator)],
-  ) -> Option<Token<'context>> {
+  ) -> Option<Token<'c>> {
     debug_assert!(
       patterns.windows(2).all(|w| w[0].0.len() >= w[1].0.len()),
       "compound operator patterns should be sorted from longest to shortest"

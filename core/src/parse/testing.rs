@@ -5,7 +5,7 @@ use crate::{
   parse::expression::{Binary, ConstantLiteral, Expression},
 };
 
-impl<'context> Expression<'context> {
+impl<'c> Expression<'c> {
   pub fn oneplusone() -> Self {
     Binary {
       operator: Operator::Plus,

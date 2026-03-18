@@ -4,7 +4,7 @@ use ::rcc_utils::SmallString;
 use crate::{common::SourceSpan, common::StrRef};
 
 // #[derive(Debug)]
-// pub enum RawStmt<'context, StmtTy, DeclTy, ExprTy, ExprCaseTy = ExprTy> {
+// pub enum RawStmt<'c, StmtTy, DeclTy, ExprTy, ExprCaseTy = ExprTy> {
 //   Empty(Empty),
 //   Return(RawReturn<ExprTy>),
 //   // here only vardef, funcdef only permitted in top-level declarations hence it's handled there
@@ -16,8 +16,8 @@ use crate::{common::SourceSpan, common::StrRef};
 //   For(RawFor<StmtTy, ExprTy>),
 //   DoWhile(RawDoWhile<StmtTy, ExprTy>),
 //   Switch(RawSwitch<StmtTy, ExprTy, ExprCaseTy>),
-//   Goto(RawGoto<'context>),
-//   Label(RawLabel<'context, StmtTy>),
+//   Goto(RawGoto<'c>),
+//   Label(RawLabel<'c, StmtTy>),
 //   Break(RawBreak),
 //   Continue(RawContinue),
 // }
@@ -30,23 +30,23 @@ macro_rules! type_alias_stmt {
   };
   (@impl $stmtty:ty, $declty:ty, $exprty:ty, $exprcasety:ty) => {
     // #[allow(dead_code)]
-    // pub type RawStmt<'context> = $crate::blueprints::RawStmt<'context, $stmtty, $declty, $exprty>;
+    // pub type RawStmt<'c> = $crate::blueprints::RawStmt<'c, $stmtty, $declty, $exprty>;
     #[allow(dead_code)]
     pub type Empty = $crate::blueprints::Placeholder;
-    pub type Return<'context> = $crate::blueprints::RawReturn<$exprty>;
-    pub type If<'context> = $crate::blueprints::RawIf<$stmtty, $exprty>;
-    pub type While<'context> = $crate::blueprints::RawWhile<$stmtty, $exprty>;
-    pub type DoWhile<'context> = $crate::blueprints::RawDoWhile<$stmtty, $exprty>;
-    pub type For<'context> = $crate::blueprints::RawFor<$stmtty, $exprty>;
-    pub type Switch<'context> =
+    pub type Return<'c> = $crate::blueprints::RawReturn<$exprty>;
+    pub type If<'c> = $crate::blueprints::RawIf<$stmtty, $exprty>;
+    pub type While<'c> = $crate::blueprints::RawWhile<$stmtty, $exprty>;
+    pub type DoWhile<'c> = $crate::blueprints::RawDoWhile<$stmtty, $exprty>;
+    pub type For<'c> = $crate::blueprints::RawFor<$stmtty, $exprty>;
+    pub type Switch<'c> =
       $crate::blueprints::RawSwitch<$stmtty, $exprty, $exprcasety>;
-    pub type Case<'context> = $crate::blueprints::RawCase<$stmtty, $exprcasety>;
-    pub type Default<'context> = $crate::blueprints::RawDefault<$stmtty>;
-    pub type Label<'context> = $crate::blueprints::RawLabel<'context, $stmtty>;
-    pub type Goto<'context> = $crate::blueprints::RawGoto<'context>;
-    pub type Compound <'context> = $crate::blueprints::RawCompound<$stmtty>;
-    pub type Break<'context> = $crate::blueprints::RawBreak;
-    pub type Continue<'context> = $crate::blueprints::RawContinue;
+    pub type Case<'c> = $crate::blueprints::RawCase<$stmtty, $exprcasety>;
+    pub type Default<'c> = $crate::blueprints::RawDefault<$stmtty>;
+    pub type Label<'c> = $crate::blueprints::RawLabel<'c, $stmtty>;
+    pub type Goto<'c> = $crate::blueprints::RawGoto<'c>;
+    pub type Compound <'c> = $crate::blueprints::RawCompound<$stmtty>;
+    pub type Break<'c> = $crate::blueprints::RawBreak;
+    pub type Continue<'c> = $crate::blueprints::RawContinue;
   };
 }
 pub(in super::super) use type_alias_stmt;
@@ -116,15 +116,15 @@ pub struct RawDefault<StmtTy> {
 }
 
 #[derive(Debug)]
-pub struct RawLabel<'context, StmtTy> {
-  pub name: StrRef<'context>,
+pub struct RawLabel<'c, StmtTy> {
+  pub name: StrRef<'c>,
   pub statement: Box<StmtTy>,
   pub span: SourceSpan,
 }
 
 #[derive(Debug)]
-pub struct RawGoto<'context> {
-  pub label: StrRef<'context>,
+pub struct RawGoto<'c> {
+  pub label: StrRef<'c>,
   pub span: SourceSpan,
 }
 
@@ -146,8 +146,8 @@ pub struct RawContinue {
   pub span: SourceSpan,
 }
 
-impl<'context> RawGoto<'context> {
-  pub fn new(label: StrRef<'context>, span: SourceSpan) -> Self {
+impl<'c> RawGoto<'c> {
+  pub fn new(label: StrRef<'c>, span: SourceSpan) -> Self {
     Self { label, span }
   }
 }
@@ -184,9 +184,9 @@ impl<StmtTy, ExprTy, ExprCaseTy> RawSwitch<StmtTy, ExprTy, ExprCaseTy> {
   }
 }
 
-impl<'context, StmtTy> RawLabel<'context, StmtTy> {
+impl<'c, StmtTy> RawLabel<'c, StmtTy> {
   pub fn new(
-    name: StrRef<'context>,
+    name: StrRef<'c>,
     statement: StmtTy,
     span: SourceSpan,
   ) -> Self {
@@ -302,8 +302,8 @@ mod fmt {
 
   use super::*;
 
-  // impl<'context, StmtTy: Display, DeclTy: Display, ExprTy: Display> Display
-  //   for RawStmt<'context, StmtTy, DeclTy, ExprTy>
+  // impl<'c, StmtTy: Display, DeclTy: Display, ExprTy: Display> Display
+  //   for RawStmt<'c, StmtTy, DeclTy, ExprTy>
   // {
   //   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
   //     match self {
@@ -415,7 +415,7 @@ mod fmt {
     }
   }
 
-  impl<'context, StmtTy: Display> Display for RawLabel<'context, StmtTy> {
+  impl<'c, StmtTy: Display> Display for RawLabel<'c, StmtTy> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       write!(f, "{}: {}", self.name, self.statement)
     }
@@ -455,7 +455,7 @@ mod fmt {
     }
   }
 
-  impl<'context> Display for RawGoto<'context> {
+  impl<'c> Display for RawGoto<'c> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       write!(f, "goto {};", self.label)
     }

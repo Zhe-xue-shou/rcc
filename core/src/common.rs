@@ -25,7 +25,7 @@ pub use self::{
   token::{Literal, Token},
 };
 
-pub type StrRef<'context> = &'context str;
+pub type StrRef<'c> = &'c str;
 
 pub trait RefEq {
   fn ref_eq(lhs: Self, rhs: Self) -> bool

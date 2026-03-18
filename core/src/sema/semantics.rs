@@ -15,7 +15,7 @@ use crate::{
   },
   parse::{declaration as pd, expression as pe, statement as ps},
   sema::{declaration as sd, expression as se, statement as ss},
-  session::Session,
+  session::SessionRef,
   types::{
     ArenaVec, Array, ArraySize, Compatibility, Context, FunctionProto,
     FunctionSpecifier, Pointer, Primitive, QualifiedType, Type, TypeInfo,
@@ -41,7 +41,7 @@ trait ImplHelper<T> {
   fn shall_ok<M: Into<Option<&'static str>>>(self, msg: M) -> T;
 }
 
-impl<'context, T> ImplHelper<T> for Result<T, Diag<'context>> {
+impl<'c, T> ImplHelper<T> for Result<T, Diag<'c>> {
   #[track_caller]
   fn shall_ok<M: Into<Option<&'static str>>>(self, msg: M) -> T {
     match self {
@@ -70,11 +70,9 @@ trait ImplHelper2<T, Listener> {
   fn handle_with(self, context: &Listener, default: T) -> T;
 }
 
-impl<'context, T> ImplHelper2<T, Sema<'_, 'context, '_>>
-  for Result<T, Diag<'context>>
-{
+impl<'c, T> ImplHelper2<T, Sema<'c>> for Result<T, Diag<'c>> {
   /// if it's error, log it, and return a default value (means error)
-  fn handle_with(self, context: &Sema<'_, 'context, '_>, default: T) -> T {
+  fn handle_with(self, context: &Sema<'c>, default: T) -> T {
     match self {
       Ok(t) => t,
       Err(e) => {
@@ -89,10 +87,10 @@ trait ImplHelper3<T, Listener> {
   fn handle_or_default(self, context: &Listener) -> T;
 }
 
-impl<'context, T: ::std::default::Default>
-  ImplHelper3<T, Sema<'_, 'context, '_>> for Result<T, Diag<'context>>
+impl<'c, T: ::std::default::Default> ImplHelper3<T, Sema<'c>>
+  for Result<T, Diag<'c>>
 {
-  fn handle_or_default(self, context: &Sema<'_, 'context, '_>) -> T {
+  fn handle_or_default(self, context: &Sema<'c>) -> T {
     match self {
       Ok(t) => t,
       Err(e) => {
@@ -102,21 +100,17 @@ impl<'context, T: ::std::default::Default>
     }
   }
 }
-pub struct Sema<'source, 'context, 'session>
-where
-  'source: 'context,
-  'context: 'session,
-{
-  program: pd::Program<'context>,
-  environment: Environment<'context>,
-  current_function: Option<sd::Function<'context>>,
-  session: &'session Session<'source, 'context>,
+pub struct Sema<'c> {
+  program: pd::Program<'c>,
+  environment: Environment<'c>,
+  current_function: Option<sd::Function<'c>>,
+  session: SessionRef<'c>,
 }
 
-impl<'source, 'context, 'session> Sema<'source, 'context, 'session> {
+impl<'c> Sema<'c> {
   pub fn new(
-    program: pd::Program<'context>,
-    session: &'session Session<'source, 'context>,
+    program: pd::Program<'c>,
+    session: SessionRef<'c>,
   ) -> Self {
     Self {
       program,
@@ -126,23 +120,23 @@ impl<'source, 'context, 'session> Sema<'source, 'context, 'session> {
     }
   }
 
-  pub fn context(&self) -> &'context Context<'context> {
+  pub fn context(&self) -> &'c Context<'c> {
     self.session.ast_context
   }
 
-  pub fn add_diag(&self, diag: Diag<'context>) {
+  pub fn add_diag(&self, diag: Diag<'c>) {
     self.session.diagnosis.add_diag(diag);
   }
 
-  pub fn add_error(&self, error: DiagData<'context>, span: SourceSpan) {
+  pub fn add_error(&self, error: DiagData<'c>, span: SourceSpan) {
     self.session.diagnosis.add_error(error, span);
   }
 
-  pub fn add_warning(&self, warning: DiagData<'context>, span: SourceSpan) {
+  pub fn add_warning(&self, warning: DiagData<'c>, span: SourceSpan) {
     self.session.diagnosis.add_warning(warning, span);
   }
 
-  pub fn analyze(&mut self) -> sd::TranslationUnit<'context> {
+  pub fn analyze(&mut self) -> sd::TranslationUnit<'c> {
     self.environment.enter();
     let translation_unit = sd::TranslationUnit::new(self.externaldecl());
 
@@ -150,15 +144,15 @@ impl<'source, 'context, 'session> Sema<'source, 'context, 'session> {
     translation_unit
   }
 }
-impl<'context> Sema<'_, 'context, '_> {
+impl<'c> Sema<'c> {
   /// IMPORTANT: currently, caller shoould check:
   /// 1. whether the `restrict` is valid; (it's only valid for pointers and non-static local variable.)
   /// 2. the type is complete or not, via [`TypeInfo::size`].
   fn apply_modifiers_for_varty(
     &self,
-    mut qualified_type: QualifiedType<'context>,
-    modifiers: Vec<pd::Modifier<'context>>,
-  ) -> QualifiedType<'context> {
+    mut qualified_type: QualifiedType<'c>,
+    modifiers: Vec<pd::Modifier<'c>>,
+  ) -> QualifiedType<'c> {
     // reverse order
     for modifier in modifiers.into_iter().rev() {
       match modifier {
@@ -225,7 +219,7 @@ impl<'context> Sema<'_, 'context, '_> {
             is_variadic,
           } = function_signature;
           let analyzed_parameter_types = self.parse_parameter_types(parameters);
-          let p = self.context().intern(FunctionProto::<'context>::new(
+          let p = self.context().intern(FunctionProto::<'c>::new(
             qualified_type,
             analyzed_parameter_types.into_bump_slice(),
             is_variadic,
@@ -239,15 +233,15 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn apply_modifiers_for_functiondecl(
     &self,
-    return_type: QualifiedType<'context>,
-    modifiers: Vec<pd::Modifier<'context>>,
+    return_type: QualifiedType<'c>,
+    modifiers: Vec<pd::Modifier<'c>>,
   ) -> Result<
     (
-      QualifiedType<'context>,
-      Vec<sd::Parameter<'context>>, /* parameters name and their type, here's some repetition
+      QualifiedType<'c>,
+      Vec<sd::Parameter<'c>>, /* parameters name and their type, here's some repetition
                                     parameter type had also been inside QualifiedType of the function */
     ),
-    Diag<'context>,
+    Diag<'c>,
   > {
     contract_assert!(
       modifiers.len() == 1,
@@ -286,8 +280,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn parse_parameter_types(
     &self,
-    parameters: Vec<pd::Parameter<'context>>,
-  ) -> ArenaVec<'context, QualifiedType<'context>> {
+    parameters: Vec<pd::Parameter<'c>>,
+  ) -> ArenaVec<'c, QualifiedType<'c>> {
     parameters
       .into_iter()
       .map(|parameter| {
@@ -315,8 +309,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn parse_parameters(
     &self,
-    parameters: Vec<pd::Parameter<'context>>,
-  ) -> Vec<sd::Parameter<'context>> {
+    parameters: Vec<pd::Parameter<'c>>,
+  ) -> Vec<sd::Parameter<'c>> {
     parameters
       .into_iter()
       .map(|parameter| {
@@ -351,10 +345,10 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn parse_declspecs(
     &self,
-    declspecs: pd::DeclSpecs<'context>,
+    declspecs: pd::DeclSpecs<'c>,
   ) -> Result<
-    (FunctionSpecifier, Option<Storage>, QualifiedType<'context>),
-    Diag<'context>,
+    (FunctionSpecifier, Option<Storage>, QualifiedType<'c>),
+    Diag<'c>,
   > {
     let qualified_type = self
       .get_type(declspecs.type_specifiers)
@@ -368,8 +362,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn get_type(
     &self,
-    mut type_specifiers: Vec<pd::TypeSpecifier<'context>>,
-  ) -> Result<QualifiedType<'context>, Diag<'context>> {
+    mut type_specifiers: Vec<pd::TypeSpecifier<'c>>,
+  ) -> Result<QualifiedType<'c>, Diag<'c>> {
     assert!(!type_specifiers.is_empty());
     assert!(type_specifiers.len() <= 5); // unsigned long long int complex (integer complex not in standard) is the max
     type_specifiers.sort_by_key(|s| s.sort_key());
@@ -501,8 +495,8 @@ impl<'context> Sema<'_, 'context, '_> {
   }
 }
 
-impl<'context> Sema<'_, 'context, '_> {
-  fn externaldecl(&mut self) -> Vec<sd::ExternalDeclaration<'context>> {
+impl<'c> Sema<'c> {
+  fn externaldecl(&mut self) -> Vec<sd::ExternalDeclaration<'c>> {
     let mut declarations = Vec::new();
     std::mem::take(&mut self.program)
       .declarations
@@ -516,8 +510,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   pub fn declarations(
     &mut self,
-    declaration: pd::Declaration<'context>,
-  ) -> Result<sd::ExternalDeclaration<'context>, Diag<'context>> {
+    declaration: pd::Declaration<'c>,
+  ) -> Result<sd::ExternalDeclaration<'c>, Diag<'c>> {
     match declaration {
       pd::Declaration::Function(function) => Ok(
         sd::ExternalDeclaration::Function(self.functiondecl(function)?),
@@ -529,8 +523,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   pub fn functiondecl(
     &mut self,
-    function: pd::Function<'context>,
-  ) -> Result<sd::Function<'context>, Diag<'context>> {
+    function: pd::Function<'c>,
+  ) -> Result<sd::Function<'c>, Diag<'c>> {
     let pd::Function {
       body,
       declarator,
@@ -655,9 +649,9 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn function_with_body(
     &mut self,
-    body: ps::Compound<'context>,
-    function: sd::Function<'context>,
-  ) -> Result<sd::Function<'context>, Diag<'context>> {
+    body: ps::Compound<'c>,
+    function: sd::Function<'c>,
+  ) -> Result<sd::Function<'c>, Diag<'c>> {
     self.current_function = Some(function);
 
     self.environment.enter();
@@ -703,8 +697,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   pub fn vardef(
     &mut self,
-    vardef: pd::VarDef<'context>,
-  ) -> Result<sd::VarDef<'context>, Diag<'context>> {
+    vardef: pd::VarDef<'c>,
+  ) -> Result<sd::VarDef<'c>, Diag<'c>> {
     let pd::VarDef {
       declarator,
       declspecs,
@@ -829,10 +823,10 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn initializer(
     &self,
-    initializer: pd::Initializer<'context>,
-    target_type: &QualifiedType<'context>,
+    initializer: pd::Initializer<'c>,
+    target_type: &QualifiedType<'c>,
     requires_folding: bool,
-  ) -> Option<sd::Initializer<'context>> {
+  ) -> Option<sd::Initializer<'c>> {
     match initializer {
       pd::Initializer::Expression(expression) => self
         .expression(*expression)
@@ -872,11 +866,11 @@ impl<'context> Sema<'_, 'context, '_> {
   fn global_vardef(
     &self,
     storage: Option<Storage>,
-    qualified_type: QualifiedType<'context>,
-    name: StrRef<'context>,
-    initializer: Option<sd::Initializer<'context>>,
+    qualified_type: QualifiedType<'c>,
+    name: StrRef<'c>,
+    initializer: Option<sd::Initializer<'c>>,
     span: SourceSpan,
-  ) -> Result<sd::VarDef<'context>, Diag<'context>> {
+  ) -> Result<sd::VarDef<'c>, Diag<'c>> {
     Ok(match (storage, initializer) {
       (None, None) => {
         let symbol = Symbol::tentative(qualified_type, Storage::Extern, name);
@@ -923,11 +917,11 @@ impl<'context> Sema<'_, 'context, '_> {
   fn local_vardef(
     &self,
     storage: Storage,
-    qualified_type: QualifiedType<'context>,
-    name: StrRef<'context>,
-    initializer: Option<sd::Initializer<'context>>,
+    qualified_type: QualifiedType<'c>,
+    name: StrRef<'c>,
+    initializer: Option<sd::Initializer<'c>>,
     span: SourceSpan,
-  ) -> Result<sd::VarDef<'context>, Diag<'context>> {
+  ) -> Result<sd::VarDef<'c>, Diag<'c>> {
     if storage == Storage::Extern && initializer.is_some() {
       self.add_error(LocalExternVarWithInitializer(name.to_string()), span);
     }
@@ -936,11 +930,11 @@ impl<'context> Sema<'_, 'context, '_> {
   }
 }
 
-impl<'context> Sema<'_, 'context, '_> {
+impl<'c> Sema<'c> {
   fn expression(
     &self,
-    expression: pe::Expression<'context>,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+    expression: pe::Expression<'c>,
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     match expression {
       pe::Expression::Empty(_) => Ok(Default::default()),
       pe::Expression::Constant(constant) => self.constant(constant),
@@ -963,8 +957,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn sizeof(
     &self,
-    sizeof: pe::SizeOf<'context>,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+    sizeof: pe::SizeOf<'c>,
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     match sizeof.sizeof {
       pe::SizeOfKind::Expression(expression) => {
         let analyzed_expr = self.expression(*expression).handle_with(
@@ -1007,8 +1001,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn call(
     &self,
-    call: pe::Call<'context>,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+    call: pe::Call<'c>,
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     let pe::Call {
       arguments,
       callee,
@@ -1066,8 +1060,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn paren(
     &self,
-    paren: pe::Paren<'context>,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+    paren: pe::Paren<'c>,
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     let pe::Paren { expr, span } = paren;
     let analyzed_expr = self.expression(*expr)?;
     let expr_type = *analyzed_expr.qualified_type();
@@ -1080,14 +1074,14 @@ impl<'context> Sema<'_, 'context, '_> {
   fn cast(
     &self,
     _: pe::CStyleCast,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     not_implemented_feature!("C-style cast is not implemented yet");
   }
 
   fn variable(
     &self,
-    variable: pe::Variable<'context>,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+    variable: pe::Variable<'c>,
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     let symbol = self.environment.find(variable.name).ok_or(
       UndefinedVariable(variable.name)
         .into_with(Severity::Error)
@@ -1107,8 +1101,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn constant(
     &self,
-    constant: pe::Constant<'context>,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+    constant: pe::Constant<'c>,
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     let pe::Constant {
       value: constant,
       span,
@@ -1128,8 +1122,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn unary(
     &self,
-    unary: pe::Unary<'context>,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+    unary: pe::Unary<'c>,
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     let pe::Unary {
       operator,
       operand: pe_expr,
@@ -1152,8 +1146,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn binary(
     &self,
-    binary: pe::Binary<'context>,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+    binary: pe::Binary<'c>,
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     let pe::Binary {
       left: pe_left,
       operator,
@@ -1177,8 +1171,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn ternary(
     &self,
-    ternary: pe::Ternary<'context>,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+    ternary: pe::Ternary<'c>,
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     let pe::Ternary {
       condition: pe_condition,
       then_expr: pe_then_expr,
@@ -1266,14 +1260,14 @@ impl<'context> Sema<'_, 'context, '_> {
   fn member_access(
     &self,
     _member_access: pe::MemberAccess,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     todo!()
   }
 
   fn array_subscript(
     &self,
-    array_subscript: pe::ArraySubscript<'context>,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+    array_subscript: pe::ArraySubscript<'c>,
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     // a[i] = *(a + i)
     let pe::ArraySubscript {
       array: pe_array,
@@ -1320,18 +1314,18 @@ impl<'context> Sema<'_, 'context, '_> {
   fn compound_literal(
     &self,
     _compound_literal: pe::CompoundLiteral,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     todo!()
   }
 }
-impl<'context> Sema<'_, 'context, '_> {
+impl<'c> Sema<'c> {
   /// unary arithmetic operators: `+`, `-`
   fn unary_arithmetic(
     &self,
     operator: Operator,
-    operand: se::Expression<'context>,
+    operand: se::Expression<'c>,
     span: SourceSpan,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     assert!(matches!(operator, Operator::Plus | Operator::Minus));
     let operand = operand.lvalue_conversion().decay(self.context());
 
@@ -1356,10 +1350,10 @@ impl<'context> Sema<'_, 'context, '_> {
   fn ppmm(
     &self,
     operator: Operator,
-    operand: se::Expression<'context>,
+    operand: se::Expression<'c>,
     kind: se::UnaryKind,
     span: SourceSpan,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     assert!(matches!(
       operator,
       Operator::PlusPlus | Operator::MinusMinus
@@ -1396,9 +1390,9 @@ impl<'context> Sema<'_, 'context, '_> {
   fn tilde(
     &self,
     operator: Operator,
-    operand: se::Expression<'context>,
+    operand: se::Expression<'c>,
     span: SourceSpan,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     assert_eq!(operator, Operator::Tilde);
     let operand = operand.lvalue_conversion().decay(self.context());
 
@@ -1423,9 +1417,9 @@ impl<'context> Sema<'_, 'context, '_> {
   fn logical_not(
     &self,
     operator: Operator,
-    operand: se::Expression<'context>,
+    operand: se::Expression<'c>,
     span: SourceSpan,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     assert_eq!(operator, Operator::Not);
     let operand = operand.lvalue_conversion().decay(self.context());
 
@@ -1444,9 +1438,9 @@ impl<'context> Sema<'_, 'context, '_> {
   fn addressof(
     &self,
     operator: Operator,
-    operand: se::Expression<'context>,
+    operand: se::Expression<'c>,
     span: SourceSpan,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     assert_eq!(operator, Operator::Ampersand);
     if !operand.is_lvalue() {
       Err(
@@ -1479,9 +1473,9 @@ impl<'context> Sema<'_, 'context, '_> {
   fn indirect(
     &self,
     operator: Operator,
-    operand: se::Expression<'context>,
+    operand: se::Expression<'c>,
     span: SourceSpan,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     assert_eq!(operator, Operator::Star);
 
     let operand = operand.lvalue_conversion().decay(self.context());
@@ -1516,15 +1510,15 @@ impl<'context> Sema<'_, 'context, '_> {
     }
   }
 }
-impl<'context> Sema<'_, 'context, '_> {
+impl<'c> Sema<'c> {
   /// assignment operator `=`
   fn assignment(
     &self,
     operator: Operator,
-    left: se::Expression<'context>,
-    right: se::Expression<'context>,
+    left: se::Expression<'c>,
+    right: se::Expression<'c>,
     span: SourceSpan,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     if !left.is_modifiable_lvalue() {
       self.add_error(ExprNotAssignable(left.to_string()), span);
       return Ok(left);
@@ -1548,10 +1542,10 @@ impl<'context> Sema<'_, 'context, '_> {
   fn logical(
     &self,
     operator: Operator,
-    left: se::Expression<'context>,
-    right: se::Expression<'context>,
+    left: se::Expression<'c>,
+    right: se::Expression<'c>,
     span: SourceSpan,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     let left = left.lvalue_conversion().decay(self.context());
     let right = right.lvalue_conversion().decay(self.context());
 
@@ -1569,10 +1563,10 @@ impl<'context> Sema<'_, 'context, '_> {
   fn relational(
     &self,
     operator: Operator,
-    left: se::Expression<'context>,
-    right: se::Expression<'context>,
+    left: se::Expression<'c>,
+    right: se::Expression<'c>,
     span: SourceSpan,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     let left = left.lvalue_conversion().decay(self.context());
     let right = right.lvalue_conversion().decay(self.context());
 
@@ -1598,10 +1592,10 @@ impl<'context> Sema<'_, 'context, '_> {
   fn arithmetic(
     &self,
     operator: Operator,
-    left: se::Expression<'context>,
-    right: se::Expression<'context>,
+    left: se::Expression<'c>,
+    right: se::Expression<'c>,
     span: SourceSpan,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     let left = left.lvalue_conversion().decay(self.context());
     let right = right.lvalue_conversion().decay(self.context());
 
@@ -1628,10 +1622,10 @@ impl<'context> Sema<'_, 'context, '_> {
   fn usual_arithmetic(
     &self,
     operator: Operator,
-    left: se::Expression<'context>,
-    right: se::Expression<'context>,
+    left: se::Expression<'c>,
+    right: se::Expression<'c>,
     span: SourceSpan,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     debug_assert!(
       left.unqualified_type().is_arithmetic()
         && right.unqualified_type().is_arithmetic()
@@ -1649,10 +1643,10 @@ impl<'context> Sema<'_, 'context, '_> {
   fn pointer_arithematic(
     &self,
     operator: Operator,
-    left: se::Expression<'context>,
-    right: se::Expression<'context>,
+    left: se::Expression<'c>,
+    right: se::Expression<'c>,
     span: SourceSpan,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     debug_assert!(
       left.unqualified_type().is_pointer()
         || right.unqualified_type().is_pointer()
@@ -1736,10 +1730,10 @@ impl<'context> Sema<'_, 'context, '_> {
   fn bitwise(
     &self,
     operator: Operator,
-    left: se::Expression<'context>,
-    right: se::Expression<'context>,
+    left: se::Expression<'c>,
+    right: se::Expression<'c>,
     span: SourceSpan,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     let left = left.lvalue_conversion().decay(self.context());
     let right = right.lvalue_conversion().decay(self.context());
 
@@ -1771,10 +1765,10 @@ impl<'context> Sema<'_, 'context, '_> {
   fn bitshift(
     &self,
     operator: Operator,
-    left: se::Expression<'context>,
-    right: se::Expression<'context>,
+    left: se::Expression<'c>,
+    right: se::Expression<'c>,
     span: SourceSpan,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     let lhs = left
       .lvalue_conversion()
       .decay(self.context())
@@ -1807,10 +1801,10 @@ impl<'context> Sema<'_, 'context, '_> {
   fn comma(
     &self,
     operator: Operator,
-    left: se::Expression<'context>,
-    right: se::Expression<'context>,
+    left: se::Expression<'c>,
+    right: se::Expression<'c>,
     span: SourceSpan,
-  ) -> Result<se::Expression<'context>, Diag<'context>> {
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     // the result is the right expression, and the left is void converted, that's it. done.
     let expr_type = *right.qualified_type();
     Ok(se::Expression::new_rvalue(
@@ -1820,11 +1814,11 @@ impl<'context> Sema<'_, 'context, '_> {
     ))
   }
 }
-impl<'context> Sema<'_, 'context, '_> {
+impl<'c> Sema<'c> {
   fn statements(
     &mut self,
-    statements: Vec<ps::Statement<'context>>,
-  ) -> Vec<ss::Statement<'context>> {
+    statements: Vec<ps::Statement<'c>>,
+  ) -> Vec<ss::Statement<'c>> {
     statements
       .into_iter()
       .filter_map(|statement| match self.statement(statement) {
@@ -1839,8 +1833,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn statement(
     &mut self,
-    statement: ps::Statement<'context>,
-  ) -> Result<ss::Statement<'context>, Diag<'context>> {
+    statement: ps::Statement<'c>,
+  ) -> Result<ss::Statement<'c>, Diag<'c>> {
     match statement {
       ps::Statement::Expression(expression) => self.exprstmt(expression),
       ps::Statement::Compound(compound_stmt) =>
@@ -1869,16 +1863,16 @@ impl<'context> Sema<'_, 'context, '_> {
   #[inline]
   fn compound(
     &mut self,
-    compound: ps::Compound<'context>,
-  ) -> Result<ss::Compound<'context>, Diag<'context>> {
+    compound: ps::Compound<'c>,
+  ) -> Result<ss::Compound<'c>, Diag<'c>> {
     self.compound_with(compound, |_| {})
   }
 
   fn compound_with<Fn>(
     &mut self,
-    compound: ps::Compound<'context>,
+    compound: ps::Compound<'c>,
     callback: Fn,
-  ) -> Result<ss::Compound<'context>, Diag<'context>>
+  ) -> Result<ss::Compound<'c>, Diag<'c>>
   where
     Fn: FnOnce(&Self),
   {
@@ -1895,16 +1889,16 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn exprstmt(
     &self,
-    expr_stmt: pe::Expression<'context>,
-  ) -> Result<ss::Statement<'context>, Diag<'context>> {
+    expr_stmt: pe::Expression<'c>,
+  ) -> Result<ss::Statement<'c>, Diag<'c>> {
     // todo: unused expression result warning
     Ok(self.expression(expr_stmt)?.into())
   }
 
   fn returnstmt(
     &self,
-    return_stmt: ps::Return<'context>,
-  ) -> Result<ss::Return<'context>, Diag<'context>> {
+    return_stmt: ps::Return<'c>,
+  ) -> Result<ss::Return<'c>, Diag<'c>> {
     let ps::Return { expression, span } = return_stmt;
     let analyzed_expr = match expression {
       Some(expr) => Some(self.expression(expr)?),
@@ -1955,8 +1949,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn ifstmt(
     &mut self,
-    if_stmt: ps::If<'context>,
-  ) -> Result<ss::If<'context>, Diag<'context>> {
+    if_stmt: ps::If<'c>,
+  ) -> Result<ss::If<'c>, Diag<'c>> {
     let ps::If {
       condition,
       then_branch,
@@ -1985,8 +1979,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn whilestmt(
     &mut self,
-    while_stmt: ps::While<'context>,
-  ) -> Result<ss::While<'context>, Diag<'context>> {
+    while_stmt: ps::While<'c>,
+  ) -> Result<ss::While<'c>, Diag<'c>> {
     let ps::While {
       condition,
       body,
@@ -2011,8 +2005,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn dowhilestmt(
     &mut self,
-    do_while: ps::DoWhile<'context>,
-  ) -> Result<ss::DoWhile<'context>, Diag<'context>> {
+    do_while: ps::DoWhile<'c>,
+  ) -> Result<ss::DoWhile<'c>, Diag<'c>> {
     let ps::DoWhile {
       body,
       condition,
@@ -2037,8 +2031,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn forstmt(
     &mut self,
-    for_stmt: ps::For<'context>,
-  ) -> Result<ss::For<'context>, Diag<'context>> {
+    for_stmt: ps::For<'c>,
+  ) -> Result<ss::For<'c>, Diag<'c>> {
     let ps::For {
       initializer,
       condition,
@@ -2070,8 +2064,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn switchstmt(
     &mut self,
-    switch: ps::Switch<'context>,
-  ) -> Result<ss::Switch<'context>, Diag<'context>> {
+    switch: ps::Switch<'c>,
+  ) -> Result<ss::Switch<'c>, Diag<'c>> {
     let ps::Switch {
       cases,
       condition,
@@ -2114,8 +2108,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn casestmt(
     &mut self,
-    case: ps::Case<'context>,
-  ) -> Result<ss::Case<'context>, Diag<'context>> {
+    case: ps::Case<'c>,
+  ) -> Result<ss::Case<'c>, Diag<'c>> {
     let ps::Case { body, value, span } = case;
     let analyzed_value = self.expression(value).handle_with(
       self,
@@ -2148,8 +2142,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn defaultstmt(
     &mut self,
-    default: ps::Default<'context>,
-  ) -> Result<ss::Default<'context>, Diag<'context>> {
+    default: ps::Default<'c>,
+  ) -> Result<ss::Default<'c>, Diag<'c>> {
     let ps::Default { body, span } = default;
     let analyzed_body = self.statements(body);
     Ok(ss::Default::new(analyzed_body, span))
@@ -2157,8 +2151,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn labelstmt(
     &mut self,
-    label: ps::Label<'context>,
-  ) -> Result<ss::Label<'context>, Diag<'context>> {
+    label: ps::Label<'c>,
+  ) -> Result<ss::Label<'c>, Diag<'c>> {
     match self.environment.is_global() {
       true => contract_violation!(
         "label statement in global scope should be handled in parser"
@@ -2193,8 +2187,8 @@ impl<'context> Sema<'_, 'context, '_> {
 
   fn gotostmt(
     &mut self,
-    goto: ps::Goto<'context>,
-  ) -> Result<ss::Goto<'context>, Diag<'context>> {
+    goto: ps::Goto<'c>,
+  ) -> Result<ss::Goto<'c>, Diag<'c>> {
     match self.environment.is_global() {
       true => contract_violation!(
         "goto statement in global scope should be handled in parser"
@@ -2214,7 +2208,7 @@ impl<'context> Sema<'_, 'context, '_> {
   fn breakstmt(
     &self,
     break_stmt: ps::Break,
-  ) -> Result<ss::Break<'context>, Diag<'context>> {
+  ) -> Result<ss::Break<'c>, Diag<'c>> {
     match self.environment.is_global() {
       true => contract_violation!(
         "break statement in global scope should be handled in parser"
@@ -2226,7 +2220,7 @@ impl<'context> Sema<'_, 'context, '_> {
   fn continuestmt(
     &self,
     continue_stmt: ps::Continue,
-  ) -> Result<ss::Continue<'context>, Diag<'context>> {
+  ) -> Result<ss::Continue<'c>, Diag<'c>> {
     match self.environment.is_global() {
       true => contract_violation!(
         "continue statement in global scope should be handled in parser"

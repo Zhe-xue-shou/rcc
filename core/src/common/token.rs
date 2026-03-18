@@ -10,10 +10,10 @@ use super::{
 use crate::types::Constant;
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Literal<'context> {
-  Number(Constant<'context>),
-  Identifier(StrRef<'context>),
-  String(StrRef<'context>),
+pub enum Literal<'c> {
+  Number(Constant<'c>),
+  Identifier(StrRef<'c>),
+  String(StrRef<'c>),
   Keyword(Keyword),
   Operator(Operator),
 }
@@ -21,14 +21,14 @@ pub enum Literal<'context> {
 ensure_is_pod!(Literal);
 
 #[derive(Debug)]
-pub struct Token<'context> {
-  pub literal: Literal<'context>,
+pub struct Token<'c> {
+  pub literal: Literal<'c>,
   pub location: SourceSpan,
 }
 
 ensure_is_pod!(Token);
 
-impl<'context> Token<'context> {
+impl<'c> Token<'c> {
   pub fn character(character: char, location: SourceSpan) -> Self {
     Self {
       literal: Literal::Number(Constant::Integral((character as i32).into())),
@@ -36,14 +36,14 @@ impl<'context> Token<'context> {
     }
   }
 
-  pub fn string(literal: StrRef<'context>, location: SourceSpan) -> Self {
+  pub fn string(literal: StrRef<'c>, location: SourceSpan) -> Self {
     Self {
       literal: Literal::String(literal),
       location,
     }
   }
 
-  pub fn number(number: Constant<'context>, location: SourceSpan) -> Self {
+  pub fn number(number: Constant<'c>, location: SourceSpan) -> Self {
     Self {
       literal: Literal::Number(number),
       location,
@@ -51,7 +51,7 @@ impl<'context> Token<'context> {
   }
 
   pub fn identifier(
-    identifier: StrRef<'context>,
+    identifier: StrRef<'c>,
     location: SourceSpan,
   ) -> Self {
     Self {
@@ -100,7 +100,7 @@ impl<'context> Token<'context> {
     }
   }
 }
-impl<'context> Literal<'context> {
+impl<'c> Literal<'c> {
   pub fn is_qualifier(&self) -> bool {
     match self {
       Literal::Keyword(kw) => kw.is_qualifier(),
@@ -157,15 +157,15 @@ impl Keyword {
   }
 }
 
-interconvert!(Keyword, Literal<'context>);
-interconvert!(Operator, Literal<'context>);
-interconvert!(Constant, Literal,'context, Number);
+interconvert!(Keyword, Literal<'c>);
+interconvert!(Operator, Literal<'c>);
+interconvert!(Constant, Literal,'c, Number);
 // interconvert!(SmallString, Literal, Identifier);
 // interconvert!(String, Literal, String); // this one conflicts with the above
 mod cmp {
   use super::{Keyword, Literal, Operator};
 
-  impl<'context> PartialEq<Literal<'context>> for Keyword {
+  impl<'c> PartialEq<Literal<'c>> for Keyword {
     #[inline]
     fn eq(&self, other: &Literal) -> bool {
       match other {
@@ -174,7 +174,7 @@ mod cmp {
       }
     }
   }
-  impl<'context> PartialEq<Keyword> for Literal<'context> {
+  impl<'c> PartialEq<Keyword> for Literal<'c> {
     #[inline]
     fn eq(&self, other: &Keyword) -> bool {
       match self {
@@ -183,7 +183,7 @@ mod cmp {
       }
     }
   }
-  impl<'context> PartialEq<Operator> for Literal<'context> {
+  impl<'c> PartialEq<Operator> for Literal<'c> {
     #[inline]
     fn eq(&self, other: &Operator) -> bool {
       match self {
@@ -192,7 +192,7 @@ mod cmp {
       }
     }
   }
-  impl<'context> PartialEq<Literal<'context>> for Operator {
+  impl<'c> PartialEq<Literal<'c>> for Operator {
     #[inline]
     fn eq(&self, other: &Literal) -> bool {
       match other {
@@ -201,7 +201,7 @@ mod cmp {
       }
     }
   }
-  impl<'context> PartialEq<Operator> for &Literal<'context> {
+  impl<'c> PartialEq<Operator> for &Literal<'c> {
     #[inline]
     fn eq(&self, other: &Operator) -> bool {
       match self {
@@ -211,7 +211,7 @@ mod cmp {
     }
   }
 
-  impl<'context> PartialEq<Keyword> for &Literal<'context> {
+  impl<'c> PartialEq<Keyword> for &Literal<'c> {
     #[inline]
     fn eq(&self, other: &Keyword) -> bool {
       match self {
@@ -221,7 +221,7 @@ mod cmp {
     }
   }
 
-  impl<'context> PartialEq<Literal<'context>> for &Literal<'context> {
+  impl<'c> PartialEq<Literal<'c>> for &Literal<'c> {
     #[inline]
     fn eq(&self, other: &Literal) -> bool {
       PartialEq::eq(*self, other)
@@ -233,7 +233,7 @@ mod fmt {
 
   use super::{Literal, Token};
 
-  impl<'context> Display for Token<'context> {
+  impl<'c> Display for Token<'c> {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       write!(
@@ -244,7 +244,7 @@ mod fmt {
     }
   }
 
-  impl<'context> Display for Literal<'context> {
+  impl<'c> Display for Literal<'c> {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       ::rcc_utils::static_dispatch!(self, |variant| variant.fmt(f) => Operator Number String Identifier Keyword)

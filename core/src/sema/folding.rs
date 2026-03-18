@@ -54,7 +54,7 @@ impl<T> FoldingResult<T> {
 }
 
 /// Folding trait for constant expression evaluation
-pub trait Folding<'context> {
+pub trait Folding<'c> {
   /// This serves as a never-fail folding mechanism,
   /// all errors and warnings shall be handled via `diag` parameter.
   /// [`Operational`](crate::diagnosis::Operational) is recommended.
@@ -66,32 +66,32 @@ pub trait Folding<'context> {
   #[must_use]
   fn fold(
     self,
-    target_type: QualifiedType<'context>,
+    target_type: QualifiedType<'c>,
     value_category: ValueCategory,
-    diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>>;
+    diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>>;
 }
 
 use FoldingResult::{Failure, Success};
 
-impl<'context> Expression<'context> {
+impl<'c> Expression<'c> {
   #[inline(always)]
   pub(crate) fn fold(
     self,
-    diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     let (raw_expr, expr_type, value_category) = self.destructure();
     raw_expr.fold(expr_type, value_category, diag)
   }
 }
-impl<'context> Folding<'context> for RawExpr<'context> {
+impl<'c> Folding<'c> for RawExpr<'c> {
   #[inline]
   fn fold(
     self,
-    target_type: QualifiedType<'context>,
+    target_type: QualifiedType<'c>,
     value_category: ValueCategory,
-    diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     ::rcc_utils::static_dispatch!(
       self,
       |variant| variant.fold(target_type, value_category, diag) =>
@@ -99,94 +99,94 @@ impl<'context> Folding<'context> for RawExpr<'context> {
     )
   }
 }
-impl<'context> Folding<'context> for Empty {
+impl<'c> Folding<'c> for Empty {
   #[inline(always)]
   fn fold(
     self,
-    target_type: QualifiedType<'context>,
+    target_type: QualifiedType<'c>,
     value_category: ValueCategory,
-    _diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    _diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     Failure(Expression::new(self.into(), target_type, value_category))
   }
 }
 
-impl<'context> Folding<'context> for Call<'context> {
+impl<'c> Folding<'c> for Call<'c> {
   #[inline(always)]
   fn fold(
     self,
-    target_type: QualifiedType<'context>,
+    target_type: QualifiedType<'c>,
     value_category: ValueCategory,
-    _diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    _diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     Failure(Expression::new(self.into(), target_type, value_category))
   }
 }
 
-impl<'context> Folding<'context> for MemberAccess<'context> {
+impl<'c> Folding<'c> for MemberAccess<'c> {
   fn fold(
     self,
-    _target_type: QualifiedType<'context>,
+    _target_type: QualifiedType<'c>,
     _value_category: ValueCategory,
-    _diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    _diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     todo!()
   }
 }
-impl<'context> Folding<'context> for CStyleCast<'context> {
+impl<'c> Folding<'c> for CStyleCast<'c> {
   fn fold(
     self,
-    _target_type: QualifiedType<'context>,
+    _target_type: QualifiedType<'c>,
     _value_category: ValueCategory,
-    _diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    _diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     todo!()
   }
 }
 
-impl<'context> Folding<'context> for ArraySubscript<'context> {
+impl<'c> Folding<'c> for ArraySubscript<'c> {
   /// always fails folding in C, unlike C++.
   #[inline(always)]
   fn fold(
     self,
-    target_type: QualifiedType<'context>,
+    target_type: QualifiedType<'c>,
     value_category: ValueCategory,
-    _diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    _diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     Failure(Expression::new(self.into(), target_type, value_category))
   }
 }
 
-impl<'context> Folding<'context> for CompoundLiteral {
+impl<'c> Folding<'c> for CompoundLiteral {
   fn fold(
     self,
-    _target_type: QualifiedType<'context>,
+    _target_type: QualifiedType<'c>,
     _value_category: ValueCategory,
-    _diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    _diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     todo!()
   }
 }
 
-impl<'context> Folding<'context> for Constant<'context> {
+impl<'c> Folding<'c> for Constant<'c> {
   #[inline(always)]
   fn fold(
     self,
-    target_type: QualifiedType<'context>,
+    target_type: QualifiedType<'c>,
     value_category: ValueCategory,
-    _diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    _diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     Success(Expression::new(self.into(), target_type, value_category))
   }
 }
 
-impl<'context> Folding<'context> for Unary<'context> {
+impl<'c> Folding<'c> for Unary<'c> {
   fn fold(
     self,
-    target_type: QualifiedType<'context>,
+    target_type: QualifiedType<'c>,
     value_category: ValueCategory,
-    diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     debug_assert!(
       self.operator.unary(),
       "not an unary operator! should not happen!"
@@ -254,13 +254,13 @@ impl<'context> Folding<'context> for Unary<'context> {
   }
 }
 
-impl<'context> Folding<'context> for Binary<'context> {
+impl<'c> Folding<'c> for Binary<'c> {
   fn fold(
     self,
-    target_type: QualifiedType<'context>,
+    target_type: QualifiedType<'c>,
     value_category: ValueCategory,
-    diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     debug_assert!(
       self.operator.binary(),
       "not a binary operator! should not happen!"
@@ -380,13 +380,13 @@ impl<'context> Folding<'context> for Binary<'context> {
     })
   }
 }
-impl<'context> Folding<'context> for Ternary<'context> {
+impl<'c> Folding<'c> for Ternary<'c> {
   fn fold(
     self,
-    target_type: QualifiedType<'context>,
+    target_type: QualifiedType<'c>,
     value_category: ValueCategory,
-    diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     debug_assert!(
       self
         .then_expr
@@ -424,13 +424,13 @@ impl<'context> Folding<'context> for Ternary<'context> {
   }
 }
 
-impl<'context> Folding<'context> for SizeOf<'context> {
+impl<'c> Folding<'c> for SizeOf<'c> {
   fn fold(
     self,
-    target_type: QualifiedType<'context>,
+    target_type: QualifiedType<'c>,
     value_category: ValueCategory,
-    diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     match self.sizeof {
       SizeOfKind::Type(qualified_type) => if qualified_type.size() > 0 {
         Success(Integral::from_uintptr(qualified_type.size()))
@@ -450,13 +450,13 @@ impl<'context> Folding<'context> for SizeOf<'context> {
   }
 }
 
-impl<'context> Folding<'context> for Variable<'context> {
+impl<'c> Folding<'c> for Variable<'c> {
   fn fold(
     self,
-    target_type: QualifiedType<'context>,
+    target_type: QualifiedType<'c>,
     value_category: ValueCategory,
-    diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     if self.name.borrow().is_constexpr() {
       diag.add_error(
         UnsupportedFeature("constexpr variable not implemented".to_string()),
@@ -469,24 +469,24 @@ impl<'context> Folding<'context> for Variable<'context> {
   }
 }
 
-impl<'context> Folding<'context> for Paren<'context> {
+impl<'c> Folding<'c> for Paren<'c> {
   fn fold(
     self,
-    _target_type: QualifiedType<'context>,
+    _target_type: QualifiedType<'c>,
     _value_category: ValueCategory,
-    diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     self.expr.fold(diag)
   }
 }
 
-impl<'context> Folding<'context> for ImplicitCast<'context> {
+impl<'c> Folding<'c> for ImplicitCast<'c> {
   fn fold(
     self,
-    target_type: QualifiedType<'context>,
+    target_type: QualifiedType<'c>,
     value_category: ValueCategory,
-    diag: &impl Diagnosis<'context>,
-  ) -> FoldingResult<Expression<'context>> {
+    diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
     let folded_expr = match self.expr.fold(diag) {
       Success(folded) => folded,
       Failure(original) =>
@@ -595,12 +595,12 @@ impl<'context> Folding<'context> for ImplicitCast<'context> {
   }
 }
 impl Integral {
-  pub fn handle_binary_op<'context>(
+  pub fn handle_binary_op<'c>(
     op: Operator,
     lhs: Self,
     rhs: Self,
     span: SourceSpan,
-    diag: &impl Diagnosis<'context>,
+    diag: &impl Diagnosis<'c>,
   ) -> FoldingResult<Self> {
     debug_assert!(op.binary());
     debug_assert_eq!(lhs.width(), rhs.width());
@@ -669,11 +669,11 @@ impl Integral {
     }
   }
 
-  pub fn handle_unary_op<'context>(
+  pub fn handle_unary_op<'c>(
     operator: Operator,
     operand: Self,
     _span: SourceSpan,
-    _diag: &impl Diagnosis<'context>,
+    _diag: &impl Diagnosis<'c>,
   ) -> FoldingResult<Self> {
     debug_assert!(operator.unary());
     use Operator::*;
@@ -690,12 +690,12 @@ impl Integral {
 }
 
 impl Floating {
-  pub fn handle_binary_arith_op<'context>(
+  pub fn handle_binary_arith_op<'c>(
     op: Operator,
     lhs: Floating,
     rhs: Floating,
     span: SourceSpan,
-    diag: &impl Diagnosis<'context>,
+    diag: &impl Diagnosis<'c>,
   ) -> FoldingResult<Self> {
     use Operator::*;
     debug_assert!(
@@ -727,12 +727,12 @@ impl Floating {
     }
   }
 
-  pub fn handle_binary_order_op<'context>(
+  pub fn handle_binary_order_op<'c>(
     op: Operator,
     lhs: Floating,
     rhs: Floating,
     span: SourceSpan,
-    diag: &impl Diagnosis<'context>,
+    diag: &impl Diagnosis<'c>,
   ) -> FoldingResult<Integral> {
     use OperatorCategory::*;
     debug_assert!(
@@ -766,11 +766,11 @@ impl Floating {
     }
   }
 
-  pub fn handle_unary_arith_op<'context>(
+  pub fn handle_unary_arith_op<'c>(
     operator: Operator,
     operand: Self,
     _span: SourceSpan,
-    _diag: &impl Diagnosis<'context>,
+    _diag: &impl Diagnosis<'c>,
   ) -> FoldingResult<Self> {
     debug_assert!(operator.unary());
     use Operator::*;
@@ -786,11 +786,11 @@ impl Floating {
     }
   }
 
-  pub fn handle_unary_order_op<'context>(
+  pub fn handle_unary_order_op<'c>(
     operator: Operator,
     operand: Self,
     span: SourceSpan,
-    diag: &impl Diagnosis<'context>,
+    diag: &impl Diagnosis<'c>,
   ) -> FoldingResult<Integral> {
     debug_assert!(operator.unary());
     use Operator::*;

@@ -8,44 +8,44 @@ use crate::blueprints::type_alias_stmt;
 // no additional info like that one we do in Expression?
 // alright, just repeat the same structure again -- stop abstracting here
 #[derive(Debug)]
-pub enum Statement<'context> {
+pub enum Statement<'c> {
   Empty(Empty),
-  Return(Return<'context>),
-  Expression(Expression<'context>),
-  Declaration(ExternalDeclaration<'context>),
-  Compound(Compound<'context>),
-  If(If<'context>),
-  While(While<'context>),
-  DoWhile(DoWhile<'context>),
-  For(For<'context>),
-  Switch(Switch<'context>),
-  Goto(Goto<'context>),
-  Label(Label<'context>),
-  Break(Break<'context>),
-  Continue(Continue<'context>),
+  Return(Return<'c>),
+  Expression(Expression<'c>),
+  Declaration(ExternalDeclaration<'c>),
+  Compound(Compound<'c>),
+  If(If<'c>),
+  While(While<'c>),
+  DoWhile(DoWhile<'c>),
+  For(For<'c>),
+  Switch(Switch<'c>),
+  Goto(Goto<'c>),
+  Label(Label<'c>),
+  Break(Break<'c>),
+  Continue(Continue<'c>),
 }
 
 type_alias_stmt!(
-  Statement<'context>,
-  ExternalDeclaration<'context>,
-  Expression<'context>,
-  ConstantLiteral<'context>
+  Statement<'c>,
+  ExternalDeclaration<'c>,
+  Expression<'c>,
+  ConstantLiteral<'c>
 );
-interconvert!(ExternalDeclaration, Statement, 'context, Declaration);
-interconvert!(Expression, Statement,'context);
-interconvert!(Return, Statement,'context);
-interconvert!(Compound, Statement,'context);
-interconvert!(If, Statement,'context);
-interconvert!(While, Statement,'context);
-interconvert!(DoWhile, Statement,'context);
-interconvert!(For, Statement,'context);
-interconvert!(Switch, Statement,'context);
-interconvert!(Goto, Statement,'context);
-interconvert!(Label, Statement,'context);
-interconvert!(Break, Statement,'context);
-interconvert!(Continue, Statement,'context);
+interconvert!(ExternalDeclaration, Statement, 'c, Declaration);
+interconvert!(Expression, Statement,'c);
+interconvert!(Return, Statement,'c);
+interconvert!(Compound, Statement,'c);
+interconvert!(If, Statement,'c);
+interconvert!(While, Statement,'c);
+interconvert!(DoWhile, Statement,'c);
+interconvert!(For, Statement,'c);
+interconvert!(Switch, Statement,'c);
+interconvert!(Goto, Statement,'c);
+interconvert!(Label, Statement,'c);
+interconvert!(Break, Statement,'c);
+interconvert!(Continue, Statement,'c);
 
-impl<'context> ::std::default::Default for Statement<'context> {
+impl<'c> ::std::default::Default for Statement<'c> {
   fn default() -> Self {
     Statement::Empty(Empty::default())
   }
@@ -56,7 +56,7 @@ mod fmt {
 
   use super::Statement;
 
-  impl<'context> Display for Statement<'context> {
+  impl<'c> Display for Statement<'c> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       ::rcc_utils::static_dispatch!(
         self,

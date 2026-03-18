@@ -19,13 +19,11 @@ pub trait Emitable<'a, ValueType> {
   ) -> ValueID;
 }
 
-impl<'context> Emitable<'context, inst::Terminator>
-  for Emitter<'_, 'context, '_>
-{
+impl<'c> Emitable<'c, inst::Terminator> for Emitter<'c> {
   fn emit(
     &mut self,
     terminator: inst::Terminator,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     if let Some(block) = &mut self.current_block {
       assert!(block.terminator.is_null(), "block already has a terminator");
@@ -41,11 +39,11 @@ impl<'context> Emitable<'context, inst::Terminator>
     }
   }
 }
-impl<'context> Emitable<'context, inst::Alloca> for Emitter<'_, 'context, '_> {
+impl<'c> Emitable<'c, inst::Alloca> for Emitter<'c> {
   fn emit(
     &mut self,
     alloca: inst::Alloca,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     if let Some(block) = &mut self.current_block {
       let value_id = self.session.ir_context.insert(Value::new(
@@ -61,13 +59,13 @@ impl<'context> Emitable<'context, inst::Alloca> for Emitter<'_, 'context, '_> {
     }
   }
 }
-impl<'context, InstType: Into<Instruction>> Emitable<'context, InstType>
-  for Emitter<'_, 'context, '_>
+impl<'c, InstType: Into<Instruction>> Emitable<'c, InstType>
+  for Emitter<'c>
 {
   default fn emit(
     &mut self,
     value: InstType,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     if let Some(block) = &mut self.current_block {
       let value_id = self.session.ir_context.insert(Value::new(
@@ -83,13 +81,13 @@ impl<'context, InstType: Into<Instruction>> Emitable<'context, InstType>
   }
 }
 
-impl<'context> Emitable<'context, module::Function<'context>>
-  for Emitter<'_, 'context, '_>
+impl<'c> Emitable<'c, module::Function<'c>>
+  for Emitter<'c>
 {
   fn emit(
     &mut self,
-    value: module::Function<'context>,
-    qualified_type: QualifiedType<'context>,
+    value: module::Function<'c>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     let value_id = self.session.ir_context.insert(Value::new(
       qualified_type,
@@ -100,13 +98,13 @@ impl<'context> Emitable<'context, module::Function<'context>>
     value_id
   }
 }
-impl<'context> Emitable<'context, module::Variable<'context>>
-  for Emitter<'_, 'context, '_>
+impl<'c> Emitable<'c, module::Variable<'c>>
+  for Emitter<'c>
 {
   fn emit(
     &mut self,
-    value: module::Variable<'context>,
-    qualified_type: QualifiedType<'context>,
+    value: module::Variable<'c>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     let value_id = self.session.ir_context.insert(Value::new(
       qualified_type,
@@ -117,13 +115,11 @@ impl<'context> Emitable<'context, module::Variable<'context>>
     value_id
   }
 }
-impl<'context> Emitable<'context, Constant<'context>>
-  for Emitter<'_, 'context, '_>
-{
+impl<'c> Emitable<'c, Constant<'c>> for Emitter<'c> {
   fn emit(
     &mut self,
-    value: Constant<'context>,
-    qualified_type: QualifiedType<'context>,
+    value: Constant<'c>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     let value_id = self
       .session
@@ -133,11 +129,11 @@ impl<'context> Emitable<'context, Constant<'context>>
     value_id
   }
 }
-impl<'context> Emitable<'context, Argument> for Emitter<'_, 'context, '_> {
+impl<'c> Emitable<'c, Argument> for Emitter<'c> {
   fn emit(
     &mut self,
     value: Argument,
-    qualified_type: QualifiedType<'context>,
+    qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     self.session.ir_context.insert(Value::new(
       qualified_type,

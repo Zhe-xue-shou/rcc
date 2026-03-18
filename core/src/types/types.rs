@@ -7,24 +7,24 @@ use super::{
 use crate::common::{FloatFormat, Floating, Integral, RefEq, Signedness};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub enum Type<'context> {
+pub enum Type<'c> {
   Primitive(Primitive),
-  Pointer(Pointer<'context>),
-  Array(Array<'context>),
-  FunctionProto(FunctionProto<'context>),
-  Enum(Enum<'context>),
-  Record(Record<'context>),
-  Union(Union<'context>),
+  Pointer(Pointer<'c>),
+  Array(Array<'c>),
+  FunctionProto(FunctionProto<'c>),
+  Enum(Enum<'c>),
+  Record(Record<'c>),
+  Union(Union<'c>),
 }
-/// Indicates a reference to [`Type`] which stores in the `'context`.
+/// Indicates a reference to [`Type`] which stores in the `'c`.
 /// Call [`Type::ref_eq`] to check two [`Type`] are equal or not -- dont use [`Eq`]/`==`.
-pub type TypeRef<'context> = &'context Type<'context>;
-pub type TypeRefMut<'context> = &'context mut Type<'context>;
+pub type TypeRef<'c> = &'c Type<'c>;
+pub type TypeRefMut<'c> = &'c mut Type<'c>;
 
 ensure_is_pod!(Type);
 ensure_is_pod!(TypeRef);
 
-impl<'context> Type<'context> {
+impl<'c> Type<'c> {
   pub fn is_modifiable(&self) -> bool {
     if self.size() == 0 {
       false
@@ -61,7 +61,7 @@ impl<'context> Type<'context> {
     }
   }
 
-  pub fn lookup(self, context: &Context<'context>) -> TypeRef<'context> {
+  pub fn lookup(self, context: &Context<'c>) -> TypeRef<'c> {
     context.intern(self)
   }
 }
@@ -90,10 +90,10 @@ impl RefEq for TypeRef<'_> {
   }
 }
 impl Integral {
-  pub fn unqualified_type<'context>(
+  pub fn unqualified_type<'c>(
     &self,
-    context: &'context Context,
-  ) -> TypeRef<'context> {
+    context: &'c Context,
+  ) -> TypeRef<'c> {
     if self.signedness() == Signedness::Signed {
       match self.width() {
         Self::WIDTH_CHAR => Context::char_type(context),
@@ -117,10 +117,10 @@ impl Integral {
 }
 
 impl Floating {
-  pub fn unqualified_type<'context>(
+  pub fn unqualified_type<'c>(
     &self,
-    context: &'context Context,
-  ) -> TypeRef<'context> {
+    context: &'c Context,
+  ) -> TypeRef<'c> {
     use FloatFormat::*;
     match self.format() {
       IEEE32 => Context::float_type(context),
@@ -129,11 +129,11 @@ impl Floating {
   }
 }
 
-impl<'context> Constant<'context> {
+impl<'c> Constant<'c> {
   pub fn unqualified_type(
     &self,
-    context: &'context Context,
-  ) -> TypeRef<'context> {
+    context: &'c Context,
+  ) -> TypeRef<'c> {
     match self {
       Self::Integral(integral) => integral.unqualified_type(context),
       Self::Floating(floating) => floating.unqualified_type(context),

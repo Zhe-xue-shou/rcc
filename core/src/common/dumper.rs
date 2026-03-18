@@ -3,7 +3,7 @@ use ::termcolor::{
 };
 
 use super::SourceSpan;
-use crate::session::Session;
+use crate::session::SessionRef;
 
 pub type FakeDumpRes = ();
 type DumpRes = ::std::io::Result<()>;
@@ -184,11 +184,7 @@ pub mod macros {
     };
   }
 }
-pub trait Dumper<'source, 'context, 'session>
-where
-  'source: 'context,
-  'context: 'session,
-{
+pub trait Dumper<'c> {
   #[inline(always)]
   fn write<T: ::std::fmt::Display>(
     &mut self,
@@ -235,48 +231,36 @@ where
 
   fn finalize(self) -> DumpRes;
   #[must_use]
-  fn session(&self) -> &'session Session<'source, 'context>;
+  fn session(&self) -> SessionRef<'c>;
 }
 pub struct Default<
-  'source,
-  'context,
-  'session,
+  'c,
   const INDENT_BODY: &'static str = "    ",
   const INDENT_LAST: &'static str = "    ",
   const PARENT_BODY: &'static str = "    ",
   const PARENT_LAST: &'static str = "    ",
   const PREFIX_LEFT: &'static str = "",
-> where
-  'source: 'context,
-  'context: 'session,
-{
+> {
   pub stream: StickyWriter<FlushOnDropRAII<BufferedStandardStream>>,
   pub palette: Palette,
-  pub session: &'session Session<'source, 'context>,
+  pub session: SessionRef<'c>,
 }
 impl<
-  'source,
-  'context,
-  'session,
+  'c,
   const INDENT_BODY: &'static str,
   const INDENT_LAST: &'static str,
   const PARENT_BODY: &'static str,
   const PARENT_LAST: &'static str,
   const PREFIX_LEFT: &'static str,
-> Dumper<'source, 'context, 'session>
+> Dumper<'c>
   for Default<
-    'source,
-    'context,
-    'session,
+    'c,
     INDENT_BODY,
     INDENT_LAST,
     PARENT_BODY,
     PARENT_LAST,
     PREFIX_LEFT,
   >
-where
-  'source: 'context,
-  'context: 'session,
 {
   #[inline]
   fn write_fmt(
@@ -303,11 +287,6 @@ where
     )
   }
 
-  #[inline(always)]
-  fn palette(&self) -> &Palette {
-    &self.palette
-  }
-
   /// Build the new prefix for children based on whether the current node is the last child.
   #[inline]
   fn child_prefix(&self, prefix: &str, is_last: bool) -> String {
@@ -321,6 +300,11 @@ where
   }
 
   #[inline(always)]
+  fn palette(&self) -> &Palette {
+    &self.palette
+  }
+
+  #[inline(always)]
   fn finalize(self) -> DumpRes {
     let mut stream = self.stream;
     stream.reset()?;
@@ -328,14 +312,12 @@ where
   }
 
   #[inline(always)]
-  fn session(&self) -> &'session Session<'source, 'context> {
+  fn session(&self) -> SessionRef<'c> {
     self.session
   }
 }
 impl<
-  'source,
-  'context,
-  'session,
+  'c,
   const INDENT_BODY: &'static str,
   const INDENT_LAST: &'static str,
   const PARENT_BODY: &'static str,
@@ -343,9 +325,7 @@ impl<
   const PREFIX_LEFT: &'static str,
 >
   Default<
-    'source,
-    'context,
-    'session,
+    'c,
     INDENT_BODY,
     INDENT_LAST,
     PARENT_BODY,
@@ -355,13 +335,9 @@ impl<
 {
   #[inline(never)]
   pub fn dump(
-    dumpable: &impl Dumpable<'context>,
-    session: &'session Session<'source, 'context>,
-  ) -> DumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+    dumpable: &impl Dumpable<'c>,
+    session: SessionRef<'c>,
+  ) -> DumpRes {
     let mut dumper = Self::new(
       session,
       StickyWriter::new(FlushOnDropRAII::new(BufferedStandardStream::stdout(
@@ -375,9 +351,7 @@ impl<
   }
 }
 impl<
-  'source,
-  'context,
-  'session,
+  'c,
   const INDENT_BODY: &'static str,
   const INDENT_LAST: &'static str,
   const PARENT_BODY: &'static str,
@@ -385,9 +359,7 @@ impl<
   const PREFIX_LEFT: &'static str,
 >
   Default<
-    'source,
-    'context,
-    'session,
+    'c,
     INDENT_BODY,
     INDENT_LAST,
     PARENT_BODY,
@@ -396,7 +368,7 @@ impl<
   >
 {
   pub fn new(
-    session: &'session Session<'source, 'context>,
+    session: SessionRef<'c>,
     stream: StickyWriter<FlushOnDropRAII<BufferedStandardStream>>,
     palette: Palette,
   ) -> Self {
@@ -408,7 +380,7 @@ impl<
   }
 }
 
-pub trait Dumpable<'context> {
+pub trait Dumpable<'c> {
   /// Recurse through the tree.
   /// - 'prefix' is the string of vertical bars from parents.
   /// - 'is_last' determines if we use an end marker or a middle marker
@@ -418,30 +390,23 @@ pub trait Dumpable<'context> {
   /// 1. print the indent for **this** node. i.e., use [`Dumper::print_indent`] with the given `prefix` and `is_last`.
   /// 2. print the node header info like type name, address, span, etc. using [`Dumper::write_fmt`].
   /// 3. compute the prefix for children using [`Dumper::child_prefix`] and recurse into children with the new `prefix` and correct `is_last`.
-  fn dump<'source, 'session>(
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session;
+  ) -> FakeDumpRes;
 }
 
-impl<'context> Dumpable<'context> for SourceSpan {
-  fn dump<'source, 'session>(
+impl<'c> Dumpable<'c> for SourceSpan {
+  fn dump(
     &self,
-    dumper: &mut impl Dumper<'source, 'context, 'session>,
+    dumper: &mut impl Dumper<'c>,
     _prefix: &str,
     _is_last: bool,
     palette: &Palette,
-  ) -> FakeDumpRes
-  where
-    'source: 'context,
-    'context: 'session,
-  {
+  ) -> FakeDumpRes {
     dumper.write("<", &palette.skeleton);
     let (l, c) = dumper
       .session()

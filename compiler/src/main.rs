@@ -5,7 +5,7 @@ use ::rcc_core::{
   lexer::Lexer,
   parse::Parser,
   sema::{ASTDumper, Sema},
-  session::Session,
+  session::{Session, SessionRef},
   storage::{Arena, Storage},
   types::Context as ASTContext,
 };
@@ -53,13 +53,14 @@ fn main() {
   let storage = arena.alloc(Storage::new(&arena));
   let ast_context = arena.alloc(ASTContext::new(storage));
   let ir_context = arena.alloc(IRContext::new(storage));
-  let session = Session::new(&source_manager, ast_context, ir_context);
+  let session =
+    arena.alloc(Session::new(&source_manager, ast_context, ir_context));
   pipeline(session, stage, false);
 }
 
-fn pipeline(session: Session, stage: Stage, pretty_print: bool) -> i32 {
-  let content = &session.manager.files.first().unwrap().source;
-  let mut lexer = Lexer::new(content, &session);
+fn pipeline(session: SessionRef, stage: Stage, pretty_print: bool) -> i32 {
+  // let content = session.manager.files.first().unwrap().source;
+  let mut lexer = Lexer::new(session);
   let tokens = lexer.lex();
   if session.diagnosis.has_errors() {
     eprintln!("Lex errors:");
@@ -84,7 +85,7 @@ fn pipeline(session: Session, stage: Stage, pretty_print: bool) -> i32 {
     println!("Lex succeeded.");
     return 0;
   }
-  let mut parser = Parser::new(tokens, &session);
+  let mut parser = Parser::new(tokens, session);
   let program = parser.parse();
   if session.diagnosis.has_errors() {
     eprintln!("Parser errors:");
@@ -104,7 +105,7 @@ fn pipeline(session: Session, stage: Stage, pretty_print: bool) -> i32 {
     return 0;
   }
 
-  let mut analyzer = Sema::new(program, &session);
+  let mut analyzer = Sema::new(program, session);
   let translation_unit = analyzer.analyze();
   if session.diagnosis.has_errors() {
     eprintln!("Analyzer errors:");
@@ -131,16 +132,16 @@ fn pipeline(session: Session, stage: Stage, pretty_print: bool) -> i32 {
       .iter()
       .for_each(|e| eprintln!("{}", e.display_with(session.manager)));
   }
-  ASTDumper::dump(&translation_unit, &session).unwrap();
+  ASTDumper::dump(&translation_unit, session).unwrap();
   if let Stage::Analyze = stage {
     return 0;
   }
   assert!(matches!(stage, Stage::Ir));
-  let builder = IREmitter::new(&session);
+  let builder = IREmitter::new(session);
 
   let m = builder.build(translation_unit);
   println!("{m:#?}");
-  IRDumper::dump(&m, &session).unwrap();
+  IRDumper::dump(&m, session).unwrap();
   0
 }
 

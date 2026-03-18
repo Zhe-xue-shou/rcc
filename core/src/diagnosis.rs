@@ -4,7 +4,7 @@ use ::std::cell::{Ref, RefCell};
 pub use self::data::{Data as DiagData, Diag, Meta as DiagMeta, Severity};
 use crate::common::SourceSpan;
 
-pub trait Diagnosis<'context> {
+pub trait Diagnosis<'c> {
   #[must_use]
   fn has_errors(&self) -> bool;
   #[must_use]
@@ -13,9 +13,9 @@ pub trait Diagnosis<'context> {
   fn errors(&self) -> Ref<'_, Vec<Diag<'_>>>;
   #[must_use]
   fn warnings(&self) -> Ref<'_, Vec<Diag<'_>>>;
-  fn add_error(&self, error: DiagData<'context>, span: SourceSpan);
-  fn add_warning(&self, warning: DiagData<'context>, span: SourceSpan);
-  fn add_diag(&self, diag: Diag<'context>) {
+  fn add_error(&self, error: DiagData<'c>, span: SourceSpan);
+  fn add_warning(&self, warning: DiagData<'c>, span: SourceSpan);
+  fn add_diag(&self, diag: Diag<'c>) {
     match diag.metadata.severity {
       Severity::Error => self.add_error(diag.metadata.data, diag.span),
       Severity::Warning => self.add_warning(diag.metadata.data, diag.span),
@@ -26,12 +26,12 @@ pub trait Diagnosis<'context> {
 
 #[derive(Default, Debug)]
 
-pub struct Operational<'context> {
-  warnings: RefCell<Vec<Diag<'context>>>,
-  errors: RefCell<Vec<Diag<'context>>>,
+pub struct Operational<'c> {
+  warnings: RefCell<Vec<Diag<'c>>>,
+  errors: RefCell<Vec<Diag<'c>>>,
 }
 
-impl<'context> Diagnosis<'context> for Operational<'context> {
+impl<'c> Diagnosis<'c> for Operational<'c> {
   #[inline]
   fn has_errors(&self) -> bool {
     !self.errors.borrow().is_empty()
@@ -53,7 +53,7 @@ impl<'context> Diagnosis<'context> for Operational<'context> {
   }
 
   #[inline]
-  fn add_error(&self, error: DiagData<'context>, span: SourceSpan) {
+  fn add_error(&self, error: DiagData<'c>, span: SourceSpan) {
     self
       .errors
       .borrow_mut()
@@ -61,7 +61,7 @@ impl<'context> Diagnosis<'context> for Operational<'context> {
   }
 
   #[inline]
-  fn add_warning(&self, data: DiagData<'context>, span: SourceSpan) {
+  fn add_warning(&self, data: DiagData<'c>, span: SourceSpan) {
     self
       .warnings
       .borrow_mut()

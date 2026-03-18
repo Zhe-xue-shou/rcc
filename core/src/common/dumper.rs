@@ -323,15 +323,7 @@ impl<
   const PARENT_BODY: &'static str,
   const PARENT_LAST: &'static str,
   const PREFIX_LEFT: &'static str,
->
-  Default<
-    'c,
-    INDENT_BODY,
-    INDENT_LAST,
-    PARENT_BODY,
-    PARENT_LAST,
-    PREFIX_LEFT,
-  >
+> Default<'c, INDENT_BODY, INDENT_LAST, PARENT_BODY, PARENT_LAST, PREFIX_LEFT>
 {
   #[inline(never)]
   pub fn dump(
@@ -357,15 +349,7 @@ impl<
   const PARENT_BODY: &'static str,
   const PARENT_LAST: &'static str,
   const PREFIX_LEFT: &'static str,
->
-  Default<
-    'c,
-    INDENT_BODY,
-    INDENT_LAST,
-    PARENT_BODY,
-    PARENT_LAST,
-    PREFIX_LEFT,
-  >
+> Default<'c, INDENT_BODY, INDENT_LAST, PARENT_BODY, PARENT_LAST, PREFIX_LEFT>
 {
   pub fn new(
     session: SessionRef<'c>,
@@ -408,11 +392,7 @@ impl<'c> Dumpable<'c> for SourceSpan {
     palette: &Palette,
   ) -> FakeDumpRes {
     dumper.write("<", &palette.skeleton);
-    let (l, c) = dumper
-      .session()
-      .manager
-      .lookup_line_col(*self)
-      .destructure();
+    let (l, c) = dumper.session().src().lookup_line_col(*self).destructure();
     dumper.write_fmt(format_args!("{}:{}", l, c), &palette.dim);
     dumper.write("> ", &palette.skeleton)
   }

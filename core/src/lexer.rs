@@ -11,7 +11,7 @@ use crate::{
     SourceSpan, Token,
   },
   diagnosis::{DiagData::*, Diagnosis},
-  session::SessionRef,
+  session::{Session, SessionRef},
   // this isn't strictrly correct, i uses the same `Constant` type in lexer and the parser,
   //    yet the lexeer part distinguishes number and string, but the parser part does not
   types::Constant as NumberConstant,
@@ -33,10 +33,17 @@ pub struct Lexer<'c> {
   /// Context.
   session: SessionRef<'c>,
 }
+impl<'a> ::std::ops::Deref for Lexer<'a> {
+  type Target = Session<'a>;
+
+  fn deref(&self) -> &Self::Target {
+    self.session
+  }
+}
 impl<'c> Lexer<'c> {
   pub fn new(session: SessionRef<'c>) -> Self {
     let chars = session
-      .manager
+      .src()
       .files
       .first()
       .unwrap()
@@ -44,7 +51,7 @@ impl<'c> Lexer<'c> {
       .chars()
       .peekable();
     Self {
-      source: &session.manager.files.first().unwrap().source,
+      source: &session.src().files.first().unwrap().source,
       chars,
       cursor: Default::default(),
       coords: Default::default(),
@@ -290,7 +297,7 @@ impl<'c> Lexer<'c> {
       '\\' => self.line_escape(start),
 
       ch => {
-        self.session.diagnosis.add_error(
+        self.diag().add_error(
           UnexpectedCharacter((ch.to_string(), None).into()),
           self.span(start),
         );
@@ -319,10 +326,8 @@ impl<'c> Lexer<'c> {
     match Keyword::from_str(text) {
       Ok(keyword) =>
         Token::keyword(keyword, self.span(start)).transform_alternative(),
-      Err(_) => Token::identifier(
-        self.session.ast_context.intern_str(text),
-        self.span(start),
-      ),
+      Err(_) =>
+        Token::identifier(self.ast().intern_str(text), self.span(start)),
     }
   }
 
@@ -383,7 +388,7 @@ impl<'c> Lexer<'c> {
       // exponent digits, required
       if !self.peek().is_ascii_digit() {
         // self.add_error("Expected digits after exponent marker".to_string());
-        self.session.diagnosis.add_error(
+        self.diag().add_error(
           InvalidNumberFormat(
             "Expected digits after exponent marker".to_string(),
           ),
@@ -407,7 +412,7 @@ impl<'c> Lexer<'c> {
       }
 
       if !self.peek().is_ascii_digit() {
-        self.session.diagnosis.add_error(
+        self.diag().add_error(
           InvalidNumberFormat(
             "Expected digits after hexadecimal exponent marker".to_string(),
           ),
@@ -433,7 +438,7 @@ impl<'c> Lexer<'c> {
           if NumberConstant::FLOATING_SUFFIXES.contains(&s) {
             Some(s)
           } else {
-            self.session.diagnosis.add_error(
+            self.diag().add_error(
               InvalidNumberFormat(format!(
                 "Invalid floating point literal suffix '{}', ignoring",
                 s
@@ -446,7 +451,7 @@ impl<'c> Lexer<'c> {
           if NumberConstant::INTEGER_SUFFIXES.contains(&s) {
             Some(s)
           } else {
-            self.session.diagnosis.add_error(
+            self.diag().add_error(
               InvalidNumberFormat(format!(
                 "Invalid integer literal suffix '{}', ignoring",
                 s
@@ -463,10 +468,7 @@ impl<'c> Lexer<'c> {
     let (constant, error) =
       NumberConstant::parse(&num[offset..], base, suffix, is_floating);
     if let Some(e) = error {
-      self
-        .session
-        .diagnosis
-        .add_diag(e.into_with(self.span(start)));
+      self.diag().add_diag(e.into_with(self.span(start)));
     }
 
     Token::number(constant, self.span(start))
@@ -492,7 +494,7 @@ impl<'c> Lexer<'c> {
       ' ' => {
         self
           .session
-          .diagnosis
+          .diag()
           .add_warning(WhitespaceAfterLineEscape, self.span(start));
         while self.peek() == &' ' {
           self.advance();
@@ -523,7 +525,7 @@ impl<'c> Lexer<'c> {
       c => {
         self
           .session
-          .diagnosis
+          .diag()
           .add_error(InvalidEscapeSequence(format!("\\{c}")), self.span(start));
         None
       },
@@ -546,7 +548,7 @@ impl<'c> Lexer<'c> {
     if self.is_at_end() {
       self
         .session
-        .diagnosis
+        .diag()
         .add_error(UnterminatedString, self.span(start));
       return None;
     }
@@ -557,7 +559,7 @@ impl<'c> Lexer<'c> {
       0 => {
         self
           .session
-          .diagnosis
+          .diag()
           .add_error(Custom("Expect expression".into()), self.span(start));
         None
       },
@@ -568,7 +570,7 @@ impl<'c> Lexer<'c> {
       _ => {
         self
           .session
-          .diagnosis
+          .diag()
           .add_error(CharacterTooLong(char_content.into()), self.span(start));
         None
       },
@@ -583,7 +585,7 @@ impl<'c> Lexer<'c> {
     if self.is_at_end() {
       self
         .session
-        .diagnosis
+        .diag()
         .add_error(UnterminatedString, self.span(start));
       return None;
     }
@@ -592,10 +594,7 @@ impl<'c> Lexer<'c> {
     self.advance(); // consume closing quote
 
     let text = self.slice(start, end);
-    Some(Token::string(
-      self.session.ast_context.intern_str(text),
-      self.span(start),
-    ))
+    Some(Token::string(self.ast().intern_str(text), self.span(start)))
   }
 
   fn skip_block_comment(&mut self) {

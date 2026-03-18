@@ -27,7 +27,7 @@ use crate::{
       Return, Statement, Switch, While,
     },
   },
-  session::SessionRef,
+  session::{Session, SessionRef},
   types::{FunctionSpecifier, Qualifiers},
 };
 #[derive(Debug)]
@@ -39,12 +39,15 @@ pub struct Parser<'c> {
   typedefs: UnitScope<'c>,
   session: SessionRef<'c>,
 }
+impl<'a> ::std::ops::Deref for Parser<'a> {
+  type Target = Session<'a>;
 
+  fn deref(&self) -> &Self::Target {
+    self.session
+  }
+}
 impl<'c> Parser<'c> {
-  pub fn new(
-    tokens: Vec<Token<'c>>,
-    session: SessionRef<'c>,
-  ) -> Self {
+  pub fn new(tokens: Vec<Token<'c>>, session: SessionRef<'c>) -> Self {
     assert_eq!(
       tokens.last().map(|t| &t.literal),
       Some(&Literal::Operator(EOF))
@@ -226,11 +229,11 @@ impl<'c> Parser<'c> {
 /// diagnostic functions
 impl<'c> Parser<'c> {
   fn add_error(&self, data: DiagData<'c>, span: SourceSpan) {
-    self.session.diagnosis.add_error(data, span);
+    self.diag().add_error(data, span);
   }
 
   fn add_warning(&self, data: DiagData<'c>, span: SourceSpan) {
-    self.session.diagnosis.add_warning(data, span);
+    self.diag().add_warning(data, span);
   }
 }
 /// opt checks
@@ -395,7 +398,7 @@ impl<'c> Parser<'c> {
           Some(
             self
               .session
-              .ast_context
+              .ast()
               .intern_str(&self.tokens[name_idx].to_owned_string()),
           )
         } else {
@@ -793,11 +796,7 @@ impl<'c> Parser<'c> {
     &mut self,
     declspecs: DeclSpecs<'c>,
     declarator: Declarator<'c>,
-  ) -> (
-    DeclSpecs<'c>,
-    Declarator<'c>,
-    Option<Compound<'c>>,
-  ) {
+  ) -> (DeclSpecs<'c>, Declarator<'c>, Option<Compound<'c>>) {
     let body = match self.peek_lit() {
       Literal::Operator(LeftBrace) => Some(self.next_block()),
       _ => {

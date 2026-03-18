@@ -22,7 +22,7 @@ pub type IRDumper<'c> = TreeDumper<
 
 macro_rules! id {
   ($id:expr, $dumper:expr, $palette:expr) => {
-    if let Some(value) = $dumper.session().ir_context.get_by_constant_id(&$id) {
+    if let Some(value) = $dumper.session().ir().get_by_constant_id(&$id) {
       $dumper.write_fmt(format_args!("{}", value), &$palette.literal);
     } else {
       $dumper.write_fmt(format_args!("%{}", $id.handle()), &$palette.skeleton);
@@ -454,7 +454,7 @@ impl<'c> Dump<'c, inst::Alloca> for Value<'c> {
   ) -> FakeDumpRes {
     dumper.write("alloca ", &palette.literal);
     dumper.write(
-      dumper.session().ir_context.ir_type(&self.qualified_type),
+      dumper.session().ir().ir_type(&self.qualified_type),
       &palette.meta,
     )
   }

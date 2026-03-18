@@ -16,7 +16,7 @@ use crate::{
   common::{Integral, Operator, OperatorCategory, RefEq, SourceSpan, StrRef},
   ir,
   sema::{declaration as sd, expression as se, statement as ss},
-  session::SessionRef,
+  session::{Session, SessionRef},
   types::{CastType, Constant, QualifiedType, TypeInfo},
 };
 pub struct Emitter<'c> {
@@ -30,16 +30,23 @@ pub struct Emitter<'c> {
   pub(super) functions: HashMap<StrRef<'c>, ValueID>,
   pub(super) module: Module,
 }
+impl<'a> ::std::ops::Deref for Emitter<'a> {
+  type Target = Session<'a>;
+
+  fn deref(&self) -> &Self::Target {
+    self.session
+  }
+}
 #[macro_use]
 mod macros {
   macro_rules! ty {
     ($self:ident, $qualified_type:expr) => {
-      $self.session.ir_context.ir_type(&$qualified_type)
+      $self.session.ir().ir_type(&$qualified_type)
     };
   }
   macro_rules! ctx {
     ($self:ident) => {
-      $self.session().ir_context
+      $self.session().ir()
     };
   }
   macro_rules! lookup {
@@ -79,7 +86,7 @@ impl<'c> Emitter<'c> {
   fn seal_current_block(&mut self) {
     if let Some(block) = self.current_block.take() {
       let block_id = ctx!(self).insert(Value::new(
-        self.session.ast_context.void_type().into(),
+        self.ast().void_type().into(),
         ctx!(self).label_type(),
         block.into(),
       ));
@@ -94,10 +101,7 @@ impl<'c> Emitter<'c> {
 }
 
 impl<'c> Emitter<'c> {
-  pub fn build(
-    mut self,
-    translation_unit: sd::TranslationUnit<'c>,
-  ) -> Module {
+  pub fn build(mut self, translation_unit: sd::TranslationUnit<'c>) -> Module {
     let declarations = translation_unit.declarations;
 
     self.module.globals = Vec::with_capacity(declarations.len());
@@ -247,10 +251,7 @@ impl<'c> Emitter<'c> {
     self.locals.clear();
   }
 
-  fn global_vardef(
-    &self,
-    variable: sd::VarDef<'c>,
-  ) -> module::Variable<'c> {
+  fn global_vardef(&self, variable: sd::VarDef<'c>) -> module::Variable<'c> {
     let sym = variable.symbol.borrow();
     module::Variable::new(
       sym.name, None, // TODO: handle initializers
@@ -313,7 +314,7 @@ impl<'c> Emitter<'c> {
     let qualified_type = expression
       .as_ref()
       .map(|e| *e.qualified_type())
-      .unwrap_or(self.session.ast_context.void_type().into());
+      .unwrap_or(self.ast().void_type().into());
     let operand = expression.map(|e| self.expression(e));
     _ = self.emit(
       inst::Terminator::Return(inst::Return::new(operand)),
@@ -338,10 +339,8 @@ impl<'c> Emitter<'c> {
 impl<'c> Emitter<'c> {
   fn expression(&mut self, expression: se::Expression<'c>) -> ValueID {
     // the fold here contains partial fold. e.g. `3 + 6 + func(4 + 5)` would be folded to `9 + func(9)`.
-    let (raw_expr, qualified_type, ..) = expression
-      .fold(&self.session.diagnosis)
-      .take()
-      .destructure();
+    let (raw_expr, qualified_type, ..) =
+      expression.fold(self.diag()).take().destructure();
     use se::RawExpr::*;
     match raw_expr {
       Empty(_) => contract_violation!(
@@ -708,7 +707,7 @@ impl<'c> Emitter<'c> {
             1,
             crate::common::Signedness::Unsigned,
           )),
-          self.session.ast_context.bool_type().into(),
+          self.ast().bool_type().into(),
         );
         let cmp = self.emit(
           inst::ICmp::new(inst::ICmpPredicate::Ne, operand, i1_false),
@@ -720,11 +719,11 @@ impl<'c> Emitter<'c> {
             1,
             crate::common::Signedness::Unsigned,
           )),
-          self.session.ast_context.bool_type().into(),
+          self.ast().bool_type().into(),
         );
         let xor = self.emit(
           inst::Binary::new(inst::BinaryOp::Xor, cmp, i1_true),
-          self.session.ast_context.bool_type().into(),
+          self.ast().bool_type().into(),
         );
         self.emit(inst::Cast::Zext(inst::Zext::new(xor)), qualified_type)
       },

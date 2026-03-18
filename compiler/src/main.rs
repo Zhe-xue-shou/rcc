@@ -62,13 +62,13 @@ fn pipeline(session: SessionRef, stage: Stage, pretty_print: bool) -> i32 {
   // let content = session.manager.files.first().unwrap().source;
   let mut lexer = Lexer::new(session);
   let tokens = lexer.lex();
-  if session.diagnosis.has_errors() {
+  if session.diag().has_errors() {
     eprintln!("Lex errors:");
     session
-      .diagnosis
+      .diag()
       .errors()
       .iter()
-      .for_each(|e| eprintln!("{}", e.display_with(session.manager)));
+      .for_each(|e| eprintln!("{}", e.display_with(session.src())));
     return 1;
   }
   if let Stage::Lex = stage {
@@ -87,13 +87,13 @@ fn pipeline(session: SessionRef, stage: Stage, pretty_print: bool) -> i32 {
   }
   let mut parser = Parser::new(tokens, session);
   let program = parser.parse();
-  if session.diagnosis.has_errors() {
+  if session.diag().has_errors() {
     eprintln!("Parser errors:");
     session
-      .diagnosis
+      .diag()
       .errors()
       .iter()
-      .for_each(|e| eprintln!("{}", e.display_with(session.manager)));
+      .for_each(|e| eprintln!("{}", e.display_with(session.src())));
     return 1;
   }
   if let Stage::Parse = stage {
@@ -107,13 +107,13 @@ fn pipeline(session: SessionRef, stage: Stage, pretty_print: bool) -> i32 {
 
   let mut analyzer = Sema::new(program, session);
   let translation_unit = analyzer.analyze();
-  if session.diagnosis.has_errors() {
+  if session.diag().has_errors() {
     eprintln!("Analyzer errors:");
     session
-      .diagnosis
+      .diag()
       .errors()
       .iter()
-      .for_each(|e| eprintln!("{}", e.display_with(session.manager)));
+      .for_each(|e| eprintln!("{}", e.display_with(session.src())));
     return 1;
   }
   if let Stage::Analyze = stage {
@@ -124,13 +124,13 @@ fn pipeline(session: SessionRef, stage: Stage, pretty_print: bool) -> i32 {
     println!("Analyze succeeded.");
   }
 
-  if session.diagnosis.has_warnings() {
+  if session.diag().has_warnings() {
     eprintln!("Analyzer warnings:");
     session
-      .diagnosis
+      .diag()
       .warnings()
       .iter()
-      .for_each(|e| eprintln!("{}", e.display_with(session.manager)));
+      .for_each(|e| eprintln!("{}", e.display_with(session.src())));
   }
   ASTDumper::dump(&translation_unit, session).unwrap();
   if let Stage::Analyze = stage {

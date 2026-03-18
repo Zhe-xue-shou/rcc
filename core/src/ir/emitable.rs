@@ -27,7 +27,7 @@ impl<'c> Emitable<'c, inst::Terminator> for Emitter<'c> {
   ) -> ValueID {
     if let Some(block) = &mut self.current_block {
       assert!(block.terminator.is_null(), "block already has a terminator");
-      let value_id = self.session.ir_context.insert(Value::new(
+      let value_id = self.session.ir().insert(Value::new(
         qualified_type,
         ty!(self, qualified_type),
         Instruction::from(terminator).into(),
@@ -46,9 +46,9 @@ impl<'c> Emitable<'c, inst::Alloca> for Emitter<'c> {
     qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     if let Some(block) = &mut self.current_block {
-      let value_id = self.session.ir_context.insert(Value::new(
+      let value_id = self.session.ir().insert(Value::new(
         qualified_type,
-        self.session.ir_context.pointer_type(),
+        self.session.ir().pointer_type(),
         Instruction::from(inst::Memory::from(alloca)).into(),
       ));
 
@@ -59,16 +59,14 @@ impl<'c> Emitable<'c, inst::Alloca> for Emitter<'c> {
     }
   }
 }
-impl<'c, InstType: Into<Instruction>> Emitable<'c, InstType>
-  for Emitter<'c>
-{
+impl<'c, InstType: Into<Instruction>> Emitable<'c, InstType> for Emitter<'c> {
   default fn emit(
     &mut self,
     value: InstType,
     qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     if let Some(block) = &mut self.current_block {
-      let value_id = self.session.ir_context.insert(Value::new(
+      let value_id = self.session.ir().insert(Value::new(
         qualified_type,
         ty!(self, qualified_type),
         value.into().into(),
@@ -81,15 +79,13 @@ impl<'c, InstType: Into<Instruction>> Emitable<'c, InstType>
   }
 }
 
-impl<'c> Emitable<'c, module::Function<'c>>
-  for Emitter<'c>
-{
+impl<'c> Emitable<'c, module::Function<'c>> for Emitter<'c> {
   fn emit(
     &mut self,
     value: module::Function<'c>,
     qualified_type: QualifiedType<'c>,
   ) -> ValueID {
-    let value_id = self.session.ir_context.insert(Value::new(
+    let value_id = self.session.ir().insert(Value::new(
       qualified_type,
       ty!(self, qualified_type),
       value.into(),
@@ -98,15 +94,13 @@ impl<'c> Emitable<'c, module::Function<'c>>
     value_id
   }
 }
-impl<'c> Emitable<'c, module::Variable<'c>>
-  for Emitter<'c>
-{
+impl<'c> Emitable<'c, module::Variable<'c>> for Emitter<'c> {
   fn emit(
     &mut self,
     value: module::Variable<'c>,
     qualified_type: QualifiedType<'c>,
   ) -> ValueID {
-    let value_id = self.session.ir_context.insert(Value::new(
+    let value_id = self.session.ir().insert(Value::new(
       qualified_type,
       ty!(self, qualified_type),
       value.into(),
@@ -121,10 +115,7 @@ impl<'c> Emitable<'c, Constant<'c>> for Emitter<'c> {
     value: Constant<'c>,
     qualified_type: QualifiedType<'c>,
   ) -> ValueID {
-    let value_id = self
-      .session
-      .ir_context
-      .intern_constant(value, qualified_type);
+    let value_id = self.session.ir().intern_constant(value, qualified_type);
     // self.module.constants.push(value_id);
     value_id
   }
@@ -135,7 +126,7 @@ impl<'c> Emitable<'c, Argument> for Emitter<'c> {
     value: Argument,
     qualified_type: QualifiedType<'c>,
   ) -> ValueID {
-    self.session.ir_context.insert(Value::new(
+    self.session.ir().insert(Value::new(
       qualified_type,
       ty!(self, qualified_type),
       value.into(),

@@ -15,7 +15,7 @@ use crate::{
   },
   parse::{declaration as pd, expression as pe, statement as ps},
   sema::{declaration as sd, expression as se, statement as ss},
-  session::SessionRef,
+  session::{Session, SessionRef},
   types::{
     ArenaVec, Array, ArraySize, Compatibility, Context, FunctionProto,
     FunctionSpecifier, Pointer, Primitive, QualifiedType, Type, TypeInfo,
@@ -106,12 +106,15 @@ pub struct Sema<'c> {
   current_function: Option<sd::Function<'c>>,
   session: SessionRef<'c>,
 }
+impl<'a> ::std::ops::Deref for Sema<'a> {
+  type Target = Session<'a>;
 
+  fn deref(&self) -> &Self::Target {
+    self.session
+  }
+}
 impl<'c> Sema<'c> {
-  pub fn new(
-    program: pd::Program<'c>,
-    session: SessionRef<'c>,
-  ) -> Self {
+  pub fn new(program: pd::Program<'c>, session: SessionRef<'c>) -> Self {
     Self {
       program,
       session,
@@ -121,19 +124,19 @@ impl<'c> Sema<'c> {
   }
 
   pub fn context(&self) -> &'c Context<'c> {
-    self.session.ast_context
+    self.ast()
   }
 
   pub fn add_diag(&self, diag: Diag<'c>) {
-    self.session.diagnosis.add_diag(diag);
+    self.diag().add_diag(diag);
   }
 
   pub fn add_error(&self, error: DiagData<'c>, span: SourceSpan) {
-    self.session.diagnosis.add_error(error, span);
+    self.diag().add_error(error, span);
   }
 
   pub fn add_warning(&self, warning: DiagData<'c>, span: SourceSpan) {
-    self.session.diagnosis.add_warning(warning, span);
+    self.diag().add_warning(warning, span);
   }
 
   pub fn analyze(&mut self) -> sd::TranslationUnit<'c> {
@@ -175,7 +178,7 @@ impl<'c> Sema<'c> {
               );
 
               if analyzed_expr.qualified_type().is_scalar() {
-                match analyzed_expr.fold(&self.session.diagnosis) {
+                match analyzed_expr.fold(self.diag()) {
                   super::folding::FoldingResult::Success(v) =>
                     if v.is_integer_constant() {
                       ArraySize::Constant(
@@ -239,7 +242,7 @@ impl<'c> Sema<'c> {
     (
       QualifiedType<'c>,
       Vec<sd::Parameter<'c>>, /* parameters name and their type, here's some repetition
-                                    parameter type had also been inside QualifiedType of the function */
+                              parameter type had also been inside QualifiedType of the function */
     ),
     Diag<'c>,
   > {
@@ -335,7 +338,7 @@ impl<'c> Sema<'c> {
         let symbol = Symbol::new_ref(Symbol::new(
           qualified_type,
           Storage::Automatic,
-          name.unwrap_or_else(|| self.session.ast_context.unnamed_str()),
+          name.unwrap_or_else(|| self.ast().unnamed_str()),
           VarDeclKind::Declaration,
         ));
         sd::Parameter::new(symbol, span)
@@ -346,10 +349,8 @@ impl<'c> Sema<'c> {
   fn parse_declspecs(
     &self,
     declspecs: pd::DeclSpecs<'c>,
-  ) -> Result<
-    (FunctionSpecifier, Option<Storage>, QualifiedType<'c>),
-    Diag<'c>,
-  > {
+  ) -> Result<(FunctionSpecifier, Option<Storage>, QualifiedType<'c>), Diag<'c>>
+  {
     let qualified_type = self
       .get_type(declspecs.type_specifiers)
       .handle_with(self, self.context().int_type().into())
@@ -841,7 +842,7 @@ impl<'c> Sema<'c> {
             expr
           } else {
             expr
-              .fold(&self.session.diagnosis)
+              .fold(self.diag())
               .inspect_error(|e| {
                 self.add_error(
                   ExprNotConstant(format!(
@@ -999,10 +1000,7 @@ impl<'c> Sema<'c> {
     }
   }
 
-  fn call(
-    &self,
-    call: pe::Call<'c>,
-  ) -> Result<se::Expression<'c>, Diag<'c>> {
+  fn call(&self, call: pe::Call<'c>) -> Result<se::Expression<'c>, Diag<'c>> {
     let pe::Call {
       arguments,
       callee,
@@ -1071,10 +1069,7 @@ impl<'c> Sema<'c> {
     ))
   }
 
-  fn cast(
-    &self,
-    _: pe::CStyleCast,
-  ) -> Result<se::Expression<'c>, Diag<'c>> {
+  fn cast(&self, _: pe::CStyleCast) -> Result<se::Expression<'c>, Diag<'c>> {
     not_implemented_feature!("C-style cast is not implemented yet");
   }
 
@@ -1947,10 +1942,7 @@ impl<'c> Sema<'c> {
     }
   }
 
-  fn ifstmt(
-    &mut self,
-    if_stmt: ps::If<'c>,
-  ) -> Result<ss::If<'c>, Diag<'c>> {
+  fn ifstmt(&mut self, if_stmt: ps::If<'c>) -> Result<ss::If<'c>, Diag<'c>> {
     let ps::If {
       condition,
       then_branch,
@@ -2106,10 +2098,7 @@ impl<'c> Sema<'c> {
     ))
   }
 
-  fn casestmt(
-    &mut self,
-    case: ps::Case<'c>,
-  ) -> Result<ss::Case<'c>, Diag<'c>> {
+  fn casestmt(&mut self, case: ps::Case<'c>) -> Result<ss::Case<'c>, Diag<'c>> {
     let ps::Case { body, value, span } = case;
     let analyzed_value = self.expression(value).handle_with(
       self,
@@ -2118,23 +2107,21 @@ impl<'c> Sema<'c> {
     let analyzed_body = self.statements(body);
 
     Ok(ss::Case::new(
-      analyzed_value
-        .fold(&self.session.diagnosis)
-        .transform(|expr| {
-          if let se::RawExpr::Constant(constant) = expr.raw_expr() {
-            if constant.is_integral() {
-              constant.value.clone()
-            } else {
-              self.add_error(
-                NonIntegerInCaseStmt(constant.value.clone()),
-                expr.span(),
-              );
-              Integral::default().into()
-            }
+      analyzed_value.fold(self.diag()).transform(|expr| {
+        if let se::RawExpr::Constant(constant) = expr.raw_expr() {
+          if constant.is_integral() {
+            constant.value.clone()
           } else {
-            contract_violation!("constant folding did not yield a constant")
+            self.add_error(
+              NonIntegerInCaseStmt(constant.value.clone()),
+              expr.span(),
+            );
+            Integral::default().into()
           }
-        }),
+        } else {
+          contract_violation!("constant folding did not yield a constant")
+        }
+      }),
       analyzed_body,
       span,
     ))
@@ -2185,10 +2172,7 @@ impl<'c> Sema<'c> {
     }
   }
 
-  fn gotostmt(
-    &mut self,
-    goto: ps::Goto<'c>,
-  ) -> Result<ss::Goto<'c>, Diag<'c>> {
+  fn gotostmt(&mut self, goto: ps::Goto<'c>) -> Result<ss::Goto<'c>, Diag<'c>> {
     match self.environment.is_global() {
       true => contract_violation!(
         "goto statement in global scope should be handled in parser"

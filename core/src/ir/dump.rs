@@ -322,6 +322,7 @@ impl<'c> Dump<'c, module::BasicBlock> for Value<'c> {
         .as_instruction_unchecked()
         .as_terminator_unchecked(),
     );
+    dumper.newline();
   }
 }
 impl<'c> Dump<'c, module::Argument> for Value<'c> {
@@ -481,8 +482,54 @@ impl<'c> Dump<'c, inst::FCmp> for Value<'c> {
   }
 }
 
-please_dump_me!(inst::Jump);
-please_dump_me!(inst::Branch);
+impl<'c> Dump<'c, inst::Jump> for Value<'c> {
+  fn dump(
+    &self,
+    dumper: &mut impl Dumper<'c>,
+    prefix: &str,
+    is_last: bool,
+    palette: &Palette,
+    variant: &inst::Jump,
+  ) -> FakeDumpRes {
+    dumper.write("br ", &palette.literal);
+    debug_assert!(lookup!(dumper, variant.to).ir_type.is_label());
+    dumper.write("label ", &palette.meta);
+    dumper.write(pre!("%" => counter(variant.to.handle())), &palette.skeleton);
+  }
+}
+impl<'c> Dump<'c, inst::Branch> for Value<'c> {
+  fn dump(
+    &self,
+    dumper: &mut impl Dumper<'c>,
+    prefix: &str,
+    is_last: bool,
+    palette: &Palette,
+    variant: &inst::Branch,
+  ) -> FakeDumpRes {
+    dumper.write("br ", &palette.literal);
+    debug_assert!(self.ir_type.as_integer().is_some_and(|i| *i == 1u8));
+    dumper.write("i1 ", &palette.meta);
+    dumper.write(
+      pre!("%" => counter(variant.condition.handle())),
+      &palette.skeleton,
+    );
+    dumper.write(", ", &palette.skeleton);
+    debug_assert!(lookup!(dumper, variant.then_branch).ir_type.is_label());
+    dumper.write("label ", &palette.meta);
+    dumper.write(
+      pre!("%" => counter(variant.then_branch.handle())),
+      &palette.skeleton,
+    );
+
+    dumper.write(", ", &palette.skeleton);
+    debug_assert!(lookup!(dumper, variant.else_branch).ir_type.is_label());
+    dumper.write("label ", &palette.meta);
+    dumper.write(
+      pre!("%" => counter(variant.else_branch.handle())),
+      &palette.skeleton,
+    );
+  }
+}
 impl<'c> Dump<'c, inst::Return> for Value<'c> {
   fn dump(
     &self,

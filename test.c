@@ -1,10 +1,15 @@
 int main() {
-  int a;
-  int b;
-  if (a > b) {
-    a = 1;
-  } else {
-    b = 2;
-  }
-  return 2;
+  // int x;
+  // x = 0;
+  // // x = ~x;
+  // // x = +x, x = -x;
+  // x = x & 3;
+  int p;
+  int q;
+  int y;
+  if (p > q)
+    p = 0;
+  else
+    q = 0;
+  return 0;
 }

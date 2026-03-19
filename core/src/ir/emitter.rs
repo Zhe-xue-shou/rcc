@@ -27,7 +27,7 @@ use crate::{
 pub struct Emitter<'c> {
   pub(super) session: SessionRef<'c>,
   /// The basic block currently being written into
-  pub(super) current_block: Option<BasicBlock>,
+  pub(super) current_block: ValueID,
   /// Blocks finalized in the current function
   pub(super) current_blocks: Vec<ValueID>,
   pub(super) locals: HashMap<SymbolPtr<'c>, ValueID>,
@@ -78,29 +78,45 @@ impl<'c> Emitter<'c> {
   }
 }
 impl<'c> Emitter<'c> {
-  fn push_block(&mut self) {
-    self.seal_current_block();
-    self.current_block = Some(Default::default());
+  #[must_use]
+  fn push_block(&mut self, block_id: ValueID) -> ValueID {
+    let old_id = self.seal_current_block();
+    self.current_block = block_id;
+    old_id
   }
 
-  fn seal_current_block(&mut self) {
-    if let Some(block) = self.current_block.take() {
+  #[must_use]
+  fn seal_current_block(&mut self) -> ValueID {
+    if !self.current_block.is_null() {
       assert!(
-        !block.terminator.is_null(),
+        !lookup!(self, self.current_block)
+          .data
+          .as_basicblock_unchecked()
+          .terminator
+          .is_null(),
         "BasicBlock must ends with a proper terminator."
       );
-      let block_id = self.ir().insert(Value::new(
-        self.ast().void_type().into(),
-        self.ir().label_type(),
-        block.into(),
-      ));
-      self.current_blocks.push(block_id);
+      let current_block_id = self.current_block;
+      self.current_blocks.push(self.current_block);
+      self.current_block = ValueID::null();
+      current_block_id
+    } else {
+      // do nothing
+      ValueID::null()
     }
-    // do nothing
+  }
+
+  #[must_use]
+  fn new_block(basic_block: BasicBlock, session: SessionRef<'c>) -> ValueID {
+    session.ir().insert(Value::new(
+      session.ast().void_type().into(),
+      session.ir().label_type(),
+      basic_block.into(),
+    ))
   }
 
   fn is_global(&self) -> bool {
-    self.current_block.is_none()
+    self.current_block.is_null()
   }
 }
 
@@ -212,8 +228,11 @@ impl<'c> Emitter<'c> {
     } = function;
     self.locals.clear();
     self.current_blocks = Default::default();
+    assert!(self.current_block.is_null());
 
-    self.push_block();
+    let block_id = Self::new_block(Default::default(), self.session());
+
+    _ = self.push_block(block_id);
     let params = {
       let return_type = lookup!(self, function_id)
         .qualified_type
@@ -249,7 +268,7 @@ impl<'c> Emitter<'c> {
         .collect::<Vec<_>>()
     };
     self.compound(body.expect("Precondition: function.is_definition()"));
-    self.seal_current_block();
+    _ = self.seal_current_block();
 
     let mut refmut = lookup_mut!(self, function_id);
     let mutref = refmut.data.as_function_mut_unchecked();
@@ -377,8 +396,10 @@ impl<'c> Emitter<'c> {
         .as_primitive()
         .is_some_and(|p| p.is_contextual_bool())
     );
-    let block_id = self.current_blocks.len();
-    let br_id = self.emit(
+
+    let now_block_id = self.current_block;
+
+    let now_block_terminator = self.emit(
       inst::Terminator::Branch(inst::Branch::new(
         condition,
         ValueID::null(),
@@ -386,20 +407,108 @@ impl<'c> Emitter<'c> {
       )),
       self.ast().i1_bool_type().into(),
     );
-    self.push_block();
+    let then_block_id = Self::new_block(Default::default(), self.session());
+    let should_be_now = self.push_block(then_block_id);
+    assert!(should_be_now == now_block_id);
+
     self.statement(*then_branch);
-    let then_br_id = {
-      let terminator = self.current_block.as_ref().unwrap().terminator;
-      match terminator.is_null() {
-        true => self.emit(
-          inst::Terminator::Jump(inst::Jump::new(ValueID::null())),
+
+    let then_block_terminator = {
+      let terminator = lookup!(self, self.current_block)
+        .data
+        .as_basicblock_unchecked()
+        .terminator;
+
+      if terminator.is_null() {
+        self.emit_terminator(
+          inst::Jump::new(ValueID::null()),
           self.ast().void_type().into(),
-        ),
-        false => terminator,
+          self.current_block,
+        )
+      } else {
+        terminator
       }
     };
-    self.push_block();
-    todo!()
+    let else_block_id = Self::new_block(Default::default(), self.session());
+    let shuold_be_then = self.push_block(else_block_id);
+    assert!(shuold_be_then == then_block_id);
+
+    {
+      let mut refmut = lookup_mut!(self, now_block_terminator);
+      let mutref = refmut
+        .data
+        .as_instruction_mut_unchecked()
+        .as_terminator_mut_unchecked()
+        .as_branch_mut_unchecked();
+      mutref.else_branch = else_block_id;
+      mutref.then_branch = then_block_id;
+    }
+
+    let else_block_terminator = if let Some(stmt) = else_branch {
+      self.statement(*stmt);
+      let terminator = lookup!(self, self.current_block)
+        .data
+        .as_basicblock_unchecked()
+        .terminator;
+      if terminator.is_null() {
+        self.emit_terminator(
+          inst::Jump::new(ValueID::null()),
+          self.ast().void_type().into(),
+          self.current_block,
+        )
+      } else {
+        terminator
+      }
+    } else {
+      ValueID::null()
+    };
+
+    if else_block_terminator.is_null() {
+      {
+        let mut refmut = lookup_mut!(self, then_block_terminator);
+        let mutref = refmut
+          .data
+          .as_instruction_mut_unchecked()
+          .as_terminator_mut_unchecked();
+        match mutref {
+          inst::Terminator::Jump(jump) => jump.to = else_block_id,
+          inst::Terminator::Branch(branch) =>
+            branch.then_branch = else_block_id,
+          inst::Terminator::Return(_) => (),
+        }
+      }
+    } else {
+      let immediate_block_id =
+        Self::new_block(Default::default(), self.session());
+      let should_be_else = self.push_block(immediate_block_id);
+      assert!(should_be_else == else_block_id);
+      {
+        let mut refmut = lookup_mut!(self, else_block_terminator);
+        let mutref = refmut
+          .data
+          .as_instruction_mut_unchecked()
+          .as_terminator_mut_unchecked();
+        match mutref {
+          inst::Terminator::Jump(jump) => jump.to = immediate_block_id,
+          inst::Terminator::Branch(branch) =>
+            branch.then_branch = immediate_block_id,
+          inst::Terminator::Return(_) => (),
+        }
+      }
+      {
+        let mut refmut = lookup_mut!(self, then_block_terminator);
+        let mutref = refmut
+          .data
+          .as_instruction_mut_unchecked()
+          .as_terminator_mut_unchecked();
+        match mutref {
+          inst::Terminator::Jump(jump) => jump.to = immediate_block_id,
+          inst::Terminator::Branch(branch) =>
+            branch.then_branch = immediate_block_id,
+          inst::Terminator::Return(_) => (),
+        }
+      }
+    }
   }
 
   fn while_stmt(&self, while_stmt: ss::While<'c>) {
@@ -917,6 +1026,7 @@ impl<'c> Emitter<'c> {
     span: SourceSpan,
   ) -> ValueID {
     assert_eq!(operator, Operator::Star);
+    assert!(lookup!(self, operand).ir_type.is_pointer());
     self.emit(inst::Memory::from(inst::Load::new(operand)), qualified_type)
   }
 

@@ -330,6 +330,14 @@ pub enum Instruction {
 }
 use ::rcc_utils::{interconvert, make_trio_for};
 
+interconvert!(Branch, Terminator);
+interconvert!(Jump, Terminator);
+interconvert!(Return, Terminator);
+
+make_trio_for!(Branch, Terminator);
+make_trio_for!(Jump, Terminator);
+make_trio_for!(Return, Terminator);
+
 interconvert!(Trunc, Cast);
 interconvert!(Zext, Cast);
 interconvert!(Sext, Cast);

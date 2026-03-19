@@ -29,18 +29,7 @@ impl<'c> Emitable<'c, inst::Terminator> for Emitter<'c> {
     terminator: inst::Terminator,
     qualified_type: QualifiedType<'c>,
   ) -> ValueID {
-    if let Some(block) = &mut self.current_block {
-      assert!(block.terminator.is_null(), "block already has a terminator");
-      let value_id = self.session.ir().insert(Value::new(
-        qualified_type,
-        ty!(self, qualified_type),
-        Instruction::from(terminator).into(),
-      ));
-      block.terminator = value_id;
-      value_id
-    } else {
-      panic!("no block to emit terminator into")
-    }
+    self.emit_terminator(terminator, qualified_type, self.current_block)
   }
 }
 impl<'c> Emitable<'c, inst::Alloca> for Emitter<'c> {
@@ -49,18 +38,18 @@ impl<'c> Emitable<'c, inst::Alloca> for Emitter<'c> {
     alloca: inst::Alloca,
     qualified_type: QualifiedType<'c>,
   ) -> ValueID {
-    if let Some(block) = &mut self.current_block {
-      let value_id = self.session.ir().insert(Value::new(
-        qualified_type,
-        self.session.ir().pointer_type(),
-        Instruction::from(inst::Memory::from(alloca)).into(),
-      ));
-
-      block.instructions.push(value_id);
-      value_id
-    } else {
-      panic!("no block to emit terminator into")
+    if self.current_block.is_null() {
+      panic!("no block to emit into")
     }
+    let value_id = self.ir().insert(Value::new(
+      qualified_type,
+      self.ir().pointer_type(),
+      Instruction::from(inst::Memory::from(alloca)).into(),
+    ));
+    let mut refmut = lookup_mut!(self, self.current_block);
+    let mutref = refmut.data.as_basicblock_mut_unchecked();
+    mutref.instructions.push(value_id);
+    value_id
   }
 }
 
@@ -94,21 +83,22 @@ impl<'c> Emitable<'c, inst::FCmp> for Emitter<'c> {
 
 impl<'c> Emitter<'c> {
   fn emit_common_instruction<T: Into<Instruction>>(
-    &mut self,
+    &self,
     value: T,
     qualified_type: QualifiedType<'c>,
   ) -> ValueID {
-    if let Some(block) = &mut self.current_block {
-      let value_id = self.session.ir().insert(Value::new(
-        qualified_type,
-        ty!(self, qualified_type),
-        value.into().into(),
-      ));
-      block.instructions.push(value_id);
-      value_id
-    } else {
+    if self.current_block.is_null() {
       panic!("no block to emit into")
     }
+    let value_id = self.ir().insert(Value::new(
+      qualified_type,
+      ty!(self, qualified_type),
+      value.into().into(),
+    ));
+    let mut refmut = lookup_mut!(self, self.current_block);
+    let mutref = refmut.data.as_basicblock_mut_unchecked();
+    mutref.instructions.push(value_id);
+    value_id
   }
 
   fn emit_globals<T: Into<ValueData<'c>>>(
@@ -116,12 +106,38 @@ impl<'c> Emitter<'c> {
     value: T,
     qualified_type: QualifiedType<'c>,
   ) -> ValueID {
-    let value_id = self.session.ir().insert(Value::new(
+    let value_id = self.ir().insert(Value::new(
       qualified_type,
       ty!(self, qualified_type),
       value.into(),
     ));
     self.module.globals.push(value_id);
+    value_id
+  }
+
+  pub(super) fn emit_terminator<T: Into<inst::Terminator>>(
+    &self,
+    terminator: T,
+    qualified_type: QualifiedType<'c>,
+    block_id: ValueID,
+  ) -> ValueID {
+    if block_id.is_null() {
+      panic!("no block to emit terminator into")
+    }
+
+    let value_id = self.ir().insert(Value::new(
+      qualified_type,
+      ty!(self, qualified_type),
+      Instruction::from(terminator.into()).into(),
+    ));
+
+    let mut refmut = lookup_mut!(self, block_id);
+    let mutref = refmut.data.as_basicblock_mut_unchecked();
+    assert!(
+      mutref.terminator.is_null(),
+      "block already has a terminator"
+    );
+    mutref.terminator = value_id;
     value_id
   }
 }
@@ -160,7 +176,7 @@ impl<'c> Emitable<'c, Constant<'c>> for Emitter<'c> {
     value: Constant<'c>,
     qualified_type: QualifiedType<'c>,
   ) -> ValueID {
-    self.session.ir().intern_constant(value, qualified_type)
+    self.ir().intern_constant(value, qualified_type)
   }
 }
 impl<'c> Emitable<'c, Argument> for Emitter<'c> {
@@ -169,7 +185,7 @@ impl<'c> Emitable<'c, Argument> for Emitter<'c> {
     value: Argument,
     qualified_type: QualifiedType<'c>,
   ) -> ValueID {
-    self.session.ir().insert(Value::new(
+    self.ir().insert(Value::new(
       qualified_type,
       ty!(self, qualified_type),
       value.into(),

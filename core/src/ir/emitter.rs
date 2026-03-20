@@ -4,7 +4,7 @@
 
 use ::rcc_utils::contract_violation;
 use ::slotmap::Key;
-use ::std::collections::HashMap;
+use ::std::{cell::RefMut, collections::HashMap};
 
 use super::{
   Argument,
@@ -19,8 +19,8 @@ use crate::{
     FloatFormat, Floating, Integral, Operator, OperatorCategory, RefEq,
     Signedness, SourceSpan, StrRef, Symbol, SymbolPtr,
   },
-  ir,
-  sema::{declaration as sd, expression as se, statement as ss},
+  ir::{self, value::WithActionMut},
+  sema::{Unbox, declaration as sd, expression as se, statement as ss},
   session::{Session, SessionRef},
   types::{CastType, Constant, QualifiedType, TypeInfo},
 };
@@ -76,6 +76,29 @@ impl<'c> Emitter<'c> {
   pub(super) fn session(&self) -> SessionRef<'c> {
     self.session
   }
+
+  #[inline(always)]
+  pub(super) fn apply<R, F: FnOnce(&Value<'c>) -> R>(
+    &self,
+    id: ValueID,
+    action: F,
+  ) -> R {
+    self.session().ir().apply(id, action)
+  }
+
+  #[inline(always)]
+  pub(super) fn apply_mut<R, F: FnOnce(&mut Value<'c>) -> R>(
+    &self,
+    id: ValueID,
+    action: F,
+  ) -> R {
+    self.session().ir().apply_mut(id, action)
+  }
+
+  #[inline(always)]
+  pub(super) fn i1(&self) -> QualifiedType<'c> {
+    self.ast().i1_bool_type().into()
+  }
 }
 impl<'c> Emitter<'c> {
   #[must_use]
@@ -87,7 +110,8 @@ impl<'c> Emitter<'c> {
 
   #[must_use]
   fn seal_current_block(&mut self) -> ValueID {
-    if !self.current_block.is_null() {
+    let current_block_id = self.current_block;
+    current_block_id.and_then(|block_id| {
       assert!(
         !lookup!(self, self.current_block)
           .data
@@ -96,14 +120,10 @@ impl<'c> Emitter<'c> {
           .is_null(),
         "BasicBlock must ends with a proper terminator."
       );
-      let current_block_id = self.current_block;
       self.current_blocks.push(self.current_block);
       self.current_block = ValueID::null();
       current_block_id
-    } else {
-      // do nothing
-      ValueID::null()
-    }
+    })
   }
 
   #[must_use]
@@ -113,6 +133,42 @@ impl<'c> Emitter<'c> {
       session.ir().label_type(),
       basic_block.into(),
     ))
+  }
+
+  fn refill_branch(
+    &mut self,
+    now_block_terminator: ValueID,
+    then_block_id: ValueID,
+    else_block_id: ValueID,
+  ) {
+    lookup_mut!(self, now_block_terminator).with_action_mut(|now| {
+      let branch = now
+        .data
+        .as_instruction_mut_unchecked()
+        .as_terminator_mut_unchecked()
+        .as_branch_mut_unchecked();
+      branch.else_branch = else_block_id;
+      branch.then_branch = then_block_id;
+    });
+  }
+
+  fn refill_terminator(
+    &mut self,
+    terminator_id: ValueID,
+    to_block_id: ValueID,
+  ) -> ValueID {
+    lookup_mut!(self, terminator_id).with_action_mut(|term| {
+      match term
+        .data
+        .as_instruction_mut_unchecked()
+        .as_terminator_mut_unchecked()
+      {
+        inst::Terminator::Jump(jump) => jump.to = to_block_id,
+        inst::Terminator::Branch(branch) => branch.then_branch = to_block_id,
+        inst::Terminator::Return(_) => (),
+      }
+      terminator_id
+    })
   }
 
   fn is_global(&self) -> bool {
@@ -240,14 +296,14 @@ impl<'c> Emitter<'c> {
         .return_type;
 
       // return value storage
-      let _return_slot_id = self.emit(inst::Alloca::new(), return_type);
-      // _ = self.emit(
-      //   inst::Memory::Store(inst::Store::new(
-      // self.ast().void_type().into()
-      //     ???
-      //   )),
-      //   return_type,
-      // );
+      let return_slot_id = self.emit(inst::Alloca::new(), return_type);
+
+      let default_value_id =
+        self.emit(return_type.default_value(), return_type);
+      _ = self.emit(
+        inst::Memory::Store(inst::Store::new(return_slot_id, default_value_id)),
+        return_type,
+      );
 
       // insert params into the local scope and allocate spaces
       parameters
@@ -337,9 +393,9 @@ impl<'c> Emitter<'c> {
 }
 
 impl<'c> Emitter<'c> {
-  fn statement(&mut self, statement: ss::Statement<'c>) {
+  fn statement(&mut self, statement: impl Unbox<Output = ss::Statement<'c>>) {
     use ss::Statement::*;
-    match statement {
+    match statement.unbox() {
       Empty(_) => (),
       Return(return_stmt) => self.returnstmt(return_stmt),
       Expression(expression) => self.exprstmt(expression),
@@ -389,24 +445,30 @@ impl<'c> Emitter<'c> {
       else_branch,
       ..
     } = if_stmt;
-    let condition = self.expression(condition);
+
     debug_assert!(
-      lookup!(self, condition)
-        .qualified_type
-        .as_primitive()
-        .is_some_and(|p| p.is_contextual_bool())
+      RefEq::ref_eq(condition.unqualified_type(), self.ast().converted_bool())
+        || RefEq::ref_eq(
+          condition.unqualified_type(),
+          self.ast().i1_bool_type()
+        ),
     );
 
-    let now_block_id = self.current_block;
+    let (raw_expr, ..) = condition.destructure();
 
+    let condition = se::Expression::new_rvalue(raw_expr, self.i1());
+    let condition = self.expression(condition);
+
+    let now_block_id = self.current_block;
     let now_block_terminator = self.emit(
       inst::Terminator::Branch(inst::Branch::new(
         condition,
         ValueID::null(),
         ValueID::null(),
       )),
-      self.ast().i1_bool_type().into(),
+      self.i1(),
     );
+
     let then_block_id = Self::new_block(Default::default(), self.session());
     let should_be_now = self.push_block(then_block_id);
     assert!(should_be_now == now_block_id);
@@ -419,96 +481,47 @@ impl<'c> Emitter<'c> {
         .as_basicblock_unchecked()
         .terminator;
 
-      if terminator.is_null() {
+      terminator.unwrap_or_else(|| {
         self.emit_terminator(
           inst::Jump::new(ValueID::null()),
           self.ast().void_type().into(),
           self.current_block,
         )
-      } else {
-        terminator
-      }
+      })
     };
+
     let else_block_id = Self::new_block(Default::default(), self.session());
     let shuold_be_then = self.push_block(else_block_id);
     assert!(shuold_be_then == then_block_id);
 
-    {
-      let mut refmut = lookup_mut!(self, now_block_terminator);
-      let mutref = refmut
-        .data
-        .as_instruction_mut_unchecked()
-        .as_terminator_mut_unchecked()
-        .as_branch_mut_unchecked();
-      mutref.else_branch = else_block_id;
-      mutref.then_branch = then_block_id;
-    }
+    self.refill_branch(now_block_terminator, then_block_id, else_block_id);
 
-    let else_block_terminator = if let Some(stmt) = else_branch {
-      self.statement(*stmt);
-      let terminator = lookup!(self, self.current_block)
-        .data
-        .as_basicblock_unchecked()
-        .terminator;
-      if terminator.is_null() {
-        self.emit_terminator(
-          inst::Jump::new(ValueID::null()),
-          self.ast().void_type().into(),
-          self.current_block,
-        )
-      } else {
-        terminator
-      }
-    } else {
-      ValueID::null()
-    };
+    else_branch
+      .map(|else_branch| {
+        self.statement(else_branch);
+        let terminator = lookup!(self, self.current_block)
+          .data
+          .as_basicblock_unchecked()
+          .terminator;
+        terminator.unwrap_or_else(|| {
+          self.emit_terminator(
+            inst::Jump::new(ValueID::null()),
+            self.ast().void_type().into(),
+            self.current_block,
+          )
+        })
+      })
+      .unwrap_or_default()
+      .and_then(|else_block_terminator| {
+        let immediate_block_id =
+          Self::new_block(Default::default(), self.session());
+        let should_be_else = self.push_block(immediate_block_id);
+        assert!(should_be_else == else_block_id);
 
-    if else_block_terminator.is_null() {
-      {
-        let mut refmut = lookup_mut!(self, then_block_terminator);
-        let mutref = refmut
-          .data
-          .as_instruction_mut_unchecked()
-          .as_terminator_mut_unchecked();
-        match mutref {
-          inst::Terminator::Jump(jump) => jump.to = else_block_id,
-          inst::Terminator::Branch(branch) =>
-            branch.then_branch = else_block_id,
-          inst::Terminator::Return(_) => (),
-        }
-      }
-    } else {
-      let immediate_block_id =
-        Self::new_block(Default::default(), self.session());
-      let should_be_else = self.push_block(immediate_block_id);
-      assert!(should_be_else == else_block_id);
-      {
-        let mut refmut = lookup_mut!(self, else_block_terminator);
-        let mutref = refmut
-          .data
-          .as_instruction_mut_unchecked()
-          .as_terminator_mut_unchecked();
-        match mutref {
-          inst::Terminator::Jump(jump) => jump.to = immediate_block_id,
-          inst::Terminator::Branch(branch) =>
-            branch.then_branch = immediate_block_id,
-          inst::Terminator::Return(_) => (),
-        }
-      }
-      {
-        let mut refmut = lookup_mut!(self, then_block_terminator);
-        let mutref = refmut
-          .data
-          .as_instruction_mut_unchecked()
-          .as_terminator_mut_unchecked();
-        match mutref {
-          inst::Terminator::Jump(jump) => jump.to = immediate_block_id,
-          inst::Terminator::Branch(branch) =>
-            branch.then_branch = immediate_block_id,
-          inst::Terminator::Return(_) => (),
-        }
-      }
-    }
+        self.refill_terminator(then_block_terminator, immediate_block_id);
+        self.refill_terminator(else_block_terminator, immediate_block_id)
+      })
+      .or_else(|| self.refill_terminator(then_block_terminator, else_block_id));
   }
 
   fn while_stmt(&self, while_stmt: ss::While<'c>) {
@@ -544,10 +557,13 @@ impl<'c> Emitter<'c> {
   }
 }
 impl<'c> Emitter<'c> {
-  fn expression(&mut self, expression: se::Expression<'c>) -> ValueID {
+  fn expression(
+    &mut self,
+    expression: impl Unbox<Output = se::Expression<'c>>,
+  ) -> ValueID {
     // the fold here contains partial fold. e.g. `3 + 6 + func(4 + 5)` would be folded to `9 + func(9)`.
     let (raw_expr, qualified_type, ..) =
-      expression.fold(self.diag()).take().destructure();
+      expression.unbox().fold(self.diag()).take().destructure();
     use se::RawExpr::*;
     match raw_expr {
       Empty(_) => contract_violation!(
@@ -592,7 +608,7 @@ impl<'c> Emitter<'c> {
       operator,
       span,
     } = unary;
-    let operand = self.expression(*operand);
+    let operand = self.expression(operand);
     match operator {
       Operator::Ampersand =>
         self.addressof(operator, operand, qualified_type, span),
@@ -620,8 +636,8 @@ impl<'c> Emitter<'c> {
       span,
     } = binary;
 
-    let left = self.expression(*left);
-    let right = self.expression(*right);
+    let left = self.expression(left);
+    let right = self.expression(right);
     self.do_binary(operator, left, right, qualified_type, span)
   }
 
@@ -685,7 +701,7 @@ impl<'c> Emitter<'c> {
         )),
         *qualified_type,
       ),
-      se::SizeOfKind::Expression(expr) => self.expression(*expr),
+      se::SizeOfKind::Expression(expr) => self.expression(expr),
     }
   }
 
@@ -745,7 +761,7 @@ impl<'c> Emitter<'c> {
     use Signedness::*;
     use inst::{Cast, Load, Memory, Sext, Trunc, Zext};
 
-    let value_id = self.expression(*expr);
+    let value_id = self.expression(expr);
     match cast_type {
       Noop | FunctionToPointerDecay | ArrayToPointerDecay => value_id,
       LValueToRValue =>
@@ -787,7 +803,7 @@ impl<'c> Emitter<'c> {
       callee, arguments, ..
     } = call;
 
-    let callee = self.expression(*callee);
+    let callee = self.expression(callee);
 
     let args: Vec<ValueID> = arguments
       .into_iter()
@@ -799,7 +815,7 @@ impl<'c> Emitter<'c> {
 
   #[inline]
   fn paren(&mut self, paren: se::Paren<'c>) -> ValueID {
-    self.expression(*paren.expr)
+    self.expression(paren.expr)
   }
 }
 impl<'c> Emitter<'c> {
@@ -852,16 +868,15 @@ impl<'c> Emitter<'c> {
     use ir::Type::*;
 
     debug_assert!(
-      qualified_type
-        .as_primitive()
-        .is_some_and(|p| p.is_contextual_bool())
+      RefEq::ref_eq(*qualified_type, self.ast().converted_bool())
+        || RefEq::ref_eq(*qualified_type, self.ast().i1_bool_type()),
     );
 
-    let boolean = self.ast().i1_bool_type().into();
+    let boolean = self.i1();
 
     let lhs_ir_type = lookup!(self, left).ir_type;
     let rhs_ir_type = lookup!(self, right).ir_type;
-    let i1 = match (lhs_ir_type, rhs_ir_type) {
+    match (lhs_ir_type, rhs_ir_type) {
       (Integer(left_width), Integer(right_width)) => {
         debug_assert!(
           left_width == right_width
@@ -888,8 +903,7 @@ impl<'c> Emitter<'c> {
         boolean,
       ),
       _ => unreachable!(),
-    };
-    self.emit(inst::Cast::from(inst::Zext::new(i1)), qualified_type)
+    }
   }
 
   fn integral_relational(
@@ -1001,7 +1015,7 @@ impl<'c> Emitter<'c> {
     qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
-    assert!(operator == Operator::Comma);
+    assert_eq!(operator, Operator::Comma);
     right
   }
 }
@@ -1045,13 +1059,11 @@ impl<'c> Emitter<'c> {
 
     let common = move |cmp| {
       let this = unsafe { &mut *this };
-      let i1_true = this.emit(
-        Constant::Integral(Integral::i1_true()),
-        this.ast().i1_bool_type().into(),
-      );
+      let i1_true =
+        this.emit(Constant::Integral(Integral::i1_true()), this.i1());
       let xor = this.emit(
         inst::Binary::new(inst::BinaryOp::Xor, cmp, i1_true),
-        this.ast().i1_bool_type().into(),
+        this.i1(),
       );
       this.emit(inst::Cast::from(inst::Zext::new(xor)), qualified_type)
     };
@@ -1059,7 +1071,7 @@ impl<'c> Emitter<'c> {
       let this = unsafe { &mut *this };
       let cmp = this.emit(
         inst::ICmp::new(inst::ICmpPredicate::Ne, operand, i1_false_or_nullptr),
-        this.ast().i1_bool_type().into(),
+        this.i1(),
       );
       common(cmp)
     };
@@ -1076,10 +1088,8 @@ impl<'c> Emitter<'c> {
         integral(nullptr)
       },
       ir::Type::Integer(width) => {
-        let i1_false = self.emit(
-          Constant::Integral(Integral::i1_false()),
-          self.ast().i1_bool_type().into(),
-        );
+        let i1_false =
+          self.emit(Constant::Integral(Integral::i1_false()), self.i1());
         integral(i1_false)
       },
       ir::Type::Floating(format) => {
@@ -1088,7 +1098,7 @@ impl<'c> Emitter<'c> {
 
         let cmp = self.emit(
           inst::FCmp::new(inst::FCmpPredicate::Une, operand, float_zero),
-          self.ast().i1_bool_type().into(),
+          self.i1(),
         );
         common(cmp)
       },
@@ -1103,7 +1113,7 @@ impl<'c> Emitter<'c> {
     qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
-    assert!(operator == Operator::Tilde);
+    assert_eq!(operator, Operator::Tilde);
     assert!(
       qualified_type
         .as_primitive()

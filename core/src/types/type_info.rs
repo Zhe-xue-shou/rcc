@@ -1,17 +1,21 @@
 use super::{
-  Array, ArraySize, Enum, FunctionProto, Pointer, Primitive, Primitive::*,
+  Array, ArraySize, Constant, Enum, FunctionProto, Pointer,
+  Primitive::{self, *},
   QualifiedType, Record, Type, Union,
 };
-pub trait TypeInfo {
+use crate::common::{Floating, Integral};
+pub trait TypeInfo<'c> {
   #[must_use]
   fn size(&self) -> usize;
   #[must_use]
   fn size_bits(&self) -> usize;
   #[must_use]
   fn is_scalar(&self) -> bool;
+  #[must_use]
+  fn default_value(&self) -> Constant<'c>;
 }
 
-impl<'c> TypeInfo for QualifiedType<'c> {
+impl<'c> TypeInfo<'c> for QualifiedType<'c> {
   #[inline(always)]
   fn size(&self) -> usize {
     self.unqualified_type.size()
@@ -26,8 +30,13 @@ impl<'c> TypeInfo for QualifiedType<'c> {
   fn is_scalar(&self) -> bool {
     self.unqualified_type.is_scalar()
   }
+
+  #[inline(always)]
+  fn default_value(&self) -> Constant<'c> {
+    self.unqualified_type.default_value()
+  }
 }
-impl<'c> TypeInfo for Type<'c> {
+impl<'c> TypeInfo<'c> for Type<'c> {
   #[inline]
   fn size(&self) -> usize {
     ::rcc_utils::static_dispatch!(
@@ -54,8 +63,17 @@ impl<'c> TypeInfo for Type<'c> {
       Primitive Array Pointer FunctionProto Enum Record Union
     )
   }
+
+  #[inline]
+  fn default_value(&self) -> Constant<'c> {
+    ::rcc_utils::static_dispatch!(
+      self,
+      |variant| variant.default_value() =>
+      Primitive Array Pointer FunctionProto Enum Record Union
+    )
+  }
 }
-impl TypeInfo for Primitive {
+impl<'c> TypeInfo<'c> for Primitive {
   /// integral size should be aligned with method `Primitive::integer_width()`.
   fn size(&self) -> usize {
     // x86_64 sizes
@@ -95,9 +113,27 @@ impl TypeInfo for Primitive {
       _ => self.size() * 8,
     }
   }
+
+  #[inline]
+  fn default_value(&self) -> Constant<'c> {
+    match self {
+      Nullptr => Constant::Nullptr(().into()),
+      Void => panic!("void type has no value"),
+      _ if self.is_integer() => Constant::Integral(Integral::new(
+        0,
+        self.size_bits() as u8,
+        self.is_signed().into(),
+      )),
+      _ if self.is_floating_point() =>
+        Constant::Floating(Floating::zero(self.floating_format())),
+      _ => unreachable!(
+        "default value for non-scalar type should not be requested"
+      ),
+    }
+  }
 }
 
-impl<'c> TypeInfo for Array<'c> {
+impl<'c> TypeInfo<'c> for Array<'c> {
   fn size(&self) -> usize {
     match &self.size {
       ArraySize::Constant(sz) => sz * self.element_type.unqualified_type.size(),
@@ -115,9 +151,14 @@ impl<'c> TypeInfo for Array<'c> {
   fn is_scalar(&self) -> bool {
     false
   }
+
+  #[inline]
+  fn default_value(&self) -> Constant<'c> {
+    panic!("default value for non-scalar type should not be requested");
+  }
 }
 
-impl<'c> TypeInfo for Record<'c> {
+impl<'c> TypeInfo<'c> for Record<'c> {
   fn size(&self) -> usize {
     self
       .fields
@@ -135,9 +176,14 @@ impl<'c> TypeInfo for Record<'c> {
   fn is_scalar(&self) -> bool {
     false
   }
+
+  #[inline(always)]
+  fn default_value(&self) -> Constant<'c> {
+    panic!("default value for non-scalar type should not be requested");
+  }
 }
 
-impl<'c> TypeInfo for Union<'c> {
+impl<'c> TypeInfo<'c> for Union<'c> {
   fn size(&self) -> usize {
     self
       .fields
@@ -156,8 +202,13 @@ impl<'c> TypeInfo for Union<'c> {
   fn is_scalar(&self) -> bool {
     false
   }
+
+  #[inline(always)]
+  fn default_value(&self) -> Constant<'c> {
+    panic!("default value for non-scalar type should not be requested");
+  }
 }
-impl<'c> TypeInfo for Pointer<'c> {
+impl<'c> TypeInfo<'c> for Pointer<'c> {
   #[inline(always)]
   fn size(&self) -> usize {
     ULongLong.size() // x86_64 LLP64 Windows
@@ -172,9 +223,14 @@ impl<'c> TypeInfo for Pointer<'c> {
   fn is_scalar(&self) -> bool {
     ULongLong.is_scalar() // shall always be true
   }
+
+  #[inline(always)]
+  fn default_value(&self) -> Constant<'c> {
+    Constant::Nullptr(().into())
+  }
 }
 
-impl<'c> TypeInfo for FunctionProto<'c> {
+impl<'c> TypeInfo<'c> for FunctionProto<'c> {
   #[inline(always)]
   fn size(&self) -> usize {
     0 // function types have no size
@@ -189,8 +245,13 @@ impl<'c> TypeInfo for FunctionProto<'c> {
   fn is_scalar(&self) -> bool {
     false
   }
+
+  #[inline(always)]
+  fn default_value(&self) -> Constant<'c> {
+    panic!("default value for non-scalar type should not be requested");
+  }
 }
-impl<'c> TypeInfo for Enum<'c> {
+impl<'c> TypeInfo<'c> for Enum<'c> {
   #[inline(always)]
   fn size(&self) -> usize {
     self.underlying_type.size()
@@ -205,5 +266,10 @@ impl<'c> TypeInfo for Enum<'c> {
   fn is_scalar(&self) -> bool {
     assert!(self.underlying_type.is_scalar(), "never fails");
     true
+  }
+
+  #[inline(always)]
+  fn default_value(&self) -> Constant<'c> {
+    self.underlying_type.default_value()
   }
 }

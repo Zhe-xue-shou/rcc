@@ -1,16 +1,48 @@
+use ::slotmap::{Key, new_key_type};
+use ::std::cell::{Ref, RefMut};
+
 use super::{
   Argument, BasicBlock, TypeRef,
   instruction::Instruction,
   module::{Function, Variable},
 };
 use crate::types::{Constant, QualifiedType};
-
-::slotmap::new_key_type! {
+new_key_type! {
     /// size = 8 (0x08), align = 0x8, no Drop
     pub struct ValueID;
 }
 
 impl ValueID {
+  #[inline]
+  pub fn is_none(&self) -> bool {
+    self.is_null()
+  }
+
+  #[inline]
+  pub fn is_some_and<F: FnOnce(Self) -> bool>(self, f: F) -> bool {
+    !self.is_null() && f(self)
+  }
+
+  #[inline]
+  pub fn and_then<F: FnOnce(Self) -> Self>(self, f: F) -> Self {
+    if self.is_null() {
+      Self::null()
+    } else {
+      f(self)
+    }
+  }
+
+  #[inline]
+  pub fn unwrap_or_else<F: FnOnce() -> Self>(self, f: F) -> Self {
+    if self.is_null() { f() } else { self }
+  }
+
+  #[inline]
+  pub fn or_else<F: FnOnce() -> Self>(self, f: F) -> Self {
+    if self.is_null() { f() } else { self }
+  }
+
+  #[inline]
   pub fn handle(&self) -> u64 {
     self.0.as_ffi()
   }
@@ -49,7 +81,27 @@ impl<'c> Value<'c> {
     }
   }
 }
-
+pub(super) trait WithActionMut<T> {
+  fn with_action_mut<R, F: FnOnce(&mut T) -> R>(&mut self, f: F) -> R;
+}
+impl<'c, T> WithActionMut<T> for RefMut<'c, T> {
+  fn with_action_mut<R, F: FnOnce(&mut T) -> R>(&mut self, f: F) -> R {
+    f(self)
+  }
+}
+pub(super) trait WithAction<T> {
+  fn with_action<R, F: FnOnce(&T) -> R>(&self, f: F) -> R;
+}
+impl<'c, T> WithAction<T> for RefMut<'c, T> {
+  fn with_action<R, F: FnOnce(&T) -> R>(&self, f: F) -> R {
+    f(self)
+  }
+}
+impl<'c, T> WithAction<T> for Ref<'c, T> {
+  fn with_action<R, F: FnOnce(&T) -> R>(&self, f: F) -> R {
+    f(self)
+  }
+}
 use ::rcc_utils::{interconvert, make_trio_for};
 interconvert!(Instruction, Data<'c>);
 interconvert!(Function, Data, 'c);

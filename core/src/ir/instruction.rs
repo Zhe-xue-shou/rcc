@@ -187,7 +187,11 @@ impl FCmp {
     }
   }
 }
-
+#[derive(Debug)]
+pub enum Cmp {
+  ICmp(ICmp),
+  FCmp(FCmp),
+}
 #[derive(Debug, Clone, Copy, ::strum_macros::Display)]
 #[strum(serialize_all = "lowercase")]
 pub enum FCmpPredicate {
@@ -325,8 +329,7 @@ pub enum Instruction {
   Memory(Memory),
   Cast(Cast),
   Call(Call),
-  ICmp(ICmp),
-  FCmp(FCmp), // etc...
+  Cmp(Cmp),
 }
 use ::rcc_utils::{interconvert, make_trio_for};
 
@@ -346,6 +349,9 @@ interconvert!(Alloca, Memory);
 interconvert!(Load, Memory);
 interconvert!(Store, Memory);
 
+interconvert!(ICmp, Cmp);
+interconvert!(FCmp, Cmp);
+
 interconvert!(Phi, Instruction);
 interconvert!(Terminator, Instruction);
 interconvert!(Unary, Instruction);
@@ -353,8 +359,7 @@ interconvert!(Binary, Instruction);
 interconvert!(Memory, Instruction);
 interconvert!(Cast, Instruction);
 interconvert!(Call, Instruction);
-interconvert!(ICmp, Instruction);
-interconvert!(FCmp, Instruction);
+interconvert!(Cmp, Instruction);
 
 make_trio_for!(Call, Instruction);
 make_trio_for!(Phi, Instruction);

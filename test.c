@@ -8,7 +8,7 @@ int main() {
   int q;
   int y;
   if (p > q)
-    p = 0;
+    p = !p;
   else
     q = 0;
   return 0;

@@ -1,6 +1,7 @@
 use super::{
   Type, TypeRef, Value, ValueID,
   types::{Array, Function},
+  value::{WithAction, WithActionMut},
 };
 use crate::{common::FloatFormat, types::Constant};
 #[derive(Debug)]
@@ -165,6 +166,23 @@ impl<'c> Context<'c> {
     RefMut::map(self.storage.ir_arena.borrow_mut(), |slotmap| {
       &mut slotmap[id]
     })
+  }
+
+  /// wont work if emit inside lambda...
+  pub fn apply_mut<R, F: FnOnce(&mut Value<'c>) -> R>(
+    &self,
+    id: ValueID,
+    action: F,
+  ) -> R {
+    self.get_mut(id).with_action_mut(action)
+  }
+
+  pub fn apply<R, F: FnOnce(&Value<'c>) -> R>(
+    &self,
+    id: ValueID,
+    action: F,
+  ) -> R {
+    self.get(id).with_action(action)
   }
 }
 use crate::{

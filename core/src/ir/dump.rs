@@ -155,7 +155,7 @@ impl<'c> Dump<'c, inst::Instruction> for Value<'c> {
     ::rcc_utils::static_dispatch!(
         Instruction : variant,
         |variant| Dump::dump(self, dumper, prefix, is_last, palette, variant) =>
-        Phi Terminator Unary Binary Memory Cast Call ICmp FCmp
+        Phi Terminator Unary Binary Memory Cast Call Cmp
     )
   }
 }
@@ -444,6 +444,23 @@ impl<'c> Dump<'c, inst::Call> for Value<'c> {
       },
       ValueData::BasicBlock(basic_block) => unreachable!(),
     }
+  }
+}
+impl<'c> Dump<'c, inst::Cmp> for Value<'c> {
+  fn dump(
+    &self,
+    dumper: &mut impl Dumper<'c>,
+    prefix: &str,
+    is_last: bool,
+    palette: &Palette,
+    variant: &inst::Cmp,
+  ) -> FakeDumpRes {
+    use inst::Cmp;
+    ::rcc_utils::static_dispatch!(
+        Cmp : variant,
+        |variant| Dump::dump(self, dumper, prefix, is_last, palette, variant) =>
+        ICmp FCmp
+    )
   }
 }
 impl<'c> Dump<'c, inst::ICmp> for Value<'c> {

@@ -46,10 +46,15 @@ impl<'c> Emitable<'c, inst::Alloca> for Emitter<'c> {
       self.ir().pointer_type(),
       Instruction::from(inst::Memory::from(alloca)).into(),
     ));
-    let mut refmut = lookup_mut!(self, self.current_block);
-    let mutref = refmut.data.as_basicblock_mut_unchecked();
-    mutref.instructions.push(value_id);
-    value_id
+
+    self.apply_mut(self.current_block, |value| {
+      value
+        .data
+        .as_basicblock_mut_unchecked()
+        .instructions
+        .push(value_id);
+      value_id
+    })
   }
 }
 
@@ -60,10 +65,20 @@ impl<'c> Emitable<'c, inst::ICmp> for Emitter<'c> {
     qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     debug_assert!(
-      RefEq::ref_eq(*qualified_type, self.ast().i1_bool_type()),
-      "ICmp inst must have i1 as return type. Vectors are unimplemented."
+      RefEq::ref_eq(*qualified_type, *self.i1())
+        || RefEq::ref_eq(*qualified_type, self.ast().converted_bool()),
+      "ICmp inst must have boolean as return type. Vectors are unimplemented."
     );
-    self.emit_common_instruction(icmp, qualified_type)
+
+    let cmp = self.emit_common_instruction(inst::Cmp::from(icmp), self.i1());
+    if !RefEq::ref_eq(*qualified_type, self.ast().converted_bool()) {
+      cmp
+    } else {
+      self.emit(
+        inst::Cast::Zext(inst::Zext::new(cmp)),
+        self.ast().converted_bool().into(),
+      )
+    }
   }
 }
 
@@ -74,10 +89,19 @@ impl<'c> Emitable<'c, inst::FCmp> for Emitter<'c> {
     qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     debug_assert!(
-      RefEq::ref_eq(*qualified_type, self.ast().i1_bool_type()),
-      "FCmp inst must have i1 as return type."
+      RefEq::ref_eq(*qualified_type, *self.i1())
+        || RefEq::ref_eq(*qualified_type, self.ast().converted_bool()),
+      "FCmp inst must have boolean as return type."
     );
-    self.emit_common_instruction(fcmp, qualified_type)
+    let cmp = self.emit_common_instruction(inst::Cmp::from(fcmp), self.i1());
+    if !RefEq::ref_eq(*qualified_type, self.ast().converted_bool()) {
+      cmp
+    } else {
+      self.emit(
+        inst::Cast::Zext(inst::Zext::new(cmp)),
+        self.ast().converted_bool().into(),
+      )
+    }
   }
 }
 
@@ -95,10 +119,14 @@ impl<'c> Emitter<'c> {
       ty!(self, qualified_type),
       value.into().into(),
     ));
-    let mut refmut = lookup_mut!(self, self.current_block);
-    let mutref = refmut.data.as_basicblock_mut_unchecked();
-    mutref.instructions.push(value_id);
-    value_id
+    self.apply_mut(self.current_block, |value| {
+      value
+        .data
+        .as_basicblock_mut_unchecked()
+        .instructions
+        .push(value_id);
+      value_id
+    })
   }
 
   fn emit_globals<T: Into<ValueData<'c>>>(
@@ -131,14 +159,15 @@ impl<'c> Emitter<'c> {
       Instruction::from(terminator.into()).into(),
     ));
 
-    let mut refmut = lookup_mut!(self, block_id);
-    let mutref = refmut.data.as_basicblock_mut_unchecked();
-    assert!(
-      mutref.terminator.is_null(),
-      "block already has a terminator"
-    );
-    mutref.terminator = value_id;
-    value_id
+    self.apply_mut(block_id, |value| {
+      let mutref = value.data.as_basicblock_mut_unchecked();
+      assert!(
+        mutref.terminator.is_null(),
+        "block already has a terminator"
+      );
+      mutref.terminator = value_id;
+      value_id
+    })
   }
 }
 

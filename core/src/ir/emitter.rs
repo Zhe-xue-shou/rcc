@@ -4,11 +4,10 @@
 
 use ::rcc_utils::contract_violation;
 use ::slotmap::Key;
-use ::std::{cell::RefMut, collections::HashMap};
+use ::std::collections::HashMap;
 
 use super::{
   Argument,
-  dump::counter,
   emitable::Emitable,
   instruction::{self as inst},
   module::{self, BasicBlock, Module},
@@ -17,8 +16,8 @@ use super::{
 use crate::{
   blueprints::UnaryKind,
   common::{
-    FloatFormat, Floating, Integral, Operator, OperatorCategory, RefEq,
-    Signedness, SourceSpan, StrRef, Symbol, SymbolPtr,
+    Floating, Integral, Operator, OperatorCategory, RefEq, Signedness,
+    SourceSpan, SymbolPtr,
   },
   ir::{self, value::WithActionMut},
   sema::{Unbox, declaration as sd, expression as se, statement as ss},
@@ -118,9 +117,7 @@ impl<'c> Emitter<'c> {
 
   #[must_use]
   fn seal_current_block(&mut self) -> ValueID {
-    let current_block_id = self.current_block;
-
-    current_block_id.and_then(|block_id| {
+    self.current_block.and_then(|block_id| {
       assert!(
         !lookup!(self, self.current_block)
           .data
@@ -136,16 +133,12 @@ impl<'c> Emitter<'c> {
         .blocks
         .push(self.current_block);
       self.current_block = ValueID::null();
-      current_block_id
+      block_id
     })
   }
 
   #[must_use]
-  fn new_block(
-    &mut self,
-    basic_block: BasicBlock,
-    users: Vec<ValueID>,
-  ) -> ValueID {
+  fn new_block(&mut self, basic_block: BasicBlock) -> ValueID {
     debug_assert!(!self.current_function.is_null());
     self.ir().insert(Value::new(
       self.ast().void_type().into(),
@@ -219,7 +212,7 @@ impl<'c> Emitter<'c> {
 
   fn funcdecl(&mut self, function: sd::Function<'c>) {
     if let Some(&value_id) =
-      self.globals.get(&(function.symbol.as_ptr() as SymbolPtr))
+      self.globals.get(&(function.symbol.as_ptr() as *const _))
     {
       debug_assert!(
         lookup!(self, value_id).data.is_function(),
@@ -239,7 +232,7 @@ impl<'c> Emitter<'c> {
 
       self
         .globals
-        .insert(function.symbol.as_ptr() as SymbolPtr, value_id);
+        .insert(function.symbol.as_ptr() as *const _, value_id);
     }
   }
 
@@ -281,7 +274,7 @@ impl<'c> Emitter<'c> {
 
       self
         .globals
-        .insert(function.symbol.as_ptr() as SymbolPtr, function_id);
+        .insert(function.symbol.as_ptr() as *const _, function_id);
       debug_assert!(
         lookup!(self, function_id)
           .data
@@ -299,7 +292,7 @@ impl<'c> Emitter<'c> {
 
     assert!(self.current_block.is_null());
 
-    let block_id = self.new_block(Default::default(), vec![]);
+    let block_id = self.new_block(Default::default());
 
     assert!(self.push_block(block_id).is_null());
 
@@ -477,8 +470,7 @@ impl<'c> Emitter<'c> {
       self.void(),
     );
 
-    let then_block_id =
-      self.new_block(Default::default(), vec![now_block_terminator]);
+    let then_block_id = self.new_block(Default::default());
     let should_be_now = self.push_block(then_block_id);
     assert!(should_be_now == now_block_id);
 
@@ -499,8 +491,7 @@ impl<'c> Emitter<'c> {
       })
     };
 
-    let else_block_id =
-      self.new_block(Default::default(), vec![now_block_terminator]);
+    let else_block_id = self.new_block(Default::default());
     let shuold_be_then = self.push_block(else_block_id);
     assert!(shuold_be_then == then_block_id);
 
@@ -523,10 +514,7 @@ impl<'c> Emitter<'c> {
       })
       .unwrap_or_default()
       .and_then(|else_block_terminator| {
-        let immediate_block_id = self.new_block(
-          Default::default(),
-          vec![then_block_terminator, else_block_terminator],
-        );
+        let immediate_block_id = self.new_block(Default::default());
         let should_be_else = self.push_block(immediate_block_id);
         assert!(should_be_else == else_block_id);
 
@@ -557,14 +545,6 @@ impl<'c> Emitter<'c> {
   }
 
   fn label(&mut self, label: ss::Label<'c>) {
-    let ss::Label { name, .. } = label;
-
-    let now_block_id = self.current_block;
-    // let label_block_id = Self::new_block(Default::default(), self.session());
-
-    // let should_be_now = self.push_block(label_block_id);
-    // assert!(should_be_now == now_block_id);
-
     todo!()
   }
 
@@ -759,11 +739,10 @@ impl<'c> Emitter<'c> {
     _qualified_type: QualifiedType<'c>,
   ) -> ValueID {
     let name = variable.name.borrow().name;
-    if let Some(&vid) = self.locals.get(&(variable.name.as_ptr() as SymbolPtr))
-    {
+    if let Some(&vid) = self.locals.get(&(variable.name.as_ptr() as *const _)) {
       vid
     } else if let Some(&vid) =
-      self.globals.get(&(variable.name.as_ptr() as SymbolPtr))
+      self.globals.get(&(variable.name.as_ptr() as *const _))
     {
       vid
     } else {
@@ -783,7 +762,7 @@ impl<'c> Emitter<'c> {
     use ::std::cmp::Ordering::*;
     use CastType::*;
     use Signedness::*;
-    use inst::{Cast, Load, Memory, Sext, Trunc, Zext};
+    use inst::{Load, Memory, Sext, Trunc, Zext};
 
     let value_id = self.expression(expr);
     match cast_type {
@@ -888,8 +867,6 @@ impl<'c> Emitter<'c> {
     qualified_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> ValueID {
-    use Operator::*;
-    use inst::ICmpPredicate::*;
     use ir::Type::*;
 
     debug_assert!(
@@ -1092,8 +1069,8 @@ impl<'c> Emitter<'c> {
       ),
     );
 
-    /// FIXME: avoid this trick but also reuse the code below. borrowck wont let self being borrowed
-    /// SAFETY: safe today, maybe not tomorrow.
+    // FIXME: avoid this trick but also reuse the code below. borrowck wont let self being borrowed
+    // SAFETY: safe today, maybe not tomorrow.
     let this = ::std::ptr::from_mut(self);
 
     let common = move |cmp| {

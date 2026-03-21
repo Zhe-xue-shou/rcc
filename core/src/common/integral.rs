@@ -18,12 +18,12 @@ use Signedness::*;
 impl Signedness {
   #[inline(always)]
   pub const fn is_signed(self) -> bool {
-    matches!(self, Self::Signed)
+    matches!(self, Signed)
   }
 
   #[inline(always)]
   pub const fn is_unsigned(self) -> bool {
-    matches!(self, Self::Unsigned)
+    matches!(self, Unsigned)
   }
 }
 

@@ -15,6 +15,11 @@ pub enum Format {
 
 use Format::*;
 
+// union Bits {
+//   ieee32: f32,
+//   ieee64: f64,
+// }
+
 /// you can see the doc of [`Integral`] for more information. Unlike the feature-rich [`Integral`],
 /// this struct is essentially a simple wrapper around the raw bits of a floating-point number, along with its format.
 /// That being said, I didn't reference
@@ -22,6 +27,7 @@ use Format::*;
 /// which is a far more comprehensive and complex implementation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Floating {
+  // i dont thinks its need ed to use the u128 jere, just a tagger union would be fine.
   bits: u128,
   format: Format,
 }

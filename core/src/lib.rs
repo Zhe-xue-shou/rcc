@@ -1,5 +1,5 @@
-#![feature(unsized_const_params)]
 #![allow(incomplete_features)]
+#![feature(unsized_const_params)]
 #![feature(specialization)]
 // C/C++ like default initialization in struct fields
 // #![feature(default_field_values)]
@@ -12,14 +12,13 @@
 #![feature(const_cmp)]
 #![feature(const_try)]
 #![feature(const_ops)]
-#![feature(const_eval_select)]
 // NTTP
 #![feature(adt_const_params)]
 // for using core::intrinsics::breakpoint
 #![allow(internal_features)]
+// for const_eval_select
 #![feature(core_intrinsics)]
-// workaround
-#![feature(thread_local)]
+#![feature(const_eval_select)]
 pub(crate) mod blueprints;
 pub mod codegen;
 #[macro_use]

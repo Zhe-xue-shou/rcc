@@ -64,7 +64,7 @@ pub struct Value<'c> {
   pub qualified_type: QualifiedType<'c>,
   pub ir_type: TypeRef<'c>,
   pub data: Data<'c>,
-  pub users: Vec<ValueID>,
+  pub use_list: Vec<ValueID>,
 }
 
 impl<'c> Value<'c> {
@@ -77,7 +77,21 @@ impl<'c> Value<'c> {
       qualified_type,
       ir_type,
       data: value,
-      users: Default::default(),
+      use_list: Default::default(),
+    }
+  }
+
+  pub fn with_users(
+    qualified_type: QualifiedType<'c>,
+    ir_type: TypeRef<'c>,
+    value: Data<'c>,
+    use_list: Vec<ValueID>,
+  ) -> Self {
+    Self {
+      qualified_type,
+      ir_type,
+      data: value,
+      use_list,
     }
   }
 }

@@ -168,21 +168,20 @@ impl<'c> Context<'c> {
     })
   }
 
-  /// wont work if emit inside lambda...
-  pub fn apply_mut<R, F: FnOnce(&mut Value<'c>) -> R>(
-    &self,
-    id: ValueID,
-    action: F,
-  ) -> R {
-    self.get_mut(id).with_action_mut(action)
-  }
-
   pub fn apply<R, F: FnOnce(&Value<'c>) -> R>(
     &self,
     id: ValueID,
     action: F,
   ) -> R {
     self.get(id).with_action(action)
+  }
+
+  pub fn apply_mut<R, F: FnOnce(&mut Value<'c>) -> R>(
+    &self,
+    id: ValueID,
+    action: F,
+  ) -> R {
+    self.get_mut(id).with_action_mut(action)
   }
 }
 use crate::{

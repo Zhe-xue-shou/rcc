@@ -94,10 +94,16 @@ impl<'c> Emitter<'c> {
   ) -> R {
     self.session().ir().apply_mut(id, action)
   }
-
+}
+impl<'c> Emitter<'c> {
   #[inline(always)]
   pub(super) fn i1(&self) -> QualifiedType<'c> {
     self.ast().i1_bool_type().into()
+  }
+
+  #[inline(always)]
+  pub(super) fn void(&self) -> QualifiedType<'c> {
+    self.ast().void_type().into()
   }
 }
 impl<'c> Emitter<'c> {
@@ -127,11 +133,16 @@ impl<'c> Emitter<'c> {
   }
 
   #[must_use]
-  fn new_block(basic_block: BasicBlock, session: SessionRef<'c>) -> ValueID {
-    session.ir().insert(Value::new(
+  fn new_block(
+    basic_block: BasicBlock,
+    session: SessionRef<'c>,
+    users: Vec<ValueID>,
+  ) -> ValueID {
+    session.ir().insert(Value::with_users(
       session.ast().void_type().into(),
       session.ir().label_type(),
       basic_block.into(),
+      users,
     ))
   }
 
@@ -232,9 +243,8 @@ impl<'c> Emitter<'c> {
   fn global_funcdef(&mut self, function: sd::Function<'c>) {
     assert!(function.is_definition());
 
-    let function_id = if let Some(&value_id) = self
-      .globals
-      .get(&(function.symbol.as_ptr() as *const Symbol<'c>))
+    let function_id = if let Some(&value_id) =
+      self.globals.get(&(function.symbol.as_ptr() as *const _))
     {
       // should be function and declaration-only
       debug_assert!(
@@ -286,7 +296,7 @@ impl<'c> Emitter<'c> {
     self.current_blocks = Default::default();
     assert!(self.current_block.is_null());
 
-    let block_id = Self::new_block(Default::default(), self.session());
+    let block_id = Self::new_block(Default::default(), self.session(), vec![]);
 
     _ = self.push_block(block_id);
     let params = {
@@ -317,7 +327,7 @@ impl<'c> Emitter<'c> {
           let localed_arg_id = self.emit(inst::Alloca::new(), qualified_type);
           _ = self.emit(
             inst::Memory::Store(inst::Store::new(localed_arg_id, arg_id)),
-            self.ast().void_type().into(),
+            self.void(),
           );
           arg_id
         })
@@ -382,7 +392,7 @@ impl<'c> Emitter<'c> {
         let init_value_id = self.expression(expr);
         _ = self.emit(
           inst::Memory::Store(inst::Store::new(value_id, init_value_id)),
-          self.ast().void_type().into(),
+          self.void(),
         );
       },
       Some(sd::Initializer::Aggregate(_)) => todo!(),
@@ -423,7 +433,7 @@ impl<'c> Emitter<'c> {
     let qualified_type = expression
       .as_ref()
       .map(|e| *e.qualified_type())
-      .unwrap_or(self.ast().void_type().into());
+      .unwrap_or(self.void());
     let operand: Option<ValueID> = expression.map(|e| self.expression(e));
     _ = self.emit(
       inst::Terminator::Return(inst::Return::new(operand)),
@@ -469,7 +479,11 @@ impl<'c> Emitter<'c> {
       self.i1(),
     );
 
-    let then_block_id = Self::new_block(Default::default(), self.session());
+    let then_block_id = Self::new_block(
+      Default::default(),
+      self.session(),
+      vec![now_block_terminator],
+    );
     let should_be_now = self.push_block(then_block_id);
     assert!(should_be_now == now_block_id);
 
@@ -484,13 +498,17 @@ impl<'c> Emitter<'c> {
       terminator.unwrap_or_else(|| {
         self.emit_terminator(
           inst::Jump::new(ValueID::null()),
-          self.ast().void_type().into(),
+          self.void(),
           self.current_block,
         )
       })
     };
 
-    let else_block_id = Self::new_block(Default::default(), self.session());
+    let else_block_id = Self::new_block(
+      Default::default(),
+      self.session(),
+      vec![now_block_terminator],
+    );
     let shuold_be_then = self.push_block(else_block_id);
     assert!(shuold_be_then == then_block_id);
 
@@ -506,15 +524,18 @@ impl<'c> Emitter<'c> {
         terminator.unwrap_or_else(|| {
           self.emit_terminator(
             inst::Jump::new(ValueID::null()),
-            self.ast().void_type().into(),
+            self.void(),
             self.current_block,
           )
         })
       })
       .unwrap_or_default()
       .and_then(|else_block_terminator| {
-        let immediate_block_id =
-          Self::new_block(Default::default(), self.session());
+        let immediate_block_id = Self::new_block(
+          Default::default(),
+          self.session(),
+          vec![then_block_terminator, else_block_terminator],
+        );
         let should_be_else = self.push_block(immediate_block_id);
         assert!(should_be_else == else_block_id);
 
@@ -544,7 +565,15 @@ impl<'c> Emitter<'c> {
     todo!()
   }
 
-  fn label(&self, label: ss::Label<'c>) {
+  fn label(&mut self, label: ss::Label<'c>) {
+    let ss::Label { name, .. } = label;
+
+    let now_block_id = self.current_block;
+    // let label_block_id = Self::new_block(Default::default(), self.session());
+
+    // let should_be_now = self.push_block(label_block_id);
+    // assert!(should_be_now == now_block_id);
+
     todo!()
   }
 
@@ -650,17 +679,21 @@ impl<'c> Emitter<'c> {
     span: SourceSpan,
   ) -> ValueID {
     use OperatorCategory::*;
+
+    macro_rules! call {
+      ($method:ident) => {
+        self.$method(operator, left, right, qualified_type, span)
+      };
+    }
+
     match operator.category() {
-      Assignment =>
-        self.assignment(operator, left, right, qualified_type, span),
-      Logical => self.logical(operator, left, right, qualified_type, span),
-      Relational =>
-        self.relational(operator, left, right, qualified_type, span),
-      Arithmetic =>
-        self.arithmetic(operator, left, right, qualified_type, span),
-      Bitwise => self.bitwise(operator, left, right, qualified_type, span),
-      BitShift => self.bitshift(operator, left, right, qualified_type, span),
-      Special => self.comma(operator, left, right, qualified_type, span),
+      Assignment => call!(assignment),
+      Logical => call!(logical),
+      Relational => call!(relational),
+      Arithmetic => call!(arithmetic),
+      Bitwise => call!(bitwise),
+      BitShift => call!(bitshift),
+      Special => call!(comma),
       Uncategorized => unreachable!("operator is not binary: {:#?}", operator),
     }
   }
@@ -780,14 +813,14 @@ impl<'c> Emitter<'c> {
         ) {
           Less => match qualified_type.signedness() {
             Some(Signed) =>
-              self.emit(Cast::from(Sext::new(value_id)), qualified_type),
+              self.emit(inst::Cast::from(Sext::new(value_id)), qualified_type),
             Some(Unsigned) =>
-              self.emit(Cast::from(Zext::new(value_id)), qualified_type),
+              self.emit(inst::Cast::from(Zext::new(value_id)), qualified_type),
             None => unreachable!(),
           },
           Equal => value_id,
           Greater =>
-            self.emit(Cast::from(Trunc::new(value_id)), qualified_type),
+            self.emit(inst::Cast::from(Trunc::new(value_id)), qualified_type),
         }
       },
       _ => todo!("implicit cast: {:?}", implicit_cast.cast_type),
@@ -840,7 +873,7 @@ impl<'c> Emitter<'c> {
     };
     self.emit(
       inst::Memory::Store(inst::Store::new(left, calculated_right)),
-      self.ast().void_type().into(),
+      self.void(),
     )
   }
 
@@ -872,8 +905,6 @@ impl<'c> Emitter<'c> {
         || RefEq::ref_eq(*qualified_type, self.ast().i1_bool_type()),
     );
 
-    let boolean = self.i1();
-
     let lhs_ir_type = lookup!(self, left).ir_type;
     let rhs_ir_type = lookup!(self, right).ir_type;
     match (lhs_ir_type, rhs_ir_type) {
@@ -887,11 +918,17 @@ impl<'c> Emitter<'c> {
           .qualified_type
           .signedness()
           .expect("impossible to fail");
-        self
-          .integral_relational(operator, left, right, boolean, signedness, span)
+        self.integral_relational(
+          operator,
+          left,
+          right,
+          qualified_type,
+          signedness,
+          span,
+        )
       },
       (Floating(_), Floating(_)) =>
-        self.floating_relational(operator, left, right, boolean, span),
+        self.floating_relational(operator, left, right, qualified_type, span),
       (Pointer(), Integer(integer)) | (Integer(integer), Pointer()) =>
         panic!("this should be rejected or emit a warning"),
       (Pointer(), Pointer()) => self.emit(
@@ -900,7 +937,7 @@ impl<'c> Emitter<'c> {
           left,
           right,
         ),
-        boolean,
+        qualified_type,
       ),
       _ => unreachable!(),
     }
@@ -1053,6 +1090,16 @@ impl<'c> Emitter<'c> {
   ) -> ValueID {
     assert_eq!(operator, Operator::Not);
 
+    debug_assert!(
+      RefEq::ref_eq(
+        lookup!(self, operand).qualified_type.unqualified_type,
+        self.ast().converted_bool()
+      ) || RefEq::ref_eq(
+        lookup!(self, operand).qualified_type.unqualified_type,
+        self.ast().i1_bool_type()
+      ),
+    );
+
     /// FIXME: avoid this trick but also reuse the code below. borrowck wont let self being borrowed
     /// SAFETY: safe today, maybe not tomorrow.
     let this = ::std::ptr::from_mut(self);
@@ -1067,10 +1114,10 @@ impl<'c> Emitter<'c> {
       );
       this.emit(inst::Cast::from(inst::Zext::new(xor)), qualified_type)
     };
-    let integral = move |i1_false_or_nullptr| {
+    let integral = move |zero_or_nullptr| {
       let this = unsafe { &mut *this };
       let cmp = this.emit(
-        inst::ICmp::new(inst::ICmpPredicate::Ne, operand, i1_false_or_nullptr),
+        inst::ICmp::new(inst::ICmpPredicate::Ne, operand, zero_or_nullptr),
         this.i1(),
       );
       common(cmp)
@@ -1088,9 +1135,15 @@ impl<'c> Emitter<'c> {
         integral(nullptr)
       },
       ir::Type::Integer(width) => {
-        let i1_false =
-          self.emit(Constant::Integral(Integral::i1_false()), self.i1());
-        integral(i1_false)
+        let zero = self.emit(
+          Constant::Integral(Integral::new(
+            0,
+            *width,
+            qualified_type.signedness().unwrap(),
+          )),
+          lookup!(self, operand).qualified_type,
+        );
+        integral(zero)
       },
       ir::Type::Floating(format) => {
         let float_zero = self
@@ -1191,7 +1244,7 @@ impl<'c> Emitter<'c> {
           self.emit(inst::Binary::new(binaryop, operand, one), qualified_type);
         _ = self.emit(
           inst::Memory::Store(inst::Store::new(operand, calculated)),
-          self.ast().void_type().into(),
+          self.void(),
         );
         calculated
       },
@@ -1204,7 +1257,7 @@ impl<'c> Emitter<'c> {
           self.emit(inst::Binary::new(binaryop, operand, one), qualified_type);
         _ = self.emit(
           inst::Memory::Store(inst::Store::new(operand, calculated)),
-          self.ast().void_type().into(),
+          self.void(),
         );
         operand
       },

@@ -57,6 +57,52 @@ impl<'c> Emitable<'c, inst::Alloca> for Emitter<'c> {
     })
   }
 }
+impl<'c> Emitable<'c, inst::Unary> for Emitter<'c> {
+  fn emit(
+    &mut self,
+    value: inst::Unary,
+    qualified_type: QualifiedType<'c>,
+  ) -> ValueID {
+    self.emit_common_instruction(value, qualified_type)
+  }
+}
+impl<'c> Emitable<'c, inst::Binary> for Emitter<'c> {
+  fn emit(
+    &mut self,
+    value: inst::Binary,
+    qualified_type: QualifiedType<'c>,
+  ) -> ValueID {
+    self.emit_common_instruction(value, qualified_type)
+  }
+}
+impl<'c> Emitable<'c, inst::Memory> for Emitter<'c> {
+  fn emit(
+    &mut self,
+    value: inst::Memory,
+    qualified_type: QualifiedType<'c>,
+  ) -> ValueID {
+    self.emit_common_instruction(value, qualified_type)
+  }
+}
+
+impl<'c> Emitable<'c, inst::Cast> for Emitter<'c> {
+  fn emit(
+    &mut self,
+    value: inst::Cast,
+    qualified_type: QualifiedType<'c>,
+  ) -> ValueID {
+    self.emit_common_instruction(value, qualified_type)
+  }
+}
+impl<'c> Emitable<'c, inst::Call> for Emitter<'c> {
+  fn emit(
+    &mut self,
+    value: inst::Call,
+    qualified_type: QualifiedType<'c>,
+  ) -> ValueID {
+    self.emit_common_instruction(value, qualified_type)
+  }
+}
 
 impl<'c> Emitable<'c, inst::ICmp> for Emitter<'c> {
   fn emit(
@@ -110,6 +156,7 @@ impl<'c> Emitter<'c> {
     &self,
     value: T,
     qualified_type: QualifiedType<'c>,
+    // users: Vec<ValueID>,
   ) -> ValueID {
     if self.current_block.is_null() {
       panic!("no block to emit into")
@@ -153,10 +200,11 @@ impl<'c> Emitter<'c> {
       panic!("no block to emit terminator into")
     }
 
-    let value_id = self.ir().insert(Value::new(
+    let value_id = self.ir().insert(Value::with_users(
       qualified_type,
       ty!(self, qualified_type),
       Instruction::from(terminator.into()).into(),
+      vec![block_id],
     ));
 
     self.apply_mut(block_id, |value| {
@@ -168,16 +216,6 @@ impl<'c> Emitter<'c> {
       mutref.terminator = value_id;
       value_id
     })
-  }
-}
-
-impl<'c, InstType: Into<Instruction>> Emitable<'c, InstType> for Emitter<'c> {
-  default fn emit(
-    &mut self,
-    value: InstType,
-    qualified_type: QualifiedType<'c>,
-  ) -> ValueID {
-    self.emit_common_instruction(value, qualified_type)
   }
 }
 

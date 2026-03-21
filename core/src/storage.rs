@@ -1,6 +1,6 @@
 use ::bimap::BiHashMap;
 use ::bumpalo::Bump;
-use ::slotmap::SlotMap;
+use ::slotmap::{DenseSlotMap, SlotMap};
 use ::std::{cell::RefCell, collections::HashSet, ops::Deref};
 
 use crate::{common::StrRef, ir, types};
@@ -10,6 +10,7 @@ type Interner<T> = RefCell<HashSet<T>>;
 pub struct Storage<'c> {
   pub ast_arena: &'c Arena,
   pub ir_arena: RefCell<SlotMap<ir::ValueID, ir::Value<'c>>>,
+  pub ir_def_use: RefCell<DenseSlotMap<ir::ValueID, ir::Value<'c>>>,
 
   pub ast_type_interner: Interner<types::TypeRef<'c>>,
   pub str_interner: Interner<StrRef<'c>>,
@@ -23,6 +24,7 @@ impl<'c> Storage<'c> {
     Self {
       ast_arena: arena,
       ir_arena: Default::default(),
+      ir_def_use: Default::default(),
       ast_type_interner: Default::default(),
       ir_type_interner: Default::default(),
       str_interner: Default::default(),

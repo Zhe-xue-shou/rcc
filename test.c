@@ -7,9 +7,10 @@ int main() {
   int p;
   int q;
   int y;
-  if (p > q)
+  if (p > q) {
     p = !p;
-  else
+    return p;
+  } else
     q = 0;
   return 0;
 }

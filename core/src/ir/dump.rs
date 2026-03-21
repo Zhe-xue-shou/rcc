@@ -43,7 +43,14 @@ fn pretty_dump_contant_or_id<'a>(
   dumper: &mut impl Dumper<'a>,
   value_id: ValueID,
   palette: &Palette,
+  ir_type: bool,
 ) {
+  if ir_type {
+    dumper.write(
+      suff!(" " => dumper.session().ir().get(value_id).ir_type),
+      &palette.meta,
+    );
+  }
   if let Some(value) = dumper.session().ir().get_by_constant_id(&value_id) {
     match dumper.session().ir().get(value_id).ir_type {
       ir::Type::Floating(_) => dumper.write_fmt(
@@ -64,10 +71,6 @@ fn pretty_dump_contant_or_id<'a>(
       _ => dumper.write(value, &palette.literal),
     }
   } else {
-    dumper.write(
-      suff!(" " => dumper.session().ir().get(value_id).ir_type),
-      &palette.meta,
-    );
     dumper.write(pre!("%"=> counter(value_id.handle())), &palette.skeleton);
   }
 }
@@ -182,6 +185,42 @@ impl<'c> Dump<'c, module::Function<'_>> for Value<'c> {
     palette: &Palette,
     variant: &module::Function<'_>,
   ) -> FakeDumpRes {
+    fn preds<'c>(
+      dumper: &mut impl Dumper<'c>,
+      palette: &Palette,
+      block: &Value<'_>,
+    ) {
+      if !block.use_list.is_empty() {
+        dumper.write_fmt(
+          format_args!(
+            "\t\t\t\t\t; preds = {}",
+            block
+              .use_list
+              .iter()
+              .map(|user_id| {
+                format!(
+                  "%{}",
+                  counter({
+                    let value = &*lookup!(dumper, *user_id);
+                    assert!(
+                      value
+                        .data
+                        .as_instruction()
+                        .is_some_and(|inst| inst.is_terminator())
+                        && value.use_list.len() == 1
+                    );
+                    value.use_list[0].handle()
+                  })
+                )
+              })
+              .collect::<Vec<_>>()
+              .join(", ")
+          ),
+          &palette.info,
+        );
+      }
+    }
+
     dumper.write(
       suff!(
         " " =>
@@ -249,11 +288,11 @@ impl<'c> Dump<'c, module::Function<'_>> for Value<'c> {
     if variant.is_definition() {
       dumper.writeln(" {", &palette.skeleton);
       variant.blocks.iter().for_each(|block_id| {
-        dumper.write(
-          suff!(":\n" => counter(block_id.handle())),
-          &palette.skeleton,
-        );
+        dumper
+          .write(suff!(":" => counter(block_id.handle())), &palette.skeleton);
         let block = &*lookup!(dumper, *block_id);
+        preds(dumper, palette, block);
+        dumper.newline();
         Dump::dump(
           block,
           dumper,
@@ -370,9 +409,9 @@ impl<'c> Dump<'c, inst::Binary> for Value<'c> {
   ) -> FakeDumpRes {
     dumper.write(suff!(" " => variant.operator), &palette.literal);
 
-    self::pretty_dump_contant_or_id(dumper, variant.left, palette);
+    self::pretty_dump_contant_or_id(dumper, variant.left, palette, true);
     dumper.write(", ", &palette.skeleton);
-    self::pretty_dump_contant_or_id(dumper, variant.right, palette);
+    self::pretty_dump_contant_or_id(dumper, variant.right, palette, false);
   }
 }
 impl<'c> Dump<'c, inst::Memory> for Value<'c> {
@@ -475,9 +514,9 @@ impl<'c> Dump<'c, inst::ICmp> for Value<'c> {
     dumper.write("icmp ", &palette.literal);
     dumper.write(suff!(" " => variant.predicate), &palette.literal);
 
-    self::pretty_dump_contant_or_id(dumper, variant.lhs, palette);
+    self::pretty_dump_contant_or_id(dumper, variant.lhs, palette, true);
     dumper.write(", ", &palette.skeleton);
-    self::pretty_dump_contant_or_id(dumper, variant.rhs, palette);
+    self::pretty_dump_contant_or_id(dumper, variant.rhs, palette, false);
   }
 }
 
@@ -493,9 +532,9 @@ impl<'c> Dump<'c, inst::FCmp> for Value<'c> {
     dumper.write("fcmp ", &palette.literal);
     dumper.write(suff!(" " => variant.predicate), &palette.literal);
 
-    self::pretty_dump_contant_or_id(dumper, variant.lhs, palette);
+    self::pretty_dump_contant_or_id(dumper, variant.lhs, palette, true);
     dumper.write(", ", &palette.skeleton);
-    self::pretty_dump_contant_or_id(dumper, variant.rhs, palette);
+    self::pretty_dump_contant_or_id(dumper, variant.rhs, palette, false);
   }
 }
 
@@ -559,7 +598,7 @@ impl<'c> Dump<'c, inst::Return> for Value<'c> {
     debug_assert!(_is_last);
     dumper.write("ret ", &palette.literal);
     if let Some(value_id) = variant.result {
-      self::pretty_dump_contant_or_id(dumper, value_id, palette);
+      self::pretty_dump_contant_or_id(dumper, value_id, palette, true);
     }
   }
 }
@@ -614,7 +653,7 @@ impl<'c> Dump<'c, inst::Store> for Value<'c> {
     dumper.write(prefix, &palette.dim);
     dumper.write("store ", &palette.literal);
 
-    self::pretty_dump_contant_or_id(dumper, variant.from, palette);
+    self::pretty_dump_contant_or_id(dumper, variant.from, palette, true);
 
     dumper.write(", ", &palette.skeleton);
 
@@ -639,7 +678,7 @@ impl<'c> Dump<'c, inst::Zext> for Value<'c> {
   ) -> FakeDumpRes {
     dumper.write("zext ", &palette.literal);
 
-    self::pretty_dump_contant_or_id(dumper, variant.operand, palette);
+    self::pretty_dump_contant_or_id(dumper, variant.operand, palette, true);
 
     dumper.write(" to ", &palette.skeleton);
     dumper.write(self.ir_type, &palette.meta);

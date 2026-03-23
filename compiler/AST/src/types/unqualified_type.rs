@@ -162,8 +162,8 @@ impl<'c> UnqualExt<'c> for Floating {
   fn unqualified_type(&self, context: &'c Context) -> TypeRef<'c> {
     use FloatFormat::*;
     match self.format() {
-      IEEE32 => Context::float_type(context),
-      IEEE64 => Context::double_type(context),
+      IEEE32 => Context::float32_type(context),
+      IEEE64 => Context::float64_type(context),
     }
   }
 }

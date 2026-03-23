@@ -27,16 +27,28 @@
         "rust"
       ],
     },
+    // {
+    //   "type": "lldb-dap",
+    //   "request": "launch",
+    //   // lldb-dap is more friendly as for debug console
+    //   "name": "lldb-dap debug rcc",
+    //   "cwd": "${workspaceFolder}",
+    //   "program": "${workspaceFolder}/target/debug/rcc.exe",
+    //   "preLaunchTask": "rust: cargo build",
+    //   "console": "internalConsole",
+    //   "stopOnEntry": false,
+    // },
     {
       "type": "lldb-dap",
       "request": "launch",
-      // lldb-dap is more friendly as for debug console
-      "name": "lldb-dap debug rcc",
+      "name": "cargo run -p rcc",
       "cwd": "${workspaceFolder}",
-      "program": "${workspaceFolder}/target/debug/rcc.exe",
-      "preLaunchTask": "rust: cargo build",
-      "console": "internalConsole",
-      "stopOnEntry": false,
-    },
+      "program": "${workspaceFolder}\\target\\debug\\rcc.exe",
+      "env": [
+        "RUST_BACKTRACE=short",
+        "RUSTC_TOOLCHAIN=Z:\\.packages\\.rustup\\toolchains\\nightly-x86_64-pc-windows-msvc"
+      ],
+      "args": []
+    }
   ]
 }

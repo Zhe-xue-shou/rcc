@@ -608,7 +608,7 @@ impl<'c> Print<'c, inst::Alloca> for Value<'c> {
     variant: &inst::Alloca,
   ) {
     printer.write("alloca ", &palette.literal);
-    printer.write(printer.ir().ir_type(&self.qualified_type), &palette.meta)
+    printer.write(printer.ir().ir_type(self.ast_type), &palette.meta)
   }
 }
 impl<'c> Print<'c, inst::Load> for Value<'c> {

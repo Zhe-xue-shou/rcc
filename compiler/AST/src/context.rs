@@ -20,11 +20,13 @@ pub struct Context<'c> {
   int_type: TypeRef<'c>,
   long_type: TypeRef<'c>,
   long_long_type: TypeRef<'c>,
+  // i128_type: TypeRef<'c>,
   uchar_type: TypeRef<'c>,
   ushort_type: TypeRef<'c>,
   uint_type: TypeRef<'c>,
   ulong_type: TypeRef<'c>,
   ulong_long_type: TypeRef<'c>,
+  // u128_type: TypeRef<'c>,
   ptrdiff_type: TypeRef<'c>,
   uintptr_type: TypeRef<'c>,
   float_type: TypeRef<'c>,
@@ -56,6 +58,7 @@ impl<'c> Context<'c> {
       ulong_long_type: arena.alloc(Primitive::ULongLong.into()),
       long_type: arena.alloc(Primitive::Long.into()),
       ulong_type: arena.alloc(Primitive::ULong.into()),
+
       nullptr_type: arena.alloc(Primitive::Nullptr.into()),
       double_type: arena.alloc(Primitive::Double.into()),
       bool_type: arena.alloc(Primitive::Bool.into()),
@@ -168,7 +171,7 @@ impl<'c> Context<'c> {
   }
 
   #[must_use]
-  pub fn float_type(&self) -> TypeRef<'c> {
+  pub fn float32_type(&self) -> TypeRef<'c> {
     self.float_type
   }
 
@@ -198,7 +201,7 @@ impl<'c> Context<'c> {
   }
 
   #[must_use]
-  pub fn double_type(&self) -> TypeRef<'c> {
+  pub fn float64_type(&self) -> TypeRef<'c> {
     self.double_type
   }
 

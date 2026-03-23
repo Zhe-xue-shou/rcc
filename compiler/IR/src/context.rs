@@ -1,8 +1,5 @@
-use ::rcc_adt::{FloatFormat, Integral};
-use ::rcc_ast::{
-  Context as ASTContext,
-  types::{self, QualifiedType},
-};
+use ::rcc_adt::{FloatFormat, Floating, Integral};
+use ::rcc_ast::{Context as ASTContext, types as ast};
 use ::rcc_shared::{Arena, Constant, Diagnosis, SourceManager};
 use ::slotmap::Key;
 
@@ -28,8 +25,9 @@ pub struct Context<'c> {
   ir_type_interner: Interner<TypeRef<'c>>,
 
   nullptr: ValueID,
-  i1_true: ValueID,
-  i1_false: ValueID,
+  common_integer_one: [ValueID; 5],
+  common_integer_zero: [ValueID; 5],
+  common_floating_zero: [ValueID; 2],
   /// currently only for ir stage. use it in previous stage could cause unprecedented catastrophe. see the git stash.
   constant_interner: RefCell<BiHashMap<ValueID, ::rcc_shared::Constant<'c>>>,
 
@@ -101,8 +99,9 @@ impl<'c> Context<'c> {
       ir_def_use: Default::default(),
       ir_type_interner: Default::default(),
       nullptr: unsafe { MaybeUninit::uninit().assume_init() },
-      i1_true: unsafe { MaybeUninit::uninit().assume_init() },
-      i1_false: unsafe { MaybeUninit::uninit().assume_init() },
+      common_integer_one: unsafe { MaybeUninit::uninit().assume_init() },
+      common_integer_zero: unsafe { MaybeUninit::uninit().assume_init() },
+      common_floating_zero: unsafe { MaybeUninit::uninit().assume_init() },
     };
     {
       let mut refmut = this.ir_type_interner.borrow_mut();
@@ -119,32 +118,69 @@ impl<'c> Context<'c> {
       let mut refmut = this.constant_interner.borrow_mut();
       let mut ir_arena_ref = this.ir_arena.borrow_mut();
 
-      let nullptr_qual = ast_context.nullptr_type().into();
       this.nullptr = ir_arena_ref.insert(Value::new(
-        nullptr_qual,
+        ast_context.nullptr_type(),
         this.pointer_type,
         Constant::Nullptr(),
         Default::default(),
       ));
       refmut.insert(this.nullptr, Constant::Nullptr());
 
-      let i1_true_qual = ast_context.i1_bool_type().into();
-      this.i1_true = ir_arena_ref.insert(Value::new(
-        i1_true_qual,
-        this.common_integer_types[0],
-        Constant::Integral(Integral::i1_true()),
+      this.common_floating_zero[0] = ir_arena_ref.insert(Value::new(
+        ast_context.float32_type(),
+        this.float32_type(),
+        Constant::Floating(Floating::zero(FloatFormat::IEEE32)),
         Default::default(),
       ));
-      refmut.insert(this.i1_true, Constant::Integral(Integral::i1_true()));
+      refmut.insert(
+        this.common_floating_zero[0],
+        Constant::Floating(Floating::zero(FloatFormat::IEEE32)),
+      );
 
-      let i1_false_qual = ast_context.i1_bool_type().into();
-      this.i1_false = ir_arena_ref.insert(Value::new(
-        i1_false_qual,
-        this.common_integer_types[0],
-        Constant::Integral(Integral::i1_false()),
+      this.common_floating_zero[1] = ir_arena_ref.insert(Value::new(
+        ast_context.float64_type(),
+        this.float64_type(),
+        Constant::Floating(Floating::zero(FloatFormat::IEEE64)),
         Default::default(),
       ));
-      refmut.insert(this.i1_false, Constant::Integral(Integral::i1_false()));
+      refmut.insert(
+        this.common_floating_zero[1],
+        Constant::Floating(Floating::zero(FloatFormat::IEEE64)),
+      );
+
+      let ast_types = [
+        ast_context.i1_bool_type(),
+        ast_context.uchar_type(),
+        ast_context.ushort_type(),
+        ast_context.uint_type(),
+        ast_context.ulong_long_type(),
+      ];
+      let widths = [1, 8, 16, 32, 64];
+      ast_types.iter().zip(widths).enumerate().for_each(
+        |(index, (ast_type, width))| {
+          this.common_integer_one[index] = ir_arena_ref.insert(Value::new(
+            ast_type,
+            this.common_integer_types[index],
+            Constant::Integral(Integral::bitmask(width)),
+            Default::default(),
+          ));
+          refmut.insert(
+            this.common_integer_one[index],
+            Constant::Integral(Integral::bitmask(width)),
+          );
+
+          this.common_integer_zero[index] = ir_arena_ref.insert(Value::new(
+            ast_type,
+            this.common_integer_types[index],
+            Constant::Integral(Integral::from_unsigned(0, width)),
+            Default::default(),
+          ));
+          refmut.insert(
+            this.common_integer_zero[index],
+            Constant::Integral(Integral::from_unsigned(0, width)),
+          );
+        },
+      );
     }
     this
   }
@@ -175,13 +211,47 @@ impl<'c> Context<'c> {
   }
 
   pub fn i1_true(&self) -> ValueID {
-    self.i1_true
+    self.common_integer_one[0]
   }
 
   pub fn i1_false(&self) -> ValueID {
-    self.i1_false
+    self.common_integer_zero[0]
   }
 
+  pub fn floating_zero(&self, format: FloatFormat) -> ValueID {
+    match format {
+      FloatFormat::IEEE32 => self.common_floating_zero[0],
+      FloatFormat::IEEE64 => self.common_floating_zero[1],
+    }
+  }
+
+  pub fn integer_zero(&self, width: u8) -> ValueID {
+    let index = match width {
+      1 => 0,
+      8 => 1,
+      16 => 2,
+      32 => 3,
+      64 => 4,
+      128 => 5,
+      _ => panic!("intern other integer constant on the fly"),
+    };
+    self.common_integer_zero[index]
+  }
+
+  pub fn integer_one(&self, width: u8) -> ValueID {
+    let index = match width {
+      1 => 0,
+      8 => 1,
+      16 => 2,
+      32 => 3,
+      64 => 4,
+      128 => 5,
+      _ => panic!("intern other integer constant on the fly"),
+    };
+    self.common_integer_one[index + 6]
+  }
+}
+impl<'c> Context<'c> {
   fn do_intern(&self, value: Type<'c>) -> TypeRef<'c> {
     if let Some(existing) = self.ir_type_interner.borrow().get(&value) {
       existing
@@ -199,7 +269,7 @@ impl<'c> Context<'c> {
   pub fn intern_constant<T: Into<Constant<'c>>>(
     &self,
     value: T,
-    qualified_type: QualifiedType<'c>,
+    ast_type: ast::TypeRef<'c>,
   ) -> ValueID {
     let value = value.into();
     if let Some(existing) = self.constant_interner.borrow().get_by_right(&value)
@@ -207,8 +277,8 @@ impl<'c> Context<'c> {
       *existing
     } else {
       let value_id = self.ir_arena.borrow_mut().insert(Value::new(
-        qualified_type,
-        self.ir_type(&qualified_type),
+        ast_type,
+        self.ir_type(ast_type),
         value.clone(),
         Default::default(),
       ));
@@ -330,14 +400,11 @@ impl<'c> Context<'c> {
 }
 
 impl<'c> Context<'c> {
-  pub fn ir_type(
-    &self,
-    qualified_type: &types::QualifiedType<'c>,
-  ) -> TypeRef<'c> {
+  pub fn ir_type(&self, ast_type: ast::TypeRef<'c>) -> TypeRef<'c> {
     use ::rcc_ast::types::{Primitive, TypeInfo};
     use Primitive::*;
-    match qualified_type.unqualified_type {
-      types::Type::Primitive(primitive) => match primitive {
+    match ast_type {
+      ast::Type::Primitive(primitive) => match primitive {
         Float => self.float32_type,
         Double => self.float64_type,
         Void => self.void_type,
@@ -348,15 +415,15 @@ impl<'c> Context<'c> {
         placeholder @ (LongDouble | ComplexFloat | ComplexDouble
         | ComplexLongDouble) => todo!("{placeholder:#?} not implemented"),
       },
-      types::Type::Pointer(_) => self.pointer_type,
-      types::Type::Array(array) => self.make_array(
+      ast::Type::Pointer(_) => self.pointer_type,
+      ast::Type::Array(array) => self.make_array(
         self.ir_type(&array.element_type),
         match array.size {
-          types::ArraySize::Constant(c) => c,
-          types::ArraySize::Incomplete | types::ArraySize::Variable(_) => 0,
+          ast::ArraySize::Constant(c) => c,
+          ast::ArraySize::Incomplete | ast::ArraySize::Variable(_) => 0,
         },
       ),
-      types::Type::FunctionProto(function_proto) => self.make_function(
+      ast::Type::FunctionProto(function_proto) => self.make_function(
         self.ir_type(&function_proto.return_type),
         self.ast_arena.alloc_slice_fill_iter(
           function_proto
@@ -366,9 +433,9 @@ impl<'c> Context<'c> {
         ),
         function_proto.is_variadic,
       ),
-      types::Type::Enum(_) => todo!(),
-      types::Type::Record(_) => todo!(),
-      types::Type::Union(_) => todo!(),
+      ast::Type::Enum(_) => todo!(),
+      ast::Type::Record(_) => todo!(),
+      ast::Type::Union(_) => todo!(),
     }
   }
 }

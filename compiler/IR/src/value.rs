@@ -1,4 +1,4 @@
-use ::rcc_ast::types::QualifiedType;
+use ::rcc_ast::types as ast;
 use ::rcc_shared::Constant;
 use ::slotmap::{Key, new_key_type};
 use ::std::cell::{Ref, RefMut};
@@ -107,7 +107,7 @@ impl User for Variable<'_> {
 #[derive(Debug)]
 pub struct Value<'c> {
   /// AST Type.
-  pub qualified_type: QualifiedType<'c>,
+  pub ast_type: ast::TypeRef<'c>,
   pub ir_type: TypeRef<'c>,
   pub data: Data<'c>,
   pub parent: ValueID,
@@ -121,13 +121,13 @@ impl User for Value<'_> {
 
 impl<'c> Value<'c> {
   pub fn new(
-    qualified_type: QualifiedType<'c>,
+    ast_type: ast::TypeRef<'c>,
     ir_type: TypeRef<'c>,
     value: impl Into<Data<'c>>,
     parent: ValueID,
   ) -> Self {
     Self {
-      qualified_type,
+      ast_type,
       ir_type,
       data: value.into(),
       parent,

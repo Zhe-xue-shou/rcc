@@ -435,8 +435,8 @@ impl<'c> Sema<'c> {
       | [TS::Unsigned, TS::Long, TS::Long, TS::Int] =>
         Ok(self.context().ulong_long_type().into()),
 
-      [TS::Float] => Ok(self.context().float_type().into()),
-      [TS::Double] => Ok(self.context().double_type().into()),
+      [TS::Float] => Ok(self.context().float32_type().into()),
+      [TS::Double] => Ok(self.context().float64_type().into()),
       [TS::Long, TS::Double] => Ok(
         Type::Primitive(Primitive::LongDouble)
           .lookup(self.context())

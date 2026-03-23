@@ -9,7 +9,7 @@ use ::rcc_ast::{
 };
 use ::rcc_sema::{declaration as sd, expression as se, statement as ss};
 use ::rcc_shared::{Constant, OpDiag, Operator, OperatorCategory, SourceSpan};
-use ::rcc_utils::{RefEq, Unbox, contract_violation};
+use ::rcc_utils::{RefEq, SmallString, Unbox, contract_violation};
 use ::slotmap::Key;
 use ::std::collections::HashMap;
 
@@ -28,6 +28,7 @@ pub struct Emitter<'c> {
   pub(super) current_block: ValueID,
   /// Blocks finalized in the current function
   pub(super) current_function: ValueID,
+  pub(super) labels: HashMap<SmallString, ValueID>,
   // pub(super) current_blocks: Vec<ValueID>,
   pub(super) locals: HashMap<SymbolPtr<'c>, ValueID>,
   /// function name → ValueID for call resolution
@@ -68,6 +69,7 @@ impl<'c> Emitter<'c> {
       locals: Default::default(),
       globals: Default::default(),
       module: Default::default(),
+      labels: Default::default(),
     }
   }
 
@@ -77,21 +79,21 @@ impl<'c> Emitter<'c> {
   }
 
   #[inline(always)]
-  pub(super) fn apply<R, F: FnOnce(&Value<'c>) -> R>(
+  pub(super) fn visit<R, F: FnOnce(&Value<'c>) -> R>(
+    &self,
+    id: ValueID,
+    action: F,
+  ) -> R {
+    self.session().ir().visit(id, action)
+  }
+
+  #[inline(always)]
+  pub(super) fn apply<R, F: FnOnce(&mut Value<'c>) -> R>(
     &self,
     id: ValueID,
     action: F,
   ) -> R {
     self.session().ir().apply(id, action)
-  }
-
-  #[inline(always)]
-  pub(super) fn apply_mut<R, F: FnOnce(&mut Value<'c>) -> R>(
-    &self,
-    id: ValueID,
-    action: F,
-  ) -> R {
-    self.session().ir().apply_mut(id, action)
   }
 }
 impl<'c> Emitter<'c> {
@@ -100,6 +102,8 @@ impl<'c> Emitter<'c> {
       let value = lookup!(self, value_id);
       (value.ir_type, value.ast_type)
     };
+    use inst::*;
+
     use super::types::Type;
     match ir_type {
       Type::Void()
@@ -108,38 +112,34 @@ impl<'c> Emitter<'c> {
       | Type::Array(_)
       | Type::Function(_) => unreachable!(),
       Type::Pointer() => self.emit(
-        inst::ICmp::new(inst::ICmpPredicate::Ne, value_id, self.ir().nullptr()),
+        ICmp::new(ICmpPredicate::Ne, value_id, self.ir().nullptr()),
         self.ast().i1_bool_type(),
       ),
       Type::Floating(format) => self.emit(
-        inst::FCmp::new(
-          inst::FCmpPredicate::Une,
+        FCmp::new(
+          FCmpPredicate::Une,
           value_id,
           self.ir().floating_zero(*format),
         ),
         self.ast().i1_bool_type(),
       ),
       Type::Integer(width) => self.emit(
-        inst::ICmp::new(
-          inst::ICmpPredicate::Ne,
-          value_id,
-          self.ir().integer_zero(*width),
-        ),
+        ICmp::new(ICmpPredicate::Ne, value_id, self.ir().integer_zero(*width)),
         self.ast().i1_bool_type(),
       ),
     }
   }
 }
 impl<'c> Emitter<'c> {
-  #[must_use = "it is recommended that we use returned value as assertion."]
+  #[must_use]
   fn push_block(&mut self, block_id: ValueID) -> ValueID {
-    let old_id = self.seal_current_block();
+    let old_id = self.current_block;
+    self.seal_current_block();
     self.current_block = block_id;
     old_id
   }
 
-  #[must_use]
-  fn seal_current_block(&mut self) -> ValueID {
+  fn seal_current_block(&mut self) {
     self.current_block.and_then(|block_id: ValueID| {
       assert!(
         !lookup!(self, self.current_block)
@@ -157,16 +157,16 @@ impl<'c> Emitter<'c> {
         .push(self.current_block);
       self.current_block = ValueID::null();
       block_id
-    })
+    });
   }
 
   #[must_use]
-  fn new_block(&mut self, basic_block: BasicBlock) -> ValueID {
+  fn new_empty_block(&mut self) -> ValueID {
     debug_assert!(!self.current_function.is_null());
     self.ir().insert(Value::new(
       self.ast().void_type(),
       self.ir().label_type(),
-      basic_block,
+      BasicBlock::default(),
       self.current_function,
     ))
   }
@@ -311,13 +311,25 @@ impl<'c> Emitter<'c> {
     let sd::Function {
       parameters, body, ..
     } = function;
-    self.locals.clear();
+
+    assert!(self.locals.is_empty());
+    assert!(self.labels.is_empty());
 
     assert!(self.current_block.is_null());
 
-    let block_id = self.new_block(Default::default());
+    debug_assert!(!self.current_function.is_null());
+    let entry_id = self.ir().insert(Value::new(
+      self.ast().void_type(),
+      self.ir().label_type(),
+      BasicBlock::new(
+        Vec::with_capacity((parameters.len() + 1) * 2 + 1),
+        Default::default(),
+      ),
+      self.current_function,
+    ));
 
-    assert!(self.push_block(block_id).is_null());
+    let _null = self.push_block(entry_id);
+    assert!(_null.is_null());
 
     {
       let return_type = lookup!(self, self.current_function)
@@ -333,7 +345,7 @@ impl<'c> Emitter<'c> {
         self.emit(return_type.default_value(), return_type);
       _ = self.emit(
         inst::Memory::Store(inst::Store::new(return_slot_id, default_value_id)),
-        return_type,
+        self.ast().void_type(),
       );
 
       // insert params into the local scope and allocate spaces
@@ -352,10 +364,25 @@ impl<'c> Emitter<'c> {
           )
         })
     };
+
+    let body_id = self.new_empty_block();
+    let unconditional_jump = self.emit(
+      inst::Terminator::Jump(inst::Jump::new(body_id)),
+      self.ast().void_type(),
+    );
+
+    self.apply(self.current_function, |value| {
+      value.data.as_function_mut_unchecked().entry = self.current_block
+    });
+
+    self.current_block = body_id;
+
     self.compound(body.expect("Precondition: function.is_definition()"));
-    _ = self.seal_current_block();
+
+    self.seal_current_block();
 
     self.locals.clear();
+    self.labels.clear();
   }
 
   fn global_vardef(&mut self, variable: sd::VarDef<'c>) {
@@ -485,7 +512,8 @@ impl<'c> Emitter<'c> {
       self.ast().void_type(),
     );
 
-    let then_block_id = self.new_block(Default::default());
+    let then_block_id = self.new_empty_block();
+    let else_block_id = self.new_empty_block();
 
     let should_be_now = self.push_block(then_block_id);
     assert_eq!(should_be_now, now_block_id);
@@ -506,8 +534,6 @@ impl<'c> Emitter<'c> {
         )
       })
     };
-
-    let else_block_id = self.new_block(Default::default());
 
     // the assertion here is wrong. new controlflow may add many blocks.
     // let shuold_be_then = self.push_block(else_block_id);
@@ -534,7 +560,7 @@ impl<'c> Emitter<'c> {
       })
       .unwrap_or_default()
       .and_then(|else_block_terminator| {
-        let immediate_block_id = self.new_block(Default::default());
+        let immediate_block_id = self.new_empty_block();
 
         // ditto
         let _last_block_of_else = self.push_block(immediate_block_id);
@@ -556,7 +582,11 @@ impl<'c> Emitter<'c> {
 
     let now_block_id = self.current_block;
 
-    let cond_block_id = self.new_block(Default::default());
+    let cond_block_id = self.new_empty_block();
+    let body_block_id = self.new_empty_block();
+    let immediate_block_id = self.new_empty_block();
+
+    self.labels.insert(tag, cond_block_id);
 
     let now_block_terminator = self.emit(
       inst::Terminator::Jump(inst::Jump::new(cond_block_id)),
@@ -572,13 +602,11 @@ impl<'c> Emitter<'c> {
     let cond_block_terminator = self.emit(
       inst::Terminator::Branch(inst::Branch::new(
         condition,
-        ValueID::null(),
-        ValueID::null(),
+        body_block_id,
+        immediate_block_id,
       )),
       self.ast().void_type(),
     );
-
-    let body_block_id = self.new_block(Default::default());
 
     let should_be_cond = self.push_block(body_block_id);
     assert_eq!(should_be_cond, cond_block_id);
@@ -592,22 +620,14 @@ impl<'c> Emitter<'c> {
         .terminator;
       terminator.unwrap_or_else(|| {
         self.emit_terminator(
-          inst::Jump::new(ValueID::null()),
+          inst::Jump::new(cond_block_id),
           self.ast().void_type(),
           self.current_block,
         )
       })
     };
 
-    let immediate_block_id = self.new_block(Default::default());
     let _last_block_of_body = self.push_block(immediate_block_id);
-
-    self.refill_jump(body_block_terminator, cond_block_id);
-    self.refill_branch(
-      cond_block_terminator,
-      body_block_id,
-      immediate_block_id,
-    );
   }
 
   fn do_while(&mut self, do_while: ss::DoWhile<'c>) {
@@ -619,14 +639,34 @@ impl<'c> Emitter<'c> {
     } = do_while;
 
     let now_block_id = self.current_block;
+
+    let body_block_id = self.new_empty_block();
+    let cond_block_id = self.new_empty_block();
+    let immediate_block_id = self.new_empty_block();
+
     let now_block_terminator = self.emit(
-      inst::Terminator::Jump(inst::Jump::new(ValueID::null())),
+      inst::Terminator::Jump(inst::Jump::new(body_block_id)),
       self.ast().void_type(),
     );
 
-    let body_block_id = self.new_block(Default::default());
-    let should_be_now = self.push_block(body_block_id);
-    assert_eq!(now_block_id, should_be_now);
+    self.labels.insert(tag, cond_block_id);
+    let _should_be_now = self.push_block(cond_block_id);
+    assert_eq!(_should_be_now, now_block_id);
+
+    let boolean_condition = self.expression(condition);
+    let condition = self.contextual_convert_to_i1(boolean_condition);
+
+    let cond_block_terminator = self.emit(
+      inst::Terminator::Branch(inst::Branch::new(
+        condition,
+        body_block_id,
+        immediate_block_id,
+      )),
+      self.ast().void_type(),
+    );
+
+    let _should_be_cond = self.push_block(body_block_id);
+    assert_eq!(_should_be_cond, cond_block_id);
 
     self.statement(body);
 
@@ -637,39 +677,14 @@ impl<'c> Emitter<'c> {
         .terminator;
       terminator.unwrap_or_else(|| {
         self.emit_terminator(
-          inst::Jump::new(ValueID::null()),
+          inst::Jump::new(cond_block_id),
           self.ast().void_type(),
-          body_block_id,
+          self.current_block,
         )
       })
     };
 
-    let cond_block_id = self.new_block(Default::default());
-    let _last_block_of_body = self.push_block(cond_block_id);
-
-    let boolean_condition = self.expression(condition);
-    let condition = self.contextual_convert_to_i1(boolean_condition);
-
-    let cond_block_terminator = self.emit(
-      inst::Terminator::Branch(inst::Branch::new(
-        condition,
-        ValueID::null(),
-        ValueID::null(),
-      )),
-      self.ast().void_type(),
-    );
-
-    let immediate_block_id = self.new_block(Default::default());
-    let should_be_cond = self.push_block(immediate_block_id);
-    assert_eq!(cond_block_id, should_be_cond);
-
-    self.refill_jump(now_block_terminator, body_block_id);
-    self.refill_jump(body_block_terminator, cond_block_id);
-    self.refill_branch(
-      cond_block_terminator,
-      body_block_id,
-      immediate_block_id,
-    );
+    let _last_block_of_body = self.push_block(immediate_block_id);
   }
 
   fn for_stmt(&self, for_stmt: ss::For<'c>) {
@@ -685,15 +700,58 @@ impl<'c> Emitter<'c> {
   }
 
   fn label(&mut self, label: ss::Label<'c>) {
+    let ss::Label {
+      name, statement, ..
+    } = label;
     todo!()
   }
 
-  fn break_stmt(&self, break_stmt: ss::Break<'c>) {
-    todo!()
+  fn break_stmt(&mut self, break_stmt: ss::Break<'c>) {
+    let ss::Break { tag, .. } = break_stmt;
+    let now_block_id = self.current_block;
+    let cond_block_id = self
+      .labels
+      .get(&tag)
+      .unwrap_or_else(|| panic!("tag {tag} not found!"));
+    let term_id = lookup!(self, *cond_block_id)
+      .data
+      .as_basicblock_unchecked()
+      .terminator
+      .unwrap();
+    let immediate_block_id = self.visit(term_id, |value| {
+      value
+        .data
+        .as_instruction_unchecked()
+        .as_terminator_unchecked()
+        .as_branch()
+        .expect("cond block should end with a branch inst, not others")
+        .else_branch()
+    });
+    let break_inst_id = self.emit(
+      inst::Terminator::Jump(inst::Jump::new(immediate_block_id)),
+      self.ast().void_type(),
+    );
+
+    // unreachable block?
+    let next_block_id = self.new_empty_block();
+    let _should_be_now = self.push_block(next_block_id);
+    assert_eq!(now_block_id, _should_be_now);
   }
 
-  fn continue_stmt(&self, continue_stmt: ss::Continue<'c>) {
-    todo!()
+  fn continue_stmt(&mut self, continue_stmt: ss::Continue<'c>) {
+    let ss::Continue { tag, .. } = continue_stmt;
+    let now_block_id = self.current_block;
+    let cond_block_id = self
+      .labels
+      .get(&tag)
+      .unwrap_or_else(|| panic!("tag {tag} not found!"));
+    let continue_inst_id = self.emit(
+      inst::Terminator::Jump(inst::Jump::new(*cond_block_id)),
+      self.ast().void_type(),
+    );
+    let next_block_id = self.new_empty_block();
+    let _should_be_now = self.push_block(next_block_id);
+    assert_eq!(now_block_id, _should_be_now);
   }
 }
 impl<'c> Emitter<'c> {
@@ -1243,23 +1301,14 @@ impl<'c> Emitter<'c> {
 
     match cannot_inline_me_otherwise_refcell_panic {
       super::Type::Pointer() => integral(self.ir().nullptr()),
-      super::Type::Integer(width) => {
-        let zero = self.emit(
-          Constant::Integral(Integral::new(
-            0,
-            *width,
-            ast_type.signedness().unwrap_or(Signedness::Unsigned),
-          )),
-          lookup!(self, operand).ast_type,
-        );
-        integral(zero)
-      },
+      super::Type::Integer(width) => integral(self.ir().integer_zero(*width)),
       super::Type::Floating(format) => {
-        let float_zero =
-          self.emit(Constant::Floating(Floating::zero(*format)), ast_type);
-
         let cmp = self.emit(
-          inst::FCmp::new(inst::FCmpPredicate::Une, operand, float_zero),
+          inst::FCmp::new(
+            inst::FCmpPredicate::Une,
+            operand,
+            self.ir().floating_zero(*format),
+          ),
           self.ast().i1_bool_type(),
         );
         common(cmp)
@@ -1296,19 +1345,16 @@ impl<'c> Emitter<'c> {
   ) -> ValueID {
     match operator {
       Operator::Plus => operand,
-      Operator::Minus => {
-        let zero = self.emit(
-          Constant::Integral(Integral::from_unsigned(
-            0,
-            lookup!(self, operand).ast_type.size_bits() as u8,
-          )),
-          ast_type,
-        );
-        self.emit(
-          inst::Binary::new(inst::BinaryOp::Sub, zero, operand),
-          ast_type,
-        )
-      },
+      Operator::Minus => self.emit(
+        inst::Binary::new(
+          inst::BinaryOp::Sub,
+          self
+            .ir()
+            .integer_zero(lookup!(self, operand).ast_type.size_bits() as u8),
+          operand,
+        ),
+        ast_type,
+      ),
       _ => unreachable!(),
     }
   }

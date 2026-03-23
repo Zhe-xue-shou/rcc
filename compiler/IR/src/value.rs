@@ -31,12 +31,21 @@ impl ValueID {
 
   #[inline]
   pub fn unwrap(self) -> Self {
-    if self.is_null() { panic!() } else { self }
+    if self.is_null() {
+      panic!("id is null")
+    } else {
+      self
+    }
   }
 
   #[inline]
   pub fn unwrap_or_else<F: FnOnce() -> Self>(self, f: F) -> Self {
     if self.is_null() { f() } else { self }
+  }
+
+  #[inline]
+  pub fn unwrap_or(self, alt: Self) -> Self {
+    if self.is_null() { alt } else { self }
   }
 
   #[inline]

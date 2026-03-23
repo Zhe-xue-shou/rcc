@@ -276,21 +276,23 @@ impl<'c> Print<'c, module::Function<'_>> for Value<'c> {
     printer.write(")", &palette.skeleton);
     if variant.is_definition() {
       printer.writeln(" {", &palette.skeleton);
-      variant.blocks.iter().for_each(|&block_id| {
-        printer
-          .write(suff!(":" => printer.get_id(block_id)), &palette.skeleton);
-        let block = &*lookup!(printer, block_id);
-        preds(printer, palette, block_id);
-        printer.newline();
-        Print::print(
-          block,
-          printer,
-          "\t",
-          false,
-          palette,
-          block.data.as_basicblock_unchecked(),
-        );
-      });
+      ::std::iter::once(&variant.entry)
+        .chain(variant.blocks.iter())
+        .for_each(|&block_id| {
+          printer
+            .write(suff!(":" => printer.get_id(block_id)), &palette.skeleton);
+          let block = &*lookup!(printer, block_id);
+          preds(printer, palette, block_id);
+          printer.newline();
+          Print::print(
+            block,
+            printer,
+            "\t",
+            false,
+            palette,
+            block.data.as_basicblock_unchecked(),
+          );
+        });
       printer.write("\n}", &palette.skeleton);
     }
     printer.newline();
@@ -321,21 +323,15 @@ impl<'c> Print<'c, module::BasicBlock> for Value<'c> {
     variant.instructions.iter().for_each(|&inst_id| {
       printer.write(prefix, &palette.dim);
       let value = lookup!(printer, inst_id);
-      match &value.data {
-        ValueData::Instruction(inst::Instruction::Memory(
-          inst::Memory::Store(store),
-        )) => {
-          Print::print(&*value, printer, "", is_last, palette, store);
-          // print_users(printer, palette, inst_id);
-        },
-        _ => {
-          printer
-            .write_fmt(pre!("%"=> printer.get_id(inst_id)), &palette.skeleton);
-          printer.write(" = ", &palette.skeleton);
-          Printable::print(&*value, printer, "", is_last, palette);
-          // print_users(printer, palette, inst_id);
-        },
+
+      if !value.ir_type.is_void() && !value.ir_type.is_label() {
+        printer
+          .write_fmt(pre!("%"=> printer.get_id(inst_id)), &palette.skeleton);
+        printer.write(" = ", &palette.skeleton);
       }
+
+      Printable::print(&*value, printer, "", is_last, palette);
+      // print_users(printer, palette, inst_id);
       printer.newline();
     });
     let terminator = &*lookup!(printer, variant.terminator);

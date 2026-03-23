@@ -27,7 +27,7 @@ impl Signedness {
   }
 }
 
-impl From<bool> for Signedness {
+impl const From<bool> for Signedness {
   fn from(signed: bool) -> Self {
     if signed { Signed } else { Unsigned }
   }

@@ -7,7 +7,7 @@ use super::{
   QualifiedType, Record, Type, Union,
 };
 
-pub trait TypeInfo<'c> {
+pub const trait TypeInfo<'c> {
   #[must_use]
   fn size(&self) -> usize;
   #[must_use]
@@ -76,7 +76,7 @@ impl<'c> TypeInfo<'c> for Type<'c> {
     )
   }
 }
-impl<'c> TypeInfo<'c> for Primitive {
+impl<'c> const TypeInfo<'c> for Primitive {
   /// integral size should be aligned with method `Primitive::integer_width()`.
   fn size(&self) -> usize {
     // x86_64 sizes
@@ -129,9 +129,7 @@ impl<'c> TypeInfo<'c> for Primitive {
       )),
       _ if self.is_floating_point() =>
         Constant::Floating(Floating::zero(self.floating_format())),
-      _ => unreachable!(
-        "default value for non-scalar type should not be requested"
-      ),
+      _ => unreachable!(),
     }
   }
 }
@@ -211,7 +209,7 @@ impl<'c> TypeInfo<'c> for Union<'c> {
     panic!("default value for non-scalar type should not be requested");
   }
 }
-impl<'c> TypeInfo<'c> for Pointer<'c> {
+impl<'c> const TypeInfo<'c> for Pointer<'c> {
   #[inline(always)]
   fn size(&self) -> usize {
     ULongLong.size() // x86_64 LLP64 Windows

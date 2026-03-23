@@ -12,12 +12,15 @@ int main() {
   // }
   // int i;
   // i = 10;
-  int j = getchar();
   do {
-    j = j - 1;
-    i = i + j;
-  } while (j);
-  return i;
+    int j = getchar();
+    if (j == 10) {
+      break;
+    }
+    continue;
+    i = i - 1;
+  } while (i);
+  return 0;
 
   // for (int j = getchar(); j < 10; j = j + 1) {
   //   i = i + 1;

@@ -16,27 +16,27 @@ pub trait Promotion {
 }
 
 impl Primitive {
-  pub fn is_integer(&self) -> bool {
+  pub const fn is_integer(&self) -> bool {
     self.is_signed_integer() || self.is_unsigned()
   }
 
-  pub fn is_signed_integer(&self) -> bool {
+  pub const fn is_signed_integer(&self) -> bool {
     matches!(self, Char | SChar | Short | Int | Long | LongLong)
   }
 
-  pub fn is_arithmetic(&self) -> bool {
+  pub const fn is_arithmetic(&self) -> bool {
     self.is_integer() || self.is_floating_point()
   }
 
-  pub fn is_signed(&self) -> bool {
+  pub const fn is_signed(&self) -> bool {
     self.is_signed_integer() || self.is_floating_point()
   }
 
-  pub fn is_unsigned(&self) -> bool {
+  pub const fn is_unsigned(&self) -> bool {
     matches!(self, Bool | UChar | UShort | UInt | ULong | ULongLong)
   }
 
-  pub fn integer_rank(&self) -> u8 {
+  pub const fn integer_rank(&self) -> u8 {
     // bitmask has no use here, just a unique value for each rank
     match self {
       Bool => 0x01,
@@ -50,7 +50,7 @@ impl Primitive {
   }
 
   /// These value should be consistent with member function of `Integral::width`.
-  pub fn integer_width(&self) -> u8 {
+  pub const fn integer_width(&self) -> u8 {
     match self {
       Bool => 1,
       Char | SChar | UChar => 8,
@@ -62,11 +62,11 @@ impl Primitive {
     }
   }
 
-  pub fn is_floating_point(&self) -> bool {
+  pub const fn is_floating_point(&self) -> bool {
     matches!(self, Float | Double | LongDouble) || self.is_complex()
   }
 
-  pub fn floating_rank(&self) -> u8 {
+  pub const fn floating_rank(&self) -> u8 {
     match self {
       Float | ComplexFloat => 0x01,
       Double | ComplexDouble => 0x02,
@@ -75,7 +75,7 @@ impl Primitive {
     }
   }
 
-  pub fn floating_format(&self) -> FloatFormat {
+  pub const fn floating_format(&self) -> FloatFormat {
     use FloatFormat::*;
     match self {
       Float | ComplexFloat => IEEE32,
@@ -85,23 +85,23 @@ impl Primitive {
     }
   }
 
-  pub fn is_complex(&self) -> bool {
+  pub const fn is_complex(&self) -> bool {
     matches!(self, ComplexFloat | ComplexDouble | ComplexLongDouble)
   }
 
-  pub fn is_void(&self) -> bool {
+  pub const fn is_void(&self) -> bool {
     matches!(self, Void)
   }
 
-  pub fn is_bool(&self) -> bool {
+  pub const fn is_bool(&self) -> bool {
     matches!(self, Bool)
   }
 
-  pub fn is_contextual_bool(&self) -> bool {
+  pub const fn is_contextual_bool(&self) -> bool {
     matches!(self, Int)
   }
 
-  pub fn is_nullptr(&self) -> bool {
+  pub const fn is_nullptr(&self) -> bool {
     matches!(self, Nullptr)
   }
 

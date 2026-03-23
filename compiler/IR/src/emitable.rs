@@ -43,7 +43,13 @@ impl<'c> Emitable<'c, inst::Alloca> for Emitter<'c> {
       self.current_block,
     ));
 
-    self.apply_mut(self.current_block, |value| {
+    let entry_id = self
+      .visit(self.current_function, |value| {
+        value.data.as_function_unchecked().entry
+      })
+      // workaround, shall only be called if current block is entry block
+      .unwrap_or(self.current_block);
+    self.apply(entry_id, |value| {
       value
         .data
         .as_basicblock_mut_unchecked()
@@ -59,7 +65,7 @@ impl<'c> Emitable<'c, inst::Unary> for Emitter<'c> {
     value: inst::Unary,
     ast_type: ast::TypeRef<'c>,
   ) -> ValueID {
-    assert!(self.apply(value.operand(), |val| {
+    assert!(self.visit(value.operand(), |val| {
       val.ir_type.is_pointer()
         || val.ir_type.is_integer()
         || val.ir_type.is_floating()
@@ -157,7 +163,7 @@ impl<'c> Emitter<'c> {
       value.into(),
       self.current_block,
     ));
-    self.apply_mut(self.current_block, |value| {
+    self.apply(self.current_block, |value| {
       value
         .data
         .as_basicblock_mut_unchecked()
@@ -199,7 +205,7 @@ impl<'c> Emitter<'c> {
       self.current_block,
     ));
 
-    self.apply_mut(block_id, |value| {
+    self.apply(block_id, |value| {
       let mutref = value.data.as_basicblock_mut_unchecked();
       assert!(
         mutref.terminator.is_null(),

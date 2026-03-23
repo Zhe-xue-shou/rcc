@@ -76,116 +76,6 @@ impl<'c, D: Diagnosis<'c>> Session<'c, D> {
 }
 
 impl<'c> Context<'c> {
-  #[allow(clippy::uninit_assumed_init)]
-  #[allow(invalid_value)]
-  pub fn new(ast_arena: &'c Arena, ast_context: &'c ASTContext) -> Self {
-    let mut this = Self {
-      void_type: ast_arena.alloc(Type::Void()),
-      label_type: ast_arena.alloc(Type::Label()),
-      float32_type: ast_arena.alloc(Type::Floating(FloatFormat::IEEE32)),
-      float64_type: ast_arena.alloc(Type::Floating(FloatFormat::IEEE64)),
-      pointer_type: ast_arena.alloc(Type::Pointer()),
-      common_integer_types: [
-        ast_arena.alloc(1.into()),
-        ast_arena.alloc(8.into()),
-        ast_arena.alloc(16.into()),
-        ast_arena.alloc(32.into()),
-        ast_arena.alloc(64.into()),
-        ast_arena.alloc(128.into()),
-      ],
-      ast_arena,
-      constant_interner: Default::default(),
-      ir_arena: Default::default(),
-      ir_def_use: Default::default(),
-      ir_type_interner: Default::default(),
-      nullptr: unsafe { MaybeUninit::uninit().assume_init() },
-      common_integer_one: unsafe { MaybeUninit::uninit().assume_init() },
-      common_integer_zero: unsafe { MaybeUninit::uninit().assume_init() },
-      common_floating_zero: unsafe { MaybeUninit::uninit().assume_init() },
-    };
-    {
-      let mut refmut = this.ir_type_interner.borrow_mut();
-      refmut.insert(this.void_type);
-      refmut.insert(this.label_type);
-      refmut.insert(this.float32_type);
-      refmut.insert(this.float64_type);
-      refmut.insert(this.pointer_type);
-      this.common_integer_types.iter().for_each(|&t| {
-        refmut.insert(t);
-      });
-    }
-    {
-      let mut refmut = this.constant_interner.borrow_mut();
-      let mut ir_arena_ref = this.ir_arena.borrow_mut();
-
-      this.nullptr = ir_arena_ref.insert(Value::new(
-        ast_context.nullptr_type(),
-        this.pointer_type,
-        Constant::Nullptr(),
-        Default::default(),
-      ));
-      refmut.insert(this.nullptr, Constant::Nullptr());
-
-      this.common_floating_zero[0] = ir_arena_ref.insert(Value::new(
-        ast_context.float32_type(),
-        this.float32_type(),
-        Constant::Floating(Floating::zero(FloatFormat::IEEE32)),
-        Default::default(),
-      ));
-      refmut.insert(
-        this.common_floating_zero[0],
-        Constant::Floating(Floating::zero(FloatFormat::IEEE32)),
-      );
-
-      this.common_floating_zero[1] = ir_arena_ref.insert(Value::new(
-        ast_context.float64_type(),
-        this.float64_type(),
-        Constant::Floating(Floating::zero(FloatFormat::IEEE64)),
-        Default::default(),
-      ));
-      refmut.insert(
-        this.common_floating_zero[1],
-        Constant::Floating(Floating::zero(FloatFormat::IEEE64)),
-      );
-
-      let ast_types = [
-        ast_context.i1_bool_type(),
-        ast_context.uchar_type(),
-        ast_context.ushort_type(),
-        ast_context.uint_type(),
-        ast_context.ulong_long_type(),
-      ];
-      let widths = [1, 8, 16, 32, 64];
-      ast_types.iter().zip(widths).enumerate().for_each(
-        |(index, (ast_type, width))| {
-          this.common_integer_one[index] = ir_arena_ref.insert(Value::new(
-            ast_type,
-            this.common_integer_types[index],
-            Constant::Integral(Integral::bitmask(width)),
-            Default::default(),
-          ));
-          refmut.insert(
-            this.common_integer_one[index],
-            Constant::Integral(Integral::bitmask(width)),
-          );
-
-          this.common_integer_zero[index] = ir_arena_ref.insert(Value::new(
-            ast_type,
-            this.common_integer_types[index],
-            Constant::Integral(Integral::from_unsigned(0, width)),
-            Default::default(),
-          ));
-          refmut.insert(
-            this.common_integer_zero[index],
-            Constant::Integral(Integral::from_unsigned(0, width)),
-          );
-        },
-      );
-    }
-    this
-  }
-}
-impl<'c> Context<'c> {
   pub fn void_type(&self) -> TypeRef<'c> {
     self.void_type
   }
@@ -334,7 +224,7 @@ impl<'c> Context<'c> {
   pub fn insert(&self, value: Value<'c>) -> ValueID {
     let user = self.ir_arena.borrow_mut().insert(value);
     self.new_use_def_chain(user);
-    self.apply_mut(user, |value| {
+    self.apply(user, |value| {
       value
         .use_list()
         .iter()
@@ -382,7 +272,7 @@ impl<'c> Context<'c> {
     })
   }
 
-  pub fn apply<R, F: FnOnce(&Value<'c>) -> R>(
+  pub fn visit<R, F: FnOnce(&Value<'c>) -> R>(
     &self,
     id: ValueID,
     action: F,
@@ -390,7 +280,7 @@ impl<'c> Context<'c> {
     self.get(id).with_action(action)
   }
 
-  pub fn apply_mut<R, F: FnOnce(&mut Value<'c>) -> R>(
+  pub fn apply<R, F: FnOnce(&mut Value<'c>) -> R>(
     &self,
     id: ValueID,
     action: F,
@@ -443,3 +333,114 @@ use ::bimap::BiHashMap;
 use ::slotmap::{SecondaryMap, SlotMap};
 use ::std::{cell::RefCell, collections::HashSet};
 type Interner<T> = RefCell<HashSet<T>>;
+
+impl<'c> Context<'c> {
+  #[allow(clippy::uninit_assumed_init)]
+  #[allow(invalid_value)]
+  pub fn new(ast_arena: &'c Arena, ast_context: &'c ASTContext) -> Self {
+    let mut this = Self {
+      void_type: ast_arena.alloc(Type::Void()),
+      label_type: ast_arena.alloc(Type::Label()),
+      float32_type: ast_arena.alloc(Type::Floating(FloatFormat::IEEE32)),
+      float64_type: ast_arena.alloc(Type::Floating(FloatFormat::IEEE64)),
+      pointer_type: ast_arena.alloc(Type::Pointer()),
+      common_integer_types: [
+        ast_arena.alloc(1.into()),
+        ast_arena.alloc(8.into()),
+        ast_arena.alloc(16.into()),
+        ast_arena.alloc(32.into()),
+        ast_arena.alloc(64.into()),
+        ast_arena.alloc(128.into()),
+      ],
+      ast_arena,
+      constant_interner: Default::default(),
+      ir_arena: Default::default(),
+      ir_def_use: Default::default(),
+      ir_type_interner: Default::default(),
+      nullptr: unsafe { MaybeUninit::uninit().assume_init() },
+      common_integer_one: unsafe { MaybeUninit::uninit().assume_init() },
+      common_integer_zero: unsafe { MaybeUninit::uninit().assume_init() },
+      common_floating_zero: unsafe { MaybeUninit::uninit().assume_init() },
+    };
+    {
+      let mut refmut = this.ir_type_interner.borrow_mut();
+      refmut.insert(this.void_type);
+      refmut.insert(this.label_type);
+      refmut.insert(this.float32_type);
+      refmut.insert(this.float64_type);
+      refmut.insert(this.pointer_type);
+      this.common_integer_types.iter().for_each(|&t| {
+        refmut.insert(t);
+      });
+    }
+    {
+      let mut refmut = this.constant_interner.borrow_mut();
+      let mut ir_arena_ref = this.ir_arena.borrow_mut();
+
+      this.nullptr = ir_arena_ref.insert(Value::new(
+        ast_context.nullptr_type(),
+        this.pointer_type,
+        Constant::Nullptr(),
+        Default::default(),
+      ));
+      refmut.insert(this.nullptr, Constant::Nullptr());
+
+      this.common_floating_zero[0] = ir_arena_ref.insert(Value::new(
+        ast_context.float32_type(),
+        this.float32_type(),
+        Constant::Floating(Floating::zero(FloatFormat::IEEE32)),
+        Default::default(),
+      ));
+      refmut.insert(
+        this.common_floating_zero[0],
+        Constant::Floating(Floating::zero(FloatFormat::IEEE32)),
+      );
+
+      this.common_floating_zero[1] = ir_arena_ref.insert(Value::new(
+        ast_context.float64_type(),
+        this.float64_type(),
+        Constant::Floating(Floating::zero(FloatFormat::IEEE64)),
+        Default::default(),
+      ));
+      refmut.insert(
+        this.common_floating_zero[1],
+        Constant::Floating(Floating::zero(FloatFormat::IEEE64)),
+      );
+
+      let ast_types = [
+        ast_context.i1_bool_type(),
+        ast_context.uchar_type(),
+        ast_context.ushort_type(),
+        ast_context.uint_type(),
+        ast_context.ulong_long_type(),
+      ];
+      let widths = [1, 8, 16, 32, 64];
+      ast_types.iter().zip(widths).enumerate().for_each(
+        |(index, (ast_type, width))| {
+          this.common_integer_one[index] = ir_arena_ref.insert(Value::new(
+            ast_type,
+            this.common_integer_types[index],
+            Constant::Integral(Integral::bitmask(width)),
+            Default::default(),
+          ));
+          refmut.insert(
+            this.common_integer_one[index],
+            Constant::Integral(Integral::bitmask(width)),
+          );
+
+          this.common_integer_zero[index] = ir_arena_ref.insert(Value::new(
+            ast_type,
+            this.common_integer_types[index],
+            Constant::Integral(Integral::from_unsigned(0, width)),
+            Default::default(),
+          ));
+          refmut.insert(
+            this.common_integer_zero[index],
+            Constant::Integral(Integral::from_unsigned(0, width)),
+          );
+        },
+      );
+    }
+    this
+  }
+}

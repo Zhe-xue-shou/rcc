@@ -1,5 +1,5 @@
 use ::rcc_ast::type_alias_stmt;
-use ::rcc_utils::{SmallString, interconvert};
+use ::rcc_utils::interconvert;
 
 use super::{declaration::Declaration, expression::Expression};
 
@@ -36,15 +36,6 @@ interconvert!(Label, Statement, 'c);
 interconvert!(Break, Statement, 'c);
 interconvert!(Continue, Statement, 'c);
 
-impl<'c> Statement<'c> {
-  pub fn new_loop_dummy_identifier(str: &'static str) -> SmallString {
-    static LOOP_LABEL_COUNTER: ::std::sync::atomic::AtomicUsize =
-      ::std::sync::atomic::AtomicUsize::new(0);
-    let id =
-      LOOP_LABEL_COUNTER.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
-    SmallString::from(format!("{}_{}", str, id))
-  }
-}
 impl<'c> ::std::default::Default for Statement<'c> {
   fn default() -> Self {
     Self::Empty(Empty::default())

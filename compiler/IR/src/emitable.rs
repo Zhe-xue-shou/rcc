@@ -45,9 +45,9 @@ impl<'c> Emitable<'c, inst::Alloca> for Emitter<'c> {
 
     let entry_id = self
       .visit(self.current_function, |value| {
-        value.data.as_function_unchecked().entry
+        value.data.as_function_unchecked().entry()
       })
-      // workaround, shall only be called if current block is entry block
+      // shall only be called if current block is entry block
       .unwrap_or(self.current_block);
     self.apply(entry_id, |value| {
       value

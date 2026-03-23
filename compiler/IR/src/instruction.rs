@@ -125,6 +125,19 @@ impl User for Return {
     }
   }
 }
+#[derive(Debug, Default)]
+pub struct Unreachable;
+
+impl Unreachable {
+  pub fn new() -> Self {
+    Self
+  }
+}
+impl User for Unreachable {
+  fn use_list(&self) -> &[ValueID] {
+    &[]
+  }
+}
 #[derive(Debug)]
 pub enum Terminator {
   /// Unconditional jump
@@ -133,11 +146,13 @@ pub enum Terminator {
   Branch(Branch),
   /// Return from function
   Return(Return),
+  /// Placeholder or unreachable.
+  Unreachable(Unreachable),
 }
 
 impl User for Terminator {
   fn use_list(&self) -> &[ValueID] {
-    static_dispatch!(self, |variant| variant.use_list() => Jump Branch Return)
+    static_dispatch!(self, |variant| variant.use_list() => Jump Branch Return Unreachable)
   }
 }
 
@@ -586,10 +601,12 @@ use ::slotmap::Key;
 interconvert!(Branch, Terminator);
 interconvert!(Jump, Terminator);
 interconvert!(Return, Terminator);
+interconvert!(Unreachable, Terminator);
 
 make_trio_for!(Branch, Terminator);
 make_trio_for!(Jump, Terminator);
 make_trio_for!(Return, Terminator);
+make_trio_for!(Unreachable, Terminator);
 
 interconvert!(Trunc, Cast);
 interconvert!(Zext, Cast);

@@ -21,88 +21,17 @@ use ::rcc_utils::{
 
 use super::{declaration as sd, expression as se, statement as ss};
 
-#[cold]
-#[inline(never)]
-fn shall_ok_failed(msg: &str, location: &std::panic::Location) -> ! {
-  panic!(
-    "Invariant at {}: {}.
-    current implementation should always return `Ok` here.
-    This is a program internal error, please fix it!",
-    location, msg
-  );
+pub(crate) enum ScopeContext {
+  Function,
+  Loop,
+  Switch,
 }
 
-trait ImplHelper<T> {
-  /// Glorified `expect` for `Result`, use this to indicate a `program error/invariant`
-  ///
-  /// - `.expect("some message")` -> (prob) for user side error(although rarely use this way)
-  /// - `.shall_ok("some message")` -> for program internal invariant which indicates the problem is in the implementation
-  fn shall_ok<M: Into<Option<&'static str>>>(self, msg: M) -> T;
-}
-
-impl<'c, T> ImplHelper<T> for Result<T, Diag<'c>> {
-  #[track_caller]
-  fn shall_ok<M: Into<Option<&'static str>>>(self, msg: M) -> T {
-    match self {
-      Ok(t) => t,
-      Err(_) => shall_ok_failed(
-        msg.into().unwrap_or("No additional info"),
-        ::std::panic::Location::caller(),
-      ),
-    }
-  }
-}
-impl<T> ImplHelper<T> for Option<T> {
-  #[track_caller]
-  fn shall_ok<M: Into<Option<&'static str>>>(self, msg: M) -> T {
-    match self {
-      Some(t) => t,
-      None => shall_ok_failed(
-        msg.into().unwrap_or("No additional info"),
-        ::std::panic::Location::caller(),
-      ),
-    }
-  }
-}
-
-trait ImplHelper2<T, Listener> {
-  fn handle_with(self, context: &Listener, default: T) -> T;
-}
-
-impl<'c, T> ImplHelper2<T, Sema<'c>> for Result<T, Diag<'c>> {
-  /// if it's error, log it, and return a default value (means error)
-  fn handle_with(self, context: &Sema<'c>, default: T) -> T {
-    match self {
-      Ok(t) => t,
-      Err(e) => {
-        context.add_diag(e);
-        default
-      },
-    }
-  }
-}
-
-trait ImplHelper3<T, Listener> {
-  fn handle_or_default(self, context: &Listener) -> T;
-}
-
-impl<'c, T: ::std::default::Default> ImplHelper3<T, Sema<'c>>
-  for Result<T, Diag<'c>>
-{
-  fn handle_or_default(self, context: &Sema<'c>) -> T {
-    match self {
-      Ok(t) => t,
-      Err(e) => {
-        context.add_diag(e);
-        ::std::default::Default::default()
-      },
-    }
-  }
-}
 pub struct Sema<'c> {
   program: pd::Program<'c>,
   environment: Environment<'c>,
   current_function: Option<sd::Function<'c>>,
+  scope_context: Vec<ScopeContext>,
   session: SessionRef<'c, OpDiag<'c>>,
 }
 impl<'a> ::std::ops::Deref for Sema<'a> {
@@ -122,6 +51,7 @@ impl<'c> Sema<'c> {
       session,
       environment: Default::default(),
       current_function: Default::default(),
+      scope_context: Default::default(),
     }
   }
 
@@ -661,6 +591,7 @@ impl<'c> Sema<'c> {
     self.current_function = Some(function);
 
     self.environment.enter();
+    self.scope_context.push(ScopeContext::Function);
 
     self
       .current_function
@@ -682,7 +613,9 @@ impl<'c> Sema<'c> {
 
     let statements = self.statements(body.statements);
 
+    let _func = self.scope_context.pop();
     self.environment.exit();
+    debug_assert!(matches!(_func, Some(ScopeContext::Function)));
 
     self
       .current_function
@@ -2032,7 +1965,6 @@ impl<'c> Sema<'c> {
     let ps::While {
       condition,
       body,
-      tag: label,
       span,
     } = while_stmt;
     let analyzed_condition = self
@@ -2042,13 +1974,15 @@ impl<'c> Sema<'c> {
         self,
         se::Expression::new_error_node(self.context().converted_bool().into()),
       );
+    self.scope_context.push(ScopeContext::Loop);
     let analyzed_body = self.statement(*body).handle_or_default(self).into();
-    Ok(ss::While::new(
-      analyzed_condition,
-      analyzed_body,
-      label,
-      span,
-    ))
+    let _while = self.scope_context.pop();
+    debug_assert!(
+      matches!(_while, Some(ScopeContext::Loop)),
+      "scope context stack corrupted: expected loop context"
+    );
+
+    Ok(ss::While::new(analyzed_condition, analyzed_body, span))
   }
 
   fn dowhilestmt(
@@ -2058,10 +1992,16 @@ impl<'c> Sema<'c> {
     let ps::DoWhile {
       body,
       condition,
-      tag: label,
       span,
     } = do_while;
+    self.scope_context.push(ScopeContext::Loop);
     let analyzed_body = self.statement(*body).handle_or_default(self).into();
+    let _do_while = self.scope_context.pop();
+    debug_assert!(
+      matches!(_do_while, Some(ScopeContext::Loop)),
+      "scope context stack corrupted: expected loop context"
+    );
+
     let analyzed_condition = self
       .expression(condition)
       .and_then(|e| e.lvalue_conversion().is_contextually_convertible_to_bool())
@@ -2069,12 +2009,7 @@ impl<'c> Sema<'c> {
         self,
         se::Expression::new_error_node(self.context().converted_bool().into()),
       );
-    Ok(ss::DoWhile::new(
-      analyzed_body,
-      analyzed_condition,
-      label,
-      span,
-    ))
+    Ok(ss::DoWhile::new(analyzed_body, analyzed_condition, span))
   }
 
   fn forstmt(
@@ -2086,7 +2021,6 @@ impl<'c> Sema<'c> {
       condition,
       increment,
       body,
-      tag: label,
       span,
     } = for_stmt;
     let analyzed_initializer = initializer
@@ -2099,13 +2033,20 @@ impl<'c> Sema<'c> {
     });
     let analyzed_increment =
       increment.map(|inc| self.expression(inc).handle_or_default(self));
+
+    self.scope_context.push(ScopeContext::Loop);
     let analyzed_body = self.statement(*body).handle_or_default(self).into();
+    let _for = self.scope_context.pop();
+    debug_assert!(
+      matches!(_for, Some(ScopeContext::Loop)),
+      "scope context stack corrupted: expected loop context"
+    );
+
     Ok(ss::For::new(
       analyzed_initializer,
       analyzed_condition,
       analyzed_increment,
       analyzed_body,
-      label,
       span,
     ))
   }
@@ -2118,7 +2059,6 @@ impl<'c> Sema<'c> {
       cases,
       condition,
       default,
-      tag,
       span,
     } = switch;
     let analyzed_condition = match self.expression(condition) {
@@ -2143,13 +2083,19 @@ impl<'c> Sema<'c> {
       .map(|case| self.casestmt(case).shall_ok("switch case"))
       .collect::<Vec<_>>();
 
+    self.scope_context.push(ScopeContext::Switch);
     let analyzed_default = default
       .map(|default| self.defaultstmt(default).shall_ok("switch default"));
+    let _switch = self.scope_context.pop();
+    debug_assert!(
+      matches!(_switch, Some(ScopeContext::Switch)),
+      "scope context stack corrupted: expected loop context"
+    );
+
     Ok(ss::Switch::new(
       analyzed_condition,
       analyzed_cases,
       analyzed_default,
-      tag,
       span,
     ))
   }
@@ -2250,10 +2196,24 @@ impl<'c> Sema<'c> {
     break_stmt: ps::Break,
   ) -> Result<ss::Break<'c>, Diag<'c>> {
     match self.environment.is_global() {
-      true => contract_violation!(
-        "break statement in global scope should be handled in parser"
+      true => Err(
+        TopLevelBreak
+          .into_with(Severity::Error)
+          .into_with(break_stmt.span),
       ),
-      false => Ok(ss::Break::new(break_stmt.tag, break_stmt.span)),
+      false => match self
+        .scope_context
+        .iter()
+        .rev()
+        .find(|ctx| matches!(ctx, ScopeContext::Loop | ScopeContext::Switch))
+      {
+        Some(_) => Ok(ss::Break::new(break_stmt.span)),
+        None => Err(
+          BreakNotWithinLoop
+            .into_with(Severity::Error)
+            .into_with(break_stmt.span),
+        ),
+      },
     }
   }
 
@@ -2262,10 +2222,24 @@ impl<'c> Sema<'c> {
     continue_stmt: ps::Continue,
   ) -> Result<ss::Continue<'c>, Diag<'c>> {
     match self.environment.is_global() {
-      true => contract_violation!(
-        "continue statement in global scope should be handled in parser"
+      true => Err(
+        TopLevelContinue
+          .into_with(Severity::Error)
+          .into_with(continue_stmt.span),
       ),
-      false => Ok(ss::Continue::new(continue_stmt.tag, continue_stmt.span)),
+      false => match self
+        .scope_context
+        .iter()
+        .rev()
+        .find(|ctx| matches!(ctx, ScopeContext::Loop))
+      {
+        Some(_) => Ok(ss::Continue::new(continue_stmt.span)),
+        None => Err(
+          ContinueNotWithinLoop
+            .into_with(Severity::Error)
+            .into_with(continue_stmt.span),
+        ),
+      },
     }
   }
 }
@@ -2283,4 +2257,83 @@ mod test {
   //   assert!(analyzed_expr.is_ok());
   //   println!("{:#?}", dbg!(analyzed_expr.unwrap()));
   // }
+}
+
+#[cold]
+#[inline(never)]
+fn shall_ok_failed(msg: &str, location: &std::panic::Location) -> ! {
+  panic!(
+    "Invariant at {}: {}.
+    current implementation should always return `Ok` here.
+    This is a program internal error, please fix it!",
+    location, msg
+  );
+}
+
+trait ImplHelper<T> {
+  /// Glorified `expect` for `Result`, use this to indicate a `program error/invariant`
+  ///
+  /// - `.expect("some message")` -> (prob) for user side error(although rarely use this way)
+  /// - `.shall_ok("some message")` -> for program internal invariant which indicates the problem is in the implementation
+  fn shall_ok<M: Into<Option<&'static str>>>(self, msg: M) -> T;
+}
+
+impl<'c, T> ImplHelper<T> for Result<T, Diag<'c>> {
+  #[track_caller]
+  fn shall_ok<M: Into<Option<&'static str>>>(self, msg: M) -> T {
+    match self {
+      Ok(t) => t,
+      Err(_) => shall_ok_failed(
+        msg.into().unwrap_or("No additional info"),
+        ::std::panic::Location::caller(),
+      ),
+    }
+  }
+}
+impl<T> ImplHelper<T> for Option<T> {
+  #[track_caller]
+  fn shall_ok<M: Into<Option<&'static str>>>(self, msg: M) -> T {
+    match self {
+      Some(t) => t,
+      None => shall_ok_failed(
+        msg.into().unwrap_or("No additional info"),
+        ::std::panic::Location::caller(),
+      ),
+    }
+  }
+}
+
+trait ImplHelper2<T, Listener> {
+  fn handle_with(self, context: &Listener, default: T) -> T;
+}
+
+impl<'c, T> ImplHelper2<T, Sema<'c>> for Result<T, Diag<'c>> {
+  /// if it's error, log it, and return a default value (means error)
+  fn handle_with(self, context: &Sema<'c>, default: T) -> T {
+    match self {
+      Ok(t) => t,
+      Err(e) => {
+        context.add_diag(e);
+        default
+      },
+    }
+  }
+}
+
+trait ImplHelper3<T, Listener> {
+  fn handle_or_default(self, context: &Listener) -> T;
+}
+
+impl<'c, T: ::std::default::Default> ImplHelper3<T, Sema<'c>>
+  for Result<T, Diag<'c>>
+{
+  fn handle_or_default(self, context: &Sema<'c>) -> T {
+    match self {
+      Ok(t) => t,
+      Err(e) => {
+        context.add_diag(e);
+        ::std::default::Default::default()
+      },
+    }
+  }
 }

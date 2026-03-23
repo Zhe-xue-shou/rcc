@@ -1,4 +1,12 @@
 int getchar();
+void b(void) {}
+void c() { return; }
+void f() { int i = 0; }
+void h(int i) {}
+void i(int i) { return; }
+void k(int i) { int j = 0; }
+int d() {}
+int e() { return 0; }
 int main() {
   int i = getchar();
   // int j;
@@ -18,12 +26,18 @@ int main() {
       break;
     }
     continue;
-    i = i / 5;
+    // i = i / 5;
   } while (i);
-  return 0;
+  // return 0;
+  c();
+  for (int j = getchar(); j < 10; j = j + 1) {
+    i = i + 1;
+  }
 
-  // for (int j = getchar(); j < 10; j = j + 1) {
-  //   i = i + 1;
-  // }
-  // return i;
+  int p = getchar();
+  while (p < 10) {
+    //...
+    p = p + 1;
+  }
+  return i;
 }

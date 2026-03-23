@@ -116,6 +116,20 @@ mod data {
     LabelNotWithinSwitch(Keyword),
     #[error("Label cannot appear at top level")]
     TopLevelLabel,
+    #[error("Break statement cannot appear at top level")]
+    TopLevelBreak,
+    #[error("Continue statement cannot appear at top level")]
+    TopLevelContinue,
+    #[error(
+      "Break statement can only appear inside body of while, do-while, for \
+       loop, or switch statement."
+    )]
+    BreakNotWithinLoop,
+    #[error(
+      "Continue statement can only appear inside body of while, do-while, or \
+       a for loop."
+    )]
+    ContinueNotWithinLoop,
     #[error("Expect label identifier after goto")]
     MissingLabelAfterGoto,
     #[error("{0}")]

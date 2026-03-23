@@ -1,15 +1,13 @@
-#![allow(unused)]
+#![allow(unused_variables)]
 #![deny(unused_must_use)]
-#![allow(clippy::needless_pass_by_ref_mut)]
-
-use ::rcc_adt::{Floating, Integral, Signedness};
+use ::rcc_adt::{Integral, Signedness};
 use ::rcc_ast::{
   SymbolPtr, UnaryKind,
   types::{self as ast, TypeInfo},
 };
 use ::rcc_sema::{declaration as sd, expression as se, statement as ss};
 use ::rcc_shared::{Constant, OpDiag, Operator, OperatorCategory, SourceSpan};
-use ::rcc_utils::{RefEq, SmallString, Unbox, contract_violation};
+use ::rcc_utils::{RefEq, StrRef, Unbox, contract_violation};
 use ::slotmap::Key;
 use ::std::collections::HashMap;
 
@@ -21,15 +19,33 @@ use super::{
   module::{self, BasicBlock, Module},
   value::{Value, ValueID, WithActionMut},
 };
+#[derive(Default, PartialEq, Eq)]
+pub(super) struct ControlFlowContext {
+  /// loops w/ switch
+  pub(super) break_target: ValueID,
+  /// [`None`] for switch, [`Some`] for loops
+  pub(super) continue_target: Option<ValueID>,
+}
 
+impl ControlFlowContext {
+  pub(super) fn new(
+    break_target: ValueID,
+    continue_target: Option<ValueID>,
+  ) -> Self {
+    Self {
+      break_target,
+      continue_target,
+    }
+  }
+}
 pub struct Emitter<'c> {
   pub(super) session: SessionRef<'c, OpDiag<'c>>,
   /// The basic block currently being written into
   pub(super) current_block: ValueID,
   /// Blocks finalized in the current function
   pub(super) current_function: ValueID,
-  pub(super) labels: HashMap<SmallString, ValueID>,
-  // pub(super) current_blocks: Vec<ValueID>,
+  pub(super) ctrlflow_ctx: Vec<ControlFlowContext>,
+  pub(super) labels: HashMap<StrRef<'c>, ValueID>,
   pub(super) locals: HashMap<SymbolPtr<'c>, ValueID>,
   /// function name → ValueID for call resolution
   pub(super) globals: HashMap<SymbolPtr<'c>, ValueID>,
@@ -70,6 +86,7 @@ impl<'c> Emitter<'c> {
       globals: Default::default(),
       module: Default::default(),
       labels: Default::default(),
+      ctrlflow_ctx: Default::default(),
     }
   }
 
@@ -98,13 +115,11 @@ impl<'c> Emitter<'c> {
 }
 impl<'c> Emitter<'c> {
   fn contextual_convert_to_i1(&mut self, value_id: ValueID) -> ValueID {
-    let (ir_type, ast_type) = {
-      let value = lookup!(self, value_id);
-      (value.ir_type, value.ast_type)
-    };
     use inst::*;
 
     use super::types::Type;
+
+    let ir_type = lookup!(self, value_id).ir_type;
     match ir_type {
       Type::Void()
       | Type::Label()
@@ -140,7 +155,7 @@ impl<'c> Emitter<'c> {
   }
 
   fn seal_current_block(&mut self) {
-    self.current_block.and_then(|block_id: ValueID| {
+    if !self.current_block.is_null() {
       assert!(
         !lookup!(self, self.current_block)
           .data
@@ -156,13 +171,11 @@ impl<'c> Emitter<'c> {
         .blocks
         .push(self.current_block);
       self.current_block = ValueID::null();
-      block_id
-    });
+    };
   }
 
   #[must_use]
   fn new_empty_block(&mut self) -> ValueID {
-    debug_assert!(!self.current_function.is_null());
     self.ir().insert(Value::new(
       self.ast().void_type(),
       self.ir().label_type(),
@@ -208,6 +221,8 @@ impl<'c> Emitter<'c> {
 
 impl<'c> Emitter<'c> {
   pub fn build(mut self, translation_unit: sd::TranslationUnit<'c>) -> Module {
+    self.current_block = self.new_empty_block();
+
     let declarations = translation_unit.declarations;
 
     self.module.globals = Vec::with_capacity(declarations.len());
@@ -215,6 +230,10 @@ impl<'c> Emitter<'c> {
     declarations
       .into_iter()
       .for_each(|declaration| self.global_decl(declaration));
+
+    debug_assert!(self.current_function.is_null());
+    debug_assert!(self.ctrlflow_ctx.is_empty());
+
     self.module
   }
 }
@@ -260,44 +279,49 @@ impl<'c> Emitter<'c> {
   }
 
   fn global_funcdef(&mut self, function: sd::Function<'c>) {
-    assert!(function.is_definition());
+    debug_assert!(function.is_definition());
+
+    let sd::Function {
+      symbol,
+      parameters,
+      body,
+      gotos,
+      labels,
+      ..
+    } = function;
+
+    let function_name = symbol.borrow().name;
+    let ast_type = symbol.borrow().qualified_type.unqualified_type;
 
     self.current_function = if let Some(&value_id) =
-      self.globals.get(&(function.symbol.as_ptr() as *const _))
+      self.globals.get(&(symbol.as_ptr() as *const _))
     {
       // should be function and declaration-only
       debug_assert!(
         !lookup!(self, value_id).data.as_function().is_some_and(|f| f
           .is_definition()
           && RefEq::ref_eq(
-            function.symbol.borrow().name,
+            function_name,
             lookup!(self, value_id).data.as_function_unchecked().name
           )
           && f.is_variadic
-            == function
-              .symbol
-              .borrow()
-              .qualified_type
-              .as_functionproto_unchecked()
-              .is_variadic),
+            == ast_type.as_functionproto_unchecked().is_variadic),
         "pre-registered function should be declaration-only"
       );
       value_id
     } else {
-      let sym = function.symbol.borrow();
-      let name = sym.name;
-      let ast_type = sym.qualified_type.unqualified_type;
-      let is_variadic = ast_type.as_functionproto_unchecked().is_variadic;
-      drop(sym);
-
       let function_id = self.emit(
-        module::Function::new_empty(name, Default::default(), is_variadic),
+        module::Function::new_empty(
+          function_name,
+          Default::default(),
+          ast_type.as_functionproto_unchecked().is_variadic,
+        ),
         ast_type,
       );
 
       self
         .globals
-        .insert(function.symbol.as_ptr() as *const _, function_id);
+        .insert(symbol.as_ptr() as *const _, function_id);
       debug_assert!(
         lookup!(self, function_id)
           .data
@@ -308,81 +332,133 @@ impl<'c> Emitter<'c> {
       function_id
     };
 
-    let sd::Function {
-      parameters, body, ..
-    } = function;
-
     assert!(self.locals.is_empty());
     assert!(self.labels.is_empty());
 
-    assert!(self.current_block.is_null());
+    self.apply(self.current_block, |val| {
+      val.parent = self.current_function;
+      let entry = val.data.as_basicblock_mut_unchecked();
+      debug_assert!(entry.is_empty());
+      entry.instructions.reserve((parameters.len() + 1) * 2 + 1);
+    });
 
-    debug_assert!(!self.current_function.is_null());
-    let entry_id = self.ir().insert(Value::new(
-      self.ast().void_type(),
-      self.ir().label_type(),
-      BasicBlock::new(
-        Vec::with_capacity((parameters.len() + 1) * 2 + 1),
-        Default::default(),
-      ),
-      self.current_function,
-    ));
+    let return_type = ast_type
+      .as_functionproto_unchecked()
+      .return_type
+      .unqualified_type;
 
-    let _null = self.push_block(entry_id);
-    assert!(_null.is_null());
-
-    {
-      let return_type = lookup!(self, self.current_function)
-        .ast_type
-        .as_functionproto_unchecked()
-        .return_type
-        .unqualified_type;
-
+    if !return_type.is_void() {
       // return value storage
       let return_slot_id = self.emit(inst::Alloca::new(), return_type);
-
       let default_value_id =
         self.emit(return_type.default_value(), return_type);
+
       _ = self.emit(
         inst::Memory::Store(inst::Store::new(return_slot_id, default_value_id)),
         self.ast().void_type(),
       );
+    }
 
-      // insert params into the local scope and allocate spaces
-      parameters
-        .into_iter()
-        .enumerate()
-        .for_each(|(index, parameter)| {
-          let ast_type =
-            parameter.symbol.borrow().qualified_type.unqualified_type;
-          let arg_id = self.emit(Argument::new(index), ast_type);
-          self.locals.insert(parameter.symbol.as_ptr(), arg_id);
-          let localed_arg_id = self.emit(inst::Alloca::new(), ast_type);
-          _ = self.emit(
-            inst::Memory::Store(inst::Store::new(localed_arg_id, arg_id)),
-            self.ast().void_type(),
-          )
-        })
-    };
-
-    let body_id = self.new_empty_block();
-    let unconditional_jump = self.emit(
-      inst::Terminator::Jump(inst::Jump::new(body_id)),
-      self.ast().void_type(),
-    );
+    // insert params into the local scope and allocate spaces
+    let params = parameters
+      .into_iter()
+      .enumerate()
+      .map(|(index, parameter)| {
+        let ast_type =
+          parameter.symbol.borrow().qualified_type.unqualified_type;
+        let arg_id = self.emit(Argument::new(index), ast_type);
+        self.locals.insert(parameter.symbol.as_ptr(), arg_id);
+        let localed_arg_id = self.emit(inst::Alloca::new(), ast_type);
+        _ = self.emit(
+          inst::Memory::Store(inst::Store::new(localed_arg_id, arg_id)),
+          self.ast().void_type(),
+        );
+        arg_id
+      })
+      .collect::<Vec<_>>();
 
     self.apply(self.current_function, |value| {
-      value.data.as_function_mut_unchecked().entry = self.current_block
+      value.data.as_function_mut_unchecked().params = params
     });
-
-    self.current_block = body_id;
 
     self.compound(body.expect("Precondition: function.is_definition()"));
 
-    self.seal_current_block();
+    let (has_inst, has_term) = self.visit(self.current_block, |value| {
+      let block = value.data.as_basicblock_unchecked();
+      (!block.instructions.is_empty(), !block.terminator.is_null())
+    });
+
+    let this = ::std::ptr::from_mut(self);
+
+    let common = || {
+      let this = unsafe { &mut *this };
+      let next_function_entry = this.new_empty_block();
+      let _ = this.push_block(next_function_entry);
+    };
+    // A | (B if B ...) this syntax is not supported.
+    let make_unreachable_block = || {
+      let this = unsafe { &mut *this };
+      let _unreachable = this.emit(
+        inst::Terminator::Unreachable(inst::Unreachable::new()),
+        this.ast().void_type(),
+      );
+      common();
+    };
+
+    match (has_inst, has_term) {
+      // if the current block has a terminator, push it and insert am empty one
+      (_, true) => common(),
+      // 5.1.2.3.4 Program termination
+      // If [...], reaching the `}` that terminates the main function returns a value of 0.
+      (_, false) if function_name == "main" => {
+        let _implicit_return = self.emit(
+          inst::Terminator::Return(inst::Return::new(Some(
+            self
+              .ir()
+              .integer_zero(self.ast().int_type().size_bits() as u8),
+          ))),
+          self.ast().int_type(),
+        );
+        common()
+      },
+      (_, false)
+        if ast_type.as_functionproto_unchecked().return_type.is_void() =>
+      // if the return type is void it may also be an implicit return void;
+      // only when it has no users does it indicate an traling empty block.
+        if !self.ir().get_use_list(self.current_block).is_empty()
+        // or user didnt write anything
+          || self.visit(self.current_function, |value|value.data.as_function_unchecked().blocks.is_empty())
+        {
+          let _implicit_return = self.emit(
+            inst::Terminator::Return(inst::Return::new(None)),
+            self.ast().void_type(),
+          );
+          common()
+        },
+      // if the current blobk is not empty but it does not have a terminator, insert an unreachable and take it.
+      (true, false) => make_unreachable_block(),
+      // if current block is not empty and is used by other blocks, it probably means the block just missing a terminator,
+      (false, false)
+        if !self.ir().get_use_list(self.current_block).is_empty() =>
+        make_unreachable_block(),
+      // if the current block is empty, and is not used by any other blocks,
+      // it prob means the previous one is return stmt
+      // and this one is just a trailing empty redundant block, leave as-is.
+      (false, false) => (),
+    }
 
     self.locals.clear();
     self.labels.clear();
+
+    assert!(
+      !lookup!(self, self.current_function)
+        .data
+        .as_function_unchecked()
+        .entry()
+        .is_null()
+    );
+
+    self.current_function = ValueID::null();
   }
 
   fn global_vardef(&mut self, variable: sd::VarDef<'c>) {
@@ -450,7 +526,7 @@ impl<'c> Emitter<'c> {
     use ss::Statement::*;
     match statement.unbox() {
       Empty(_) => (),
-      Return(return_stmt) => self.returnstmt(return_stmt),
+      Return(return_stmt) => self.return_stmt(return_stmt),
       Expression(expression) => self.exprstmt(expression),
       Declaration(declaration) => self.local_decl(declaration),
       Compound(compound) => self.compound(compound),
@@ -471,17 +547,19 @@ impl<'c> Emitter<'c> {
     self.expression(expression);
   }
 
-  fn returnstmt(&mut self, return_stmt: ss::Return<'c>) {
+  fn return_stmt(&mut self, return_stmt: ss::Return<'c>) {
     let ss::Return { expression, .. } = return_stmt;
     let ast_type = expression
       .as_ref()
       .map(|e| e.unqualified_type())
       .unwrap_or(self.ast().void_type());
     let operand: Option<ValueID> = expression.map(|e| self.expression(e));
-    _ = self.emit(
+    let _ret_inst = self.emit(
       inst::Terminator::Return(inst::Return::new(operand)),
       ast_type,
     );
+    let immediate_block_id = self.new_empty_block();
+    let _should_be_now = self.push_block(immediate_block_id);
   }
 
   fn compound(&mut self, body: ss::Compound<'c>) {
@@ -576,7 +654,7 @@ impl<'c> Emitter<'c> {
     let ss::While {
       condition,
       body,
-      tag, // tag is needed for break and continue, now TODO.
+      // tag, // tag is needed for break and continue, now TODO.
       ..
     } = while_stmt;
 
@@ -586,9 +664,12 @@ impl<'c> Emitter<'c> {
     let body_block_id = self.new_empty_block();
     let immediate_block_id = self.new_empty_block();
 
-    self.labels.insert(tag, cond_block_id);
+    self.ctrlflow_ctx.push(ControlFlowContext::new(
+      immediate_block_id,
+      Some(cond_block_id),
+    ));
 
-    let now_block_terminator = self.emit(
+    let _now_block_terminator = self.emit(
       inst::Terminator::Jump(inst::Jump::new(cond_block_id)),
       self.ast().void_type(),
     );
@@ -599,7 +680,7 @@ impl<'c> Emitter<'c> {
     let boolean_condition = self.expression(condition);
     let condition = self.contextual_convert_to_i1(boolean_condition);
 
-    let cond_block_terminator = self.emit(
+    let _cond_block_terminator = self.emit(
       inst::Terminator::Branch(inst::Branch::new(
         condition,
         body_block_id,
@@ -613,7 +694,7 @@ impl<'c> Emitter<'c> {
 
     self.statement(body);
 
-    let body_block_terminator = {
+    let _body_block_terminator = {
       let terminator = lookup!(self, self.current_block)
         .data
         .as_basicblock_unchecked()
@@ -628,13 +709,18 @@ impl<'c> Emitter<'c> {
     };
 
     let _last_block_of_body = self.push_block(immediate_block_id);
+    let _poped = self.ctrlflow_ctx.pop();
+    debug_assert!(
+      _poped.is_some_and(|_ctrl| _ctrl.break_target == immediate_block_id
+        && _ctrl.continue_target == Some(cond_block_id))
+    );
   }
 
   fn do_while(&mut self, do_while: ss::DoWhile<'c>) {
     let ss::DoWhile {
       condition,
       body,
-      tag,
+      // tag,
       ..
     } = do_while;
 
@@ -644,19 +730,23 @@ impl<'c> Emitter<'c> {
     let cond_block_id = self.new_empty_block();
     let immediate_block_id = self.new_empty_block();
 
-    let now_block_terminator = self.emit(
+    self.ctrlflow_ctx.push(ControlFlowContext::new(
+      immediate_block_id,
+      Some(cond_block_id),
+    ));
+
+    let _now_block_terminator = self.emit(
       inst::Terminator::Jump(inst::Jump::new(body_block_id)),
       self.ast().void_type(),
     );
 
-    self.labels.insert(tag, cond_block_id);
     let _should_be_now = self.push_block(cond_block_id);
     assert_eq!(_should_be_now, now_block_id);
 
     let boolean_condition = self.expression(condition);
     let condition = self.contextual_convert_to_i1(boolean_condition);
 
-    let cond_block_terminator = self.emit(
+    let _cond_block_terminator = self.emit(
       inst::Terminator::Branch(inst::Branch::new(
         condition,
         body_block_id,
@@ -670,7 +760,7 @@ impl<'c> Emitter<'c> {
 
     self.statement(body);
 
-    let body_block_terminator = {
+    let _body_block_terminator = {
       let terminator = lookup!(self, self.current_block)
         .data
         .as_basicblock_unchecked()
@@ -685,10 +775,95 @@ impl<'c> Emitter<'c> {
     };
 
     let _last_block_of_body = self.push_block(immediate_block_id);
+    let _poped = self.ctrlflow_ctx.pop();
+    debug_assert!(
+      _poped.is_some_and(|_ctrl| _ctrl.break_target == immediate_block_id
+        && _ctrl.continue_target == Some(cond_block_id))
+    );
   }
 
-  fn for_stmt(&self, for_stmt: ss::For<'c>) {
-    todo!()
+  fn for_stmt(&mut self, for_stmt: ss::For<'c>) {
+    let ss::For {
+      initializer,
+      condition,
+      increment,
+      body,
+      ..
+    } = for_stmt;
+
+    if let Some(statement) = initializer {
+      self.statement(statement)
+    }
+
+    let now_block_id = self.current_block;
+    let cond_block_id = self.new_empty_block();
+    let increment_block_id = self.new_empty_block();
+    let body_block_id = self.new_empty_block();
+    let immediate_block_id = self.new_empty_block();
+
+    self.ctrlflow_ctx.push(ControlFlowContext::new(
+      immediate_block_id,
+      Some(increment_block_id), // < this is different than while and do-while
+    ));
+
+    let _now_block_terminator = self.emit(
+      inst::Terminator::Jump(inst::Jump::new(cond_block_id)),
+      self.ast().void_type(),
+    );
+
+    let _should_be_now = self.push_block(cond_block_id);
+    assert_eq!(_should_be_now, now_block_id);
+
+    let boolean_condition = condition
+      .map(|cond| self.expression(cond))
+      .map(|cond| self.contextual_convert_to_i1(cond))
+      .unwrap_or_else(|| self.ir().i1_true()); // if condition is omitted, it is treated as true.
+    let _cond_block_terminator = self.emit(
+      inst::Terminator::Branch(inst::Branch::new(
+        boolean_condition,
+        body_block_id,
+        immediate_block_id,
+      )),
+      self.ast().void_type(),
+    );
+
+    let _should_be_cond = self.push_block(body_block_id);
+    assert_eq!(_should_be_cond, cond_block_id);
+
+    self.statement(body);
+
+    let _body_block_terminator = {
+      let terminator = lookup!(self, self.current_block)
+        .data
+        .as_basicblock_unchecked()
+        .terminator;
+      terminator.unwrap_or_else(|| {
+        self.emit_terminator(
+          inst::Jump::new(increment_block_id),
+          self.ast().void_type(),
+          self.current_block,
+        )
+      })
+    };
+
+    let _last_block_of_body = self.push_block(increment_block_id);
+
+    if let Some(increment) = increment {
+      self.expression(increment);
+    }
+    let _inc_block_terminator = self.emit(
+      inst::Terminator::Jump(inst::Jump::new(cond_block_id)),
+      self.ast().void_type(),
+    );
+
+    let _should_be_inc = self.push_block(immediate_block_id);
+    assert_eq!(_should_be_inc, increment_block_id);
+
+    let _poped = self.ctrlflow_ctx.pop();
+    debug_assert!(
+      _poped.is_some_and(|_ctrl| _ctrl.break_target == immediate_block_id
+        && _ctrl.continue_target == Some(increment_block_id))
+    );
   }
 
   fn switch(&self, switch: ss::Switch<'c>) {
@@ -700,58 +875,60 @@ impl<'c> Emitter<'c> {
   }
 
   fn label(&mut self, label: ss::Label<'c>) {
-    let ss::Label {
-      name, statement, ..
-    } = label;
     todo!()
   }
 
   fn break_stmt(&mut self, break_stmt: ss::Break<'c>) {
-    let ss::Break { tag, .. } = break_stmt;
+    let ss::Break { .. } = break_stmt;
+
+    let target_block_id = self
+      .ctrlflow_ctx
+      .last()
+      .map(|ctrl| ctrl.break_target)
+      .unwrap_or_else(|| {
+        panic!(
+          "break statement not within a loop or switch. this should have been \
+           caught in semantic checks."
+        )
+      });
+
     let now_block_id = self.current_block;
-    let cond_block_id = self
-      .labels
-      .get(&tag)
-      .unwrap_or_else(|| panic!("tag {tag} not found!"));
-    let term_id = lookup!(self, *cond_block_id)
-      .data
-      .as_basicblock_unchecked()
-      .terminator
-      .unwrap();
-    let immediate_block_id = self.visit(term_id, |value| {
-      value
-        .data
-        .as_instruction_unchecked()
-        .as_terminator_unchecked()
-        .as_branch()
-        .expect("cond block should end with a branch inst, not others")
-        .else_branch()
-    });
-    let break_inst_id = self.emit(
-      inst::Terminator::Jump(inst::Jump::new(immediate_block_id)),
+
+    let _break_inst_id = self.emit(
+      inst::Terminator::Jump(inst::Jump::new(target_block_id)),
       self.ast().void_type(),
     );
 
-    // unreachable block?
-    let next_block_id = self.new_empty_block();
-    let _should_be_now = self.push_block(next_block_id);
-    assert_eq!(now_block_id, _should_be_now);
+    let immediate_block_id = self.new_empty_block();
+    let _should_be_now = self.push_block(immediate_block_id);
+    debug_assert_eq!(now_block_id, _should_be_now);
   }
 
   fn continue_stmt(&mut self, continue_stmt: ss::Continue<'c>) {
-    let ss::Continue { tag, .. } = continue_stmt;
+    let ss::Continue { .. } = continue_stmt;
+
+    let target_block_id = self
+      .ctrlflow_ctx
+      .iter()
+      .rev()
+      .find_map(|ctrl| ctrl.continue_target)
+      .unwrap_or_else(|| {
+        panic!(
+          "continue statement not within a loop or switch. this should have \
+           been caught in semantic checks."
+        )
+      });
+
     let now_block_id = self.current_block;
-    let cond_block_id = self
-      .labels
-      .get(&tag)
-      .unwrap_or_else(|| panic!("tag {tag} not found!"));
-    let continue_inst_id = self.emit(
-      inst::Terminator::Jump(inst::Jump::new(*cond_block_id)),
+
+    let _continue_inst_id = self.emit(
+      inst::Terminator::Jump(inst::Jump::new(target_block_id)),
       self.ast().void_type(),
     );
-    let next_block_id = self.new_empty_block();
-    let _should_be_now = self.push_block(next_block_id);
-    assert_eq!(now_block_id, _should_be_now);
+
+    let immediate_block_id = self.new_empty_block();
+    let _should_be_now = self.push_block(immediate_block_id);
+    debug_assert_eq!(now_block_id, _should_be_now);
   }
 }
 impl<'c> Emitter<'c> {
@@ -1068,11 +1245,6 @@ impl<'c> Emitter<'c> {
     span: SourceSpan,
   ) -> ValueID {
     use super::Type::*;
-
-    // debug_assert!(
-    //   RefEq::ref_eq(*ast_type, self.ast().converted_bool())
-    //     || RefEq::ref_eq(*ast_type, self.ast().i1_bool_type()),
-    // );
 
     let lhs_ir_type = lookup!(self, left).ir_type;
     let rhs_ir_type = lookup!(self, right).ir_type;

@@ -1,6 +1,5 @@
-// use super::Placeholder as Empty;
 use ::rcc_shared::SourceSpan;
-use ::rcc_utils::{SmallString, StrRef};
+use ::rcc_utils::StrRef;
 
 // #[derive(Debug)]
 // pub enum RawStmt<'c, StmtTy, DeclTy, ExprTy, ExprCaseTy = ExprTy> {
@@ -68,7 +67,7 @@ pub struct RawIf<StmtTy, ExprTy> {
 pub struct RawWhile<StmtTy, ExprTy> {
   pub condition: ExprTy,
   pub body: Box<StmtTy>,
-  pub tag: SmallString,
+
   pub span: SourceSpan,
 }
 
@@ -76,7 +75,7 @@ pub struct RawWhile<StmtTy, ExprTy> {
 pub struct RawDoWhile<StmtTy, ExprTy> {
   pub body: Box<StmtTy>,
   pub condition: ExprTy,
-  pub tag: SmallString,
+
   pub span: SourceSpan,
 }
 
@@ -86,7 +85,7 @@ pub struct RawFor<StmtTy, ExprTy> {
   pub condition: Option<ExprTy>,
   pub increment: Option<ExprTy>,
   pub body: Box<StmtTy>,
-  pub tag: SmallString,
+
   pub span: SourceSpan,
 }
 
@@ -95,7 +94,7 @@ pub struct RawSwitch<StmtTy, ExprTy, ExprCaseTy = ExprTy> {
   pub condition: ExprTy,
   pub cases: Vec<RawCase<StmtTy, ExprCaseTy>>,
   pub default: Option<RawDefault<StmtTy>>,
-  pub tag: SmallString,
+
   pub span: SourceSpan,
 }
 #[derive(Debug)]
@@ -135,13 +134,11 @@ pub struct RawCompound<StmtTy> {
 
 #[derive(Debug)]
 pub struct RawBreak {
-  pub tag: SmallString,
   pub span: SourceSpan,
 }
 
 #[derive(Debug)]
 pub struct RawContinue {
-  pub tag: SmallString,
   pub span: SourceSpan,
 }
 
@@ -170,14 +167,14 @@ impl<StmtTy, ExprTy, ExprCaseTy> RawSwitch<StmtTy, ExprTy, ExprCaseTy> {
     condition: ExprTy,
     cases: Vec<RawCase<StmtTy, ExprCaseTy>>,
     default: Option<RawDefault<StmtTy>>,
-    tag: SmallString,
+
     span: SourceSpan,
   ) -> Self {
     Self {
       condition,
       cases,
       default,
-      tag,
+
       span,
     }
   }
@@ -222,32 +219,22 @@ impl<ExprTy> RawReturn<ExprTy> {
 }
 
 impl<StmtTy, ExprTy> RawWhile<StmtTy, ExprTy> {
-  pub fn new(
-    condition: ExprTy,
-    body: Box<StmtTy>,
-    tag: SmallString,
-    span: SourceSpan,
-  ) -> Self {
+  pub fn new(condition: ExprTy, body: Box<StmtTy>, span: SourceSpan) -> Self {
     Self {
       condition,
       body,
-      tag,
+
       span,
     }
   }
 }
 
 impl<StmtTy, ExprTy> RawDoWhile<StmtTy, ExprTy> {
-  pub fn new(
-    body: Box<StmtTy>,
-    condition: ExprTy,
-    tag: SmallString,
-    span: SourceSpan,
-  ) -> Self {
+  pub fn new(body: Box<StmtTy>, condition: ExprTy, span: SourceSpan) -> Self {
     Self {
       body,
       condition,
-      tag,
+
       span,
     }
   }
@@ -259,7 +246,7 @@ impl<StmtTy, ExprTy> RawFor<StmtTy, ExprTy> {
     condition: Option<ExprTy>,
     increment: Option<ExprTy>,
     body: Box<StmtTy>,
-    tag: SmallString,
+
     span: SourceSpan,
   ) -> Self {
     Self {
@@ -267,7 +254,7 @@ impl<StmtTy, ExprTy> RawFor<StmtTy, ExprTy> {
       condition,
       increment,
       body,
-      tag,
+
       span,
     }
   }
@@ -280,14 +267,14 @@ impl<StmtTy> RawDefault<StmtTy> {
 }
 
 impl RawBreak {
-  pub fn new(tag: SmallString, span: SourceSpan) -> Self {
-    Self { tag, span }
+  pub fn new(span: SourceSpan) -> Self {
+    Self { span }
   }
 }
 
 impl RawContinue {
-  pub fn new(tag: SmallString, span: SourceSpan) -> Self {
-    Self { tag, span }
+  pub fn new(span: SourceSpan) -> Self {
+    Self { span }
   }
 }
 
@@ -385,13 +372,13 @@ mod fmt {
 
   impl Display for RawBreak {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      write!(f, "break {};", self.tag)
+      write!(f, "break;")
     }
   }
 
   impl Display for RawContinue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      write!(f, "continue {};", self.tag)
+      write!(f, "continue;")
     }
   }
 

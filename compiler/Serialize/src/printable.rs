@@ -276,24 +276,22 @@ impl<'c> Print<'c, module::Function<'_>> for Value<'c> {
     printer.write(")", &palette.skeleton);
     if variant.is_definition() {
       printer.writeln(" {", &palette.skeleton);
-      ::std::iter::once(&variant.entry)
-        .chain(variant.blocks.iter())
-        .for_each(|&block_id| {
-          printer
-            .write(suff!(":" => printer.get_id(block_id)), &palette.skeleton);
-          let block = &*lookup!(printer, block_id);
-          preds(printer, palette, block_id);
-          printer.newline();
-          Print::print(
-            block,
-            printer,
-            "\t",
-            false,
-            palette,
-            block.data.as_basicblock_unchecked(),
-          );
-        });
-      printer.write("\n}", &palette.skeleton);
+      variant.blocks.iter().for_each(|&block_id| {
+        printer
+          .write(suff!(":" => printer.get_id(block_id)), &palette.skeleton);
+        let block = &*lookup!(printer, block_id);
+        preds(printer, palette, block_id);
+        printer.newline();
+        Print::print(
+          block,
+          printer,
+          "\t",
+          false,
+          palette,
+          block.data.as_basicblock_unchecked(),
+        );
+      });
+      printer.write("}", &palette.skeleton);
     }
     printer.newline();
     printer.reset_counter();
@@ -380,7 +378,7 @@ impl<'c> Print<'c, inst::Terminator> for Value<'c> {
     ::rcc_utils::static_dispatch!(
         Terminator : variant,
         |variant| Print::print(self, printer, prefix, is_last, palette, variant) =>
-        Jump Branch Return
+        Jump Branch Return Unreachable
     )
   }
 }
@@ -453,7 +451,7 @@ impl<'c> Print<'c, inst::Call> for Value<'c> {
         unreachable!("this should be impossible, or not implemented."),
       ValueData::Function(function) => {
         printer.write(suff!(" " => self.ir_type), &palette.meta);
-        printer.write(quoted!(" @", function.name, "("), &palette.skeleton);
+        printer.write(quoted!("@", function.name, "("), &palette.skeleton);
         variant.args().iter().for_each(|&arg_id| {
           let arg = &*lookup!(printer, arg_id);
           printer.write(suff!(" " => arg.ir_type), &palette.meta);
@@ -590,7 +588,21 @@ impl<'c> Print<'c, inst::Return> for Value<'c> {
     printer.write("ret ", &palette.literal);
     if let Some(value_id) = variant.result() {
       self::pretty_print_contant_or_id(printer, value_id, palette, true);
+    } else {
+      printer.write("void", &palette.meta);
     }
+  }
+}
+impl<'c> Print<'c, inst::Unreachable> for Value<'c> {
+  fn print(
+    &self,
+    printer: &mut impl Printer<'c>,
+    prefix: &str,
+    _is_last: bool,
+    palette: &Palette,
+    variant: &inst::Unreachable,
+  ) {
+    printer.write("unreachable", &palette.literal);
   }
 }
 

@@ -53,12 +53,13 @@ impl<W: Write> FlushOnDropRAII<W> {
 }
 impl<W: Write> Drop for FlushOnDropRAII<W> {
   fn drop(&mut self) {
-    println!();
+    // println!(); /// < IO desync: this would cause issue. you can check it... it caught me for hours!
     if let Err(e) = self.inner.flush()
       && const { cfg!(debug_assertions) }
     {
       eprintln!("\nWarning: stream flush failed: {e}");
     }
+    println!()
     // drop(self.0); // no need, rust drop is recursive
   }
 }

@@ -9,9 +9,7 @@ use ::rcc_shared::{
   Operator::{self, *},
   SourceSpan, Storage, Token,
 };
-use ::rcc_utils::{
-  IntoWith, SmallString, StrRef, contract_assert, not_implemented_feature,
-};
+use ::rcc_utils::{IntoWith, StrRef, contract_assert, not_implemented_feature};
 
 use crate::parse::{
   declaration::{
@@ -28,11 +26,11 @@ use crate::parse::{
     Return, Statement, Switch, While,
   },
 };
+
 #[derive(Debug)]
 pub struct Parser<'c> {
   tokens: Vec<Token<'c>>,
   cursor: usize,
-  loop_labels: Vec<SmallString>,
   // contest-sensitive part - needed to parse `T * x`.
   typedefs: UnitScope<'c>,
   session: SessionRef<'c, OpDiag<'c>>,
@@ -56,7 +54,6 @@ impl<'c> Parser<'c> {
     Self {
       tokens,
       cursor: usize::default(),
-      loop_labels: Vec::new(),
       typedefs: UnitScope::new(),
       session,
     }
@@ -869,41 +866,25 @@ impl<'c> Parser<'c> {
     let location = *self.peek_loc();
     self.must_get_key::<{ Keyword::While }>();
     let condition = self.parse_paren_expression::<{ Operator::DEFAULT }>();
-    self
-      .loop_labels
-      .push(Statement::new_loop_dummy_identifier("while"));
+
     let body = self.next_statement();
     self.ios_c_strict_check_for_decl(&body);
-    let while_stmt = While::new(
-      condition,
-      body.into(),
-      self.loop_labels.last().unwrap().clone(),
-      self.eloc(location),
-    );
-    self.loop_labels.pop();
-    while_stmt
+
+    While::new(condition, body.into(), self.eloc(location))
   }
 
   fn next_dowhile(&mut self) -> DoWhile<'c> {
     let location = *self.peek_loc();
     self.must_get_key::<{ Keyword::Do }>();
-    self
-      .loop_labels
-      .push(Statement::new_loop_dummy_identifier("do_while"));
+
     let body = self.next_statement();
     self.ios_c_strict_check_for_decl(&body);
     self.must_get_key::<{ Keyword::While }>();
     let condition = self.parse_paren_expression::<{ Operator::DEFAULT }>();
     assert_eq!(*self.peek_lit(), Literal::Operator(Semicolon));
     self.must_get_op::<{ Semicolon }>();
-    let dowhile_stmt = DoWhile::new(
-      body.into(),
-      condition,
-      self.loop_labels.last().unwrap().clone(),
-      self.eloc(location),
-    );
-    self.loop_labels.pop();
-    dowhile_stmt
+
+    DoWhile::new(body.into(), condition, self.eloc(location))
   }
 
   fn next_for(&mut self) -> For<'c> {
@@ -966,25 +947,17 @@ impl<'c> Parser<'c> {
       }
       let condition = parse_optional_expression::<{ Semicolon }>(self);
       let increment = parse_optional_expression::<{ RightParen }>(self);
-      self
-        .loop_labels
-        .push(Statement::new_loop_dummy_identifier("for"));
+
       let body = self.next_statement();
       self.ios_c_strict_check_for_decl(&body);
-      let for_stmt = For::new(
+
+      For::new(
         initializer.map(Into::into),
         condition,
         increment,
         body.into(),
-        self
-          .loop_labels
-          .last()
-          .expect("invariant: loop_labels should not be empty")
-          .clone(),
         self.eloc(location),
-      );
-      self.loop_labels.pop();
-      for_stmt
+      )
     }
   }
 
@@ -992,9 +965,7 @@ impl<'c> Parser<'c> {
     let location = *self.peek_loc();
     self.must_get_key::<{ Keyword::Switch }>();
     let condition = self.parse_paren_expression::<{ Operator::EXCOMMA }>();
-    self
-      .loop_labels
-      .push(Statement::new_loop_dummy_identifier("switch"));
+
     self.recoverable_get::<{ LeftBrace }>();
     let mut cases = Vec::new();
     let mut default: Option<Default> = None;
@@ -1022,19 +993,8 @@ impl<'c> Parser<'c> {
     }
 
     self.must_get_op::<{ RightBrace }>();
-    let switch_stmt = Switch::new(
-      condition,
-      cases,
-      default,
-      self
-        .loop_labels
-        .last()
-        .expect("invariant: loop_labels should not be empty")
-        .clone(),
-      self.eloc(location),
-    );
-    self.loop_labels.pop();
-    switch_stmt
+
+    Switch::new(condition, cases, default, self.eloc(location))
   }
 
   fn next_statement(&mut self) -> Statement<'c> {
@@ -1121,48 +1081,14 @@ impl<'c> Parser<'c> {
     let location = *self.peek_loc();
     self.must_get_key::<{ Keyword::Break }>();
     self.recoverable_get::<{ Semicolon }>();
-    let newloc = self.eloc(location);
-    match self.loop_labels.last() {
-      Some(label) => Break::new(label.clone(), newloc),
-      None => {
-        self.add_error(
-          InvalidControlFlowStmt(
-            "Break statement not within a loop".to_string(),
-          ),
-          newloc,
-        );
-        Break::new(SmallString::const_new("invalid_loop"), newloc)
-      },
-    }
+    Break::new(self.eloc(location))
   }
 
   fn next_continue(&mut self) -> Continue<'c> {
     let location = *self.peek_loc();
     self.must_get_key::<{ Keyword::Continue }>();
 
-    self.recoverable_get::<{ Semicolon }>();
-    // we need to handle continus differently; since the continue cannot be used to `continue` a switch.
-    // search reversely for the nearest loop label which does not start with 'switch_'
-    let mut found_label: Option<SmallString> = None;
-    for label in self.loop_labels.iter().rev() {
-      if !label.starts_with("switch_") {
-        found_label = Some(label.clone());
-        break;
-      }
-    }
-    let newloc = self.eloc(location);
-    match found_label {
-      Some(label) => Continue::new(label, newloc),
-      None => {
-        self.add_error(
-          InvalidControlFlowStmt(
-            "Continue statement not within a loop".to_string(),
-          ),
-          newloc,
-        );
-        Continue::new(SmallString::const_new("invalid_loop"), newloc)
-      },
-    }
+    Continue::new(self.eloc(location))
   }
 }
 /// expressions

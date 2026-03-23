@@ -1,5 +1,6 @@
 use ::rcc_shared::Constant;
 use ::rcc_utils::StrRef;
+use ::slotmap::Key;
 
 use super::value::ValueID;
 #[derive(Debug, Default)]
@@ -15,8 +16,6 @@ pub struct Function<'c> {
   /// Shall be [`Argument`].
   pub params: Vec<ValueID>,
   /// Shall be [`BasicBlock`].
-  pub entry: ValueID,
-  /// Shall be [`BasicBlock`].
   pub blocks: Vec<ValueID>,
   pub is_variadic: bool,
 }
@@ -25,14 +24,12 @@ impl<'c> Function<'c> {
   pub fn new(
     name: StrRef<'c>,
     params: Vec<ValueID>,
-    entry: ValueID,
     blocks: Vec<ValueID>,
     is_variadic: bool,
   ) -> Self {
     Self {
       name,
       params,
-      entry,
       blocks,
       is_variadic,
     }
@@ -47,7 +44,6 @@ impl<'c> Function<'c> {
       name,
       is_variadic,
       params,
-      entry: Default::default(),
       blocks: Default::default(),
     }
   }
@@ -55,6 +51,11 @@ impl<'c> Function<'c> {
   #[inline(always)]
   pub fn is_definition(&self) -> bool {
     !self.blocks.is_empty()
+  }
+
+  #[inline(always)]
+  pub fn entry(&self) -> ValueID {
+    self.blocks.first().copied().unwrap_or(ValueID::null())
   }
 }
 
@@ -86,6 +87,10 @@ impl BasicBlock {
       instructions,
       terminator,
     }
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.instructions.is_empty() && self.terminator.is_null()
   }
 }
 

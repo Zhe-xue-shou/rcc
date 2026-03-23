@@ -157,8 +157,7 @@ impl Keyword {
 interconvert!(Keyword, Literal<'c>);
 interconvert!(Operator, Literal<'c>);
 interconvert!(Constant, Literal,'c, Number);
-// interconvert!(SmallString, Literal, Identifier);
-// interconvert!(String, Literal, String); // this one conflicts with the above
+
 mod cmp {
   use super::{Keyword, Literal, Operator};
 

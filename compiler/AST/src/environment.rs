@@ -78,6 +78,7 @@ pub struct Environment<'c> {
   symbols: Scope<'c, Symbol<'c>>,
   cache: RefCell<HashMap<StrRef<'c>, WeakSymbolRef<'c>>>,
 }
+
 impl<'c> Environment<'c> {
   pub fn new() -> Self {
     Self::default()

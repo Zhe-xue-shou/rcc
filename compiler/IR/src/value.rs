@@ -62,6 +62,16 @@ impl ValueID {
   pub fn to_option(self) -> Option<Self> {
     if self.is_null() { None } else { Some(self) }
   }
+
+  #[inline]
+  pub fn null() -> Self {
+    <Self as Key>::null()
+  }
+
+  #[inline]
+  pub fn is_null(&self) -> bool {
+    <Self as Key>::is_null(self)
+  }
 }
 
 #[derive(Debug)]

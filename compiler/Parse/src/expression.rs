@@ -2,7 +2,7 @@ use ::rcc_ast::type_alias_expr;
 use ::rcc_shared::SourceSpan;
 use ::rcc_utils::StrRef;
 
-use crate::parse::declaration::{DeclSpecs, Declarator};
+use crate::declaration::{DeclSpecs, Declarator};
 
 #[derive(Debug)]
 pub enum Expression<'c> {
@@ -20,7 +20,7 @@ pub enum Expression<'c> {
   ArraySubscript(ArraySubscript<'c>), // arr[i]
   CompoundLiteral(CompoundLiteral),   // (struct Point){.x=1, .y=2}
 }
-type_alias_expr! {Expression<'c> , UnprocessedType<'c>, Variable<'c>}
+type_alias_expr! {Expression<'c> , UnprocessedType<'c>, Variable<'c> #[derive(Debug)]}
 ::rcc_utils::interconvert!(Variable, Expression, 'c);
 ::rcc_utils::interconvert!(Constant, Expression,'c);
 ::rcc_utils::interconvert!(Unary, Expression, 'c);

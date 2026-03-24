@@ -8,7 +8,6 @@ use ::rcc_ast::{
 use ::rcc_sema::{declaration as sd, expression as se, statement as ss};
 use ::rcc_shared::{Constant, OpDiag, Operator, OperatorCategory, SourceSpan};
 use ::rcc_utils::{RefEq, StrRef, Unbox, contract_violation};
-use ::slotmap::Key;
 use ::std::collections::HashMap;
 
 use super::{
@@ -967,6 +966,7 @@ impl<'c> Emitter<'c> {
       Variable(variable) => self.variable(variable, unqualified_type),
       ImplicitCast(implicit_cast) =>
         self.implicit_cast(implicit_cast, unqualified_type),
+      CompoundAssign(compound_assignment) => todo!(),
     }
   }
 
@@ -1436,16 +1436,6 @@ impl<'c> Emitter<'c> {
     span: SourceSpan,
   ) -> ValueID {
     assert_eq!(operator, Operator::Not);
-
-    // debug_assert!(
-    //   RefEq::ref_eq(
-    //     lookup!(self, operand).qualified_type.unqualified_type,
-    //     self.ast().converted_bool()
-    //   ) || RefEq::ref_eq(
-    //     lookup!(self, operand).qualified_type.unqualified_type,
-    //     self.ast().i1_bool_type()
-    //   ),
-    // );
 
     // FIXME: avoid this trick but also reuse the code below. borrowck wont let self being borrowed
     // SAFETY: safe today, maybe not tomorrow.

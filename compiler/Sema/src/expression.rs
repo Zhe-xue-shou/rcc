@@ -2,9 +2,9 @@ use ::rcc_ast::{
   SymbolRef, type_alias_expr,
   types::{CastType, Primitive, QualifiedType, Qualifiers, Type, TypeRef},
 };
-use ::rcc_shared::{SourceSpan, Storage};
+use ::rcc_shared::{Operator, SourceSpan, Storage};
 
-type_alias_expr! {Expression<'c>, QualifiedType<'c>, Variable<'c> ImplicitCast<'c>}
+type_alias_expr! {Expression<'c>, QualifiedType<'c>, Variable<'c> ImplicitCast<'c> CompoundAssign<'c> #[derive(Debug, Clone)]}
 pub(super) type UnaryKind = ::rcc_ast::blueprints::UnaryKind;
 
 #[derive(Debug, Clone, Copy, ::strum_macros::Display, PartialEq)]
@@ -16,7 +16,7 @@ pub enum ValueCategory {
 }
 use ValueCategory::{LValue, RValue};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Expression<'c> {
   raw_expr: RawExpr<'c>,
   expr_type: QualifiedType<'c>,
@@ -130,7 +130,7 @@ impl<'c> ::core::default::Default for Expression<'c> {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Variable<'c> {
   pub name: SymbolRef<'c>,
   pub span: SourceSpan,
@@ -140,7 +140,7 @@ impl<'c> Variable<'c> {
     Self { name, span }
   }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ImplicitCast<'c> {
   pub expr: Box<Expression<'c>>,
   pub cast_type: CastType,
@@ -159,6 +159,32 @@ impl<'c> ImplicitCast<'c> {
     }
   }
 }
+#[derive(Debug, Clone)]
+pub struct CompoundAssign<'c> {
+  pub operator: Operator,
+  pub left: Box<Expression<'c>>,
+  pub right: Box<Expression<'c>>,
+  pub intermediate_result: QualifiedType<'c>,
+  pub span: SourceSpan,
+}
+
+impl<'c> CompoundAssign<'c> {
+  pub fn new(
+    operator: Operator,
+    left: Expression<'c>,
+    right: Expression<'c>,
+    intermediate_result: QualifiedType<'c>,
+    span: SourceSpan,
+  ) -> Self {
+    Self {
+      operator,
+      left: left.into(),
+      right: right.into(),
+      intermediate_result,
+      span,
+    }
+  }
+}
 impl<'c> Expression<'c> {
   /// 6.6.8: An integer constant expression shall have integer type and shall only have operands that are
   ///           integer constants, named and compound literal constants of integer type, character constants,
@@ -172,18 +198,7 @@ impl<'c> Expression<'c> {
       RawExpr::Variable(variable) =>
         Self::is_named_integer_constant_unchecked(variable),
       // either be folded or not an integer constant expression
-      RawExpr::Empty(_)
-      | RawExpr::Unary(_)
-      | RawExpr::Binary(_)
-      | RawExpr::Call(_)
-      | RawExpr::Paren(_)
-      | RawExpr::MemberAccess(_)
-      | RawExpr::Ternary(_)
-      | RawExpr::SizeOf(_)
-      | RawExpr::CStyleCast(_)
-      | RawExpr::ArraySubscript(_)
-      | RawExpr::CompoundLiteral(_)
-      | RawExpr::ImplicitCast(_) => false,
+      _ => false,
     }
   }
 
@@ -239,7 +254,7 @@ mod fmt {
 
   use ::std::fmt::Display;
 
-  use super::{Expression, ImplicitCast, Variable};
+  use super::{CompoundAssign, Expression, ImplicitCast, Variable};
 
   impl<'c> Display for Expression<'c> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -257,35 +272,9 @@ mod fmt {
       write!(f, "{}", self.expr)
     }
   }
-}
-
-mod test {
-  #[test]
-  fn int_float() {
-    // use ::rcc_utils::{Dummy, IntoWith};
-
-    // use super::*;
-
-    // let int_expr = Expression::new(
-    //   RawExpr::Constant(
-    //     ConstantLiteral::Integral(42.into()).into_with(Dummy::dummy()),
-    //   ),
-    //   QualifiedType::int(),
-    //   RValue,
-    // );
-    // let float_expr = Expression::new(
-    //   RawExpr::Constant(
-    //     ConstantLiteral::Floating(::std::f32::consts::PI.into())
-    //       .into_with(Dummy::dummy()),
-    //   ),
-    //   QualifiedType::float(),
-    //   RValue,
-    // );
-    // let promoted_expr =
-    //   Expression::usual_arithmetic_conversion(int_expr, float_expr)
-    //     .unwrap()
-    //     .2;
-    // // type shall be
-    // println!("Promoted expression: {:#?}", promoted_expr);
+  impl<'c> Display for CompoundAssign<'c> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      write!(f, "({} {} {})", self.left, self.right, self.operator)
+    }
   }
 }

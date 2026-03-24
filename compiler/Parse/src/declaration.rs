@@ -2,7 +2,7 @@ use ::rcc_ast::types::{FunctionSpecifier, Qualifiers};
 use ::rcc_shared::{Keyword, Literal, SourceSpan, Storage};
 use ::rcc_utils::{StrRef, interconvert};
 
-use crate::parse::{expression::Expression, statement::Compound};
+use crate::{expression::Expression, statement::Compound};
 
 #[derive(Debug, Default)]
 pub struct Program<'c> {

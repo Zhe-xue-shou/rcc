@@ -1,7 +1,6 @@
 use ::rcc_ast::types as ast;
 use ::rcc_shared::Constant;
 use ::rcc_utils::RefEq;
-use ::slotmap::Key;
 
 use super::{
   Argument, Emitter, Value, ValueData, ValueID,

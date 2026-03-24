@@ -6,12 +6,9 @@ mod conversion;
 mod folding;
 mod semantics;
 
-use rcc_utils::Unbox;
+use ::rcc_utils::Unbox;
 
-pub use self::{
-  folding::{Folding, FoldingResult},
-  semantics::Sema,
-};
+pub use self::semantics::Sema;
 
 impl Unbox for expression::Expression<'_> {
   type Output = Self;

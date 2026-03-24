@@ -13,7 +13,7 @@ int f(int i, int j) {
   int arr[10][10];
   arr[0][2] = 0;
   k[p] = i + j;
-  p++;
+  // p++;
   p += 9;
   // 1 ++;
   int *ptr;

@@ -16,6 +16,10 @@ pub const trait TypeInfo<'c> {
   fn is_scalar(&self) -> bool;
   #[must_use]
   fn default_value(&self) -> Constant<'c>;
+  #[must_use]
+  fn is_complete(&self) -> bool {
+    self.size() != 0
+  }
 }
 
 impl<'c> TypeInfo<'c> for QualifiedType<'c> {

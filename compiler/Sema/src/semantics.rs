@@ -6,9 +6,7 @@ use ::rcc_ast::{
     Primitive, QualifiedType, Type, TypeInfo, UnqualExt,
   },
 };
-use ::rcc_parse::parse::{
-  declaration as pd, expression as pe, statement as ps,
-};
+use ::rcc_parse::{declaration as pd, expression as pe, statement as ps};
 use ::rcc_shared::{
   ArenaVec, CollectIn, Diag,
   DiagData::{self, *},
@@ -1047,6 +1045,7 @@ impl<'c> Sema<'c> {
     } = constant;
     let unqualified_type = constant.unqualified_type(self.context());
     let value_category = if constant.is_char_array() {
+      // a string literal has static storage duration.
       se::ValueCategory::LValue
     } else {
       se::ValueCategory::RValue
@@ -1094,6 +1093,16 @@ impl<'c> Sema<'c> {
     } = binary;
     let left = self.expression(*pe_left)?;
     let right = self.expression(*pe_right)?;
+    self.do_binary(operator, left, right, span)
+  }
+
+  fn do_binary(
+    &self,
+    operator: Operator,
+    left: se::Expression<'c>,
+    right: se::Expression<'c>,
+    span: SourceSpan,
+  ) -> Result<se::Expression<'c>, Diag<'c>> {
     use OperatorCategory::*;
     match operator.category() {
       Assignment => self.assignment(operator, left, right, span),
@@ -1285,6 +1294,18 @@ impl<'c> Sema<'c> {
   }
 
   /// i didnt came up with a better name...
+  ///
+  /// 6.5.4.1.2: The expression `++E` is equivalent to `(E+=1)`,
+  /// where the value `1` IS OF THE APPRORIATE TYPE??!! WTF
+  ///
+  /// ...which means:
+  /// ```c
+  /// char c = 'C';
+  /// __auto_type i = c++; //< deduced as of type `char`
+  /// __auto_type j = ++c; //  ditto
+  /// __auto_type k = c+1; //< deduced as type `int`
+  /// __auto_type is_equal = j == k; // true
+  /// ```
   fn ppmm(
     &self,
     operator: Operator,
@@ -1292,32 +1313,38 @@ impl<'c> Sema<'c> {
     kind: se::UnaryKind,
     span: SourceSpan,
   ) -> Result<se::Expression<'c>, Diag<'c>> {
-    assert!(matches!(
-      operator,
-      Operator::PlusPlus | Operator::MinusMinus
-    ));
-    let operand = operand.decay(self.context());
-    if operand.value_category() != se::ValueCategory::LValue {
-      Err(
+    match operator.ppmm2pm() {
+      Some(_) if !operand.is_modifiable_lvalue() => Err(
         ExprNotAssignable(operand.to_string())
           .into_with(Severity::Error)
           .into_with(span),
-      )
-    } else if !operand.unqualified_type().is_arithmetic() {
-      Err(
+      ),
+      Some(_) if !operand.qualified_type().is_scalar() => Err(
         NonArithmeticInUnaryOp(operator, operand.to_string())
           .into_with(Severity::Error)
           .into_with(span),
-      )
-    } else {
-      // checked version would assert and panic if the operand is lvalue.
-      let converted_operand =
-        operand.usual_arithmetic_conversion_unary_unchecked(self.context())?;
-      let expr_type = *converted_operand.qualified_type();
-      Ok(se::Expression::new_rvalue(
-        se::Unary::new(operator, converted_operand, kind, span).into(),
-        expr_type,
-      ))
+      ),
+      Some(_pm) => match kind {
+        ::rcc_ast::UnaryKind::Prefix => todo!(),
+        ::rcc_ast::UnaryKind::Postfix => todo!(),
+      },
+
+      // {
+      //   let one = se::Expression::new_rvalue(
+      //     se::Constant::new(
+      //       se::ConstantLiteral::Integral(Integral::from(1i32)),
+      //       span,
+      //     )
+      //     .into(),
+      //     self.ast().int_type().into(),
+      //   );
+      //   let (raw_expr, qualified_type, value_category) = self
+      //     .arithmetic(operator, se::Expression::clone(&operand), one, span)?
+      //     .destructure();
+
+      //   todo!()
+      // },
+      None => unreachable!(),
     }
   }
 
@@ -1352,6 +1379,9 @@ impl<'c> Sema<'c> {
   }
 
   /// logical NOT operator `!`
+  ///
+  /// 6.5.4.3.5: The result of the logical negation operator `!` \[...],
+  /// the result has type int. The expression `!E` is equivalent to `(0==E)`.
   fn logical_not(
     &self,
     operator: Operator,
@@ -1459,25 +1489,49 @@ impl<'c> Sema<'c> {
     right: se::Expression<'c>,
     span: SourceSpan,
   ) -> Result<se::Expression<'c>, Diag<'c>> {
-    if !left.is_modifiable_lvalue() {
-      self.add_error(ExprNotAssignable(left.to_string()), span);
-      return Ok(left);
-    }
-    if operator != Operator::Assign {
-      panic!(
-        "todo: split differet binaary precondition logic so that this would \
-         work."
-      )
-    }
-    let assigned_expr = right
-      .lvalue_conversion()
-      .decay(self.context())
-      .assignment_conversion(left.qualified_type())?;
     let expr_type = *left.qualified_type();
-    Ok(se::Expression::new_rvalue(
-      se::Binary::new(operator, left, assigned_expr, span).into(),
-      expr_type,
-    ))
+
+    match operator.associated_operator() {
+      _ if !left.is_modifiable_lvalue() => {
+        self.add_error(ExprNotAssignable(left.to_string()), span);
+        Ok(left)
+      },
+      // plain operator `=`.
+      None => {
+        let assigned_expr = right
+          .lvalue_conversion()
+          .decay(self.context())
+          .assignment_conversion(&expr_type)?;
+        Ok(se::Expression::new_rvalue(
+          se::Binary::new(operator, left, assigned_expr, span).into(),
+          expr_type,
+        ))
+      },
+      Some(binary_op) => {
+        let (raw_binary, intermediate_result, ..) = self
+          .do_binary(binary_op, se::Expression::clone(&left), right, span)?
+          .destructure();
+
+        let se::Binary { right, .. } = raw_binary.into_binary_unchecked();
+
+        let assigned_expr = right
+          .lvalue_conversion()
+          .decay(self.context())
+          .assignment_conversion(&expr_type)?;
+
+        Ok(se::Expression::new_rvalue(
+          se::CompoundAssign::new(
+            operator,
+            left,
+            assigned_expr,
+            intermediate_result,
+            span,
+          )
+          .into(),
+          expr_type,
+        ))
+      },
+    }
   }
 
   /// logical operators: `&&`, `||`
@@ -1492,18 +1546,19 @@ impl<'c> Sema<'c> {
     right: se::Expression<'c>,
     span: SourceSpan,
   ) -> Result<se::Expression<'c>, Diag<'c>> {
-    let left = left.lvalue_conversion().decay(self.context());
-    let right = right.lvalue_conversion().decay(self.context());
-
     let lhs = left
       .lvalue_conversion()
+      .decay(self.context())
       .is_contextually_convertible_to_bool()?;
+
     let rhs = right
       .lvalue_conversion()
+      .decay(self.context())
       .is_contextually_convertible_to_bool()?;
+
     Ok(se::Expression::new_rvalue(
       se::Binary::new(operator, lhs, rhs, span).into(),
-      self.context().converted_bool().into(), // todo: this should be an `int` according to standard(?)
+      self.context().converted_bool().into(),
     ))
   }
 
@@ -1535,7 +1590,7 @@ impl<'c> Sema<'c> {
       },
       (l, r) if l.is_pointer() || r.is_pointer() =>
         self.pointer_relational(operator, left, right, span),
-      _ => todo!(),
+      _ => todo!("enums??? idkfr"),
     }
   }
 
@@ -1571,6 +1626,7 @@ impl<'c> Sema<'c> {
           )
         }
       },
+      // (Type::Pointer(ptr), Type::Primitive(Primitive::Nullptr)) => todo!(),
       _ => todo!(),
     }
   }
@@ -1626,6 +1682,15 @@ impl<'c> Sema<'c> {
     ))
   }
 
+  /// at least one of the operand is pointer, and the operand can only be `+` or `-`.
+  ///
+  /// - left and right are both pointer of type `T`, the operator is `-` -- return type is `ptrdiff_t`.
+  /// - left and right are both pointer of type `T`, the operator is `+` -- error.
+  /// - left is a pointer to type `T`, right is an integer, the operator is `+` -- right converts to `size_t`, return type is `*T`
+  /// - left is a pointer to type `T`, right is an integer, the operator is `-` -- right converts to `ptrdiff_t`, return type is `*T`
+  /// - left is an integer, right is a pointer to type `T`, the operator is `+` -- same as above.
+  /// - left is an integer, right is a pointer to type `T`, the operator is `-` -- error.
+  /// - left and right are pointers to incompatible type -- error.
   fn pointer_arithematic(
     &self,
     operator: Operator,
@@ -1638,14 +1703,16 @@ impl<'c> Sema<'c> {
         || right.unqualified_type().is_pointer()
     );
     match (left.unqualified_type(), right.unqualified_type()) {
-      // ptr - ptr -> intptr_t
+      // ptr - ptr
       (Type::Pointer(left_ptr), Type::Pointer(right_ptr))
         if operator == Operator::Minus =>
         match Compatibility::compatible(&left_ptr.pointee, &right_ptr.pointee) {
+          // -> ptrdiff
           true => Ok(se::Expression::new_rvalue(
             se::Binary::new(operator, left, right, span).into(),
             self.context().ptrdiff_type().into(), // no qual for pointer difference
           )),
+          // -> error
           false => Err(
             IncompatiblePointerTypes(
               left.qualified_type().to_string(),
@@ -1663,7 +1730,7 @@ impl<'c> Sema<'c> {
         Ok(se::Expression::new_rvalue(
           se::Binary::new(
             operator,
-            left.ptrdiff_conversion_unchecked(self.context()),
+            left.uintptr_conversion_unchecked(self.context()),
             right,
             span,
           )
@@ -1671,10 +1738,25 @@ impl<'c> Sema<'c> {
           ptrty.into(),
         ))
       },
-      // ptr + int, ptr - int => ptr
+      // ptr + int => ptr
       (Type::Pointer(ptr), Type::Primitive(rhs))
-        if rhs.is_integer()
-          && matches!(operator, Operator::Plus | Operator::Minus) =>
+        if rhs.is_integer() && operator == Operator::Plus =>
+      {
+        let ptrty = left.unqualified_type().clone().lookup(self.context());
+        Ok(se::Expression::new_rvalue(
+          se::Binary::new(
+            operator,
+            left,
+            right.uintptr_conversion_unchecked(self.context()),
+            span,
+          )
+          .into(),
+          ptrty.into(),
+        ))
+      },
+      // ptr - int => ptr
+      (Type::Pointer(ptr), Type::Primitive(rhs))
+        if rhs.is_integer() && operator == Operator::Plus =>
       {
         let ptrty = left.unqualified_type().clone().lookup(self.context());
         Ok(se::Expression::new_rvalue(
@@ -1688,16 +1770,6 @@ impl<'c> Sema<'c> {
           ptrty.into(),
         ))
       },
-      // relops
-      (Type::Pointer(_), Type::Pointer(_))
-        if matches!(
-          operator.category(),
-          OperatorCategory::Logical | OperatorCategory::Relational
-        ) =>
-        Ok(se::Expression::new_rvalue(
-          se::Binary::new(operator, left, right, span).into(),
-          self.context().converted_bool().into(),
-        )),
       _ => Err(
         InvalidOprand(
           left.qualified_type().to_string(),
@@ -2242,21 +2314,6 @@ impl<'c> Sema<'c> {
       },
     }
   }
-}
-
-mod test {
-  // #[test]
-  // fn oneplusone() {
-  //   use super::*;
-  //   let session = Session::no_manager();
-  //   // 1 + 1
-  //   let analyzer = Analyzer::new(Default::default(), &session);
-  //   let expr = pe::Expression::oneplusone();
-  //   let analyzed_expr = analyzer.expression(expr);
-
-  //   assert!(analyzed_expr.is_ok());
-  //   println!("{:#?}", dbg!(analyzed_expr.unwrap()));
-  // }
 }
 
 #[cold]

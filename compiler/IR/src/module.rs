@@ -1,6 +1,5 @@
 use ::rcc_shared::Constant;
 use ::rcc_utils::StrRef;
-use ::slotmap::Key;
 
 use super::value::ValueID;
 #[derive(Debug, Default)]

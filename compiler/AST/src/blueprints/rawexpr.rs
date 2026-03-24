@@ -7,14 +7,14 @@ use ::rcc_utils::{IntoWith, StrRef};
 
 #[macro_export]
 macro_rules! type_alias_expr {
-  ($exprty:ty, $typety:ty, $($extra:ident)*) => {
-    type_alias_expr!(@impl $exprty, $typety, $($extra)*: []);
+  ($exprty:ty, $typety:ty, $($extra:ident)* #[derive($($derives:ident),* $(,)*)]) => {
+    type_alias_expr!(@impl $exprty, $typety, $($extra)*: [] #[derive($($derives),*)]);
   };
-  ($exprty:ty, $typety:ty, $($extra:ident $(<$lts:lifetime>)*)*) =>{
-    type_alias_expr!(@impl $exprty, $typety, $($extra $(<$lts>)*)*);
+  ($exprty:ty, $typety:ty, $($extra:ident $(<$lts:lifetime>)*)* #[derive($($derives:ident),* $(,)*)]) =>{
+    type_alias_expr!(@impl $exprty, $typety, $($extra $(<$lts>)*)* #[derive($($derives),*)]);
   };
-  (@impl $exprty:ty, $typety:ty, $($extra:ident $(<$lts:lifetime>)?)*) => {
-    #[derive(Debug)]
+  (@impl $exprty:ty, $typety:ty, $($extra:ident $(<$lts:lifetime>)?)* #[derive($($derives:ident),* $(,)*)]) => {
+    #[derive($($derives),*)]
     pub enum RawExpr<'c> {
       // no-op for error recovery; for empty expr should use Option<ExprTy> instead
       Empty(Empty),
@@ -147,75 +147,75 @@ macro_rules! type_alias_expr {
   };
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RawConstant<'c> {
   pub inner: Constant<'c>,
   pub span: SourceSpan,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RawUnary<ExprTy> {
   pub operator: Operator,
   pub operand: Box<ExprTy>,
   pub kind: super::UnaryKind,
   pub span: SourceSpan,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RawBinary<ExprTy> {
   pub operator: Operator,
   pub left: Box<ExprTy>,
   pub right: Box<ExprTy>,
   pub span: SourceSpan,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RawCall<ExprTy> {
   pub callee: Box<ExprTy>,
   pub arguments: Vec<ExprTy>,
   pub span: SourceSpan,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RawParen<ExprTy> {
   pub expr: Box<ExprTy>,
   pub span: SourceSpan,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RawMemberAccess<'c, ExprTy> {
   pub object: Box<ExprTy>,
   pub member: StrRef<'c>,
   pub span: SourceSpan,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RawTernary<ExprTy> {
   pub condition: Box<ExprTy>,
   pub then_expr: Box<ExprTy>,
   pub else_expr: Box<ExprTy>,
   pub span: SourceSpan,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RawSizeOfKind<ExprTy, TypeTy> {
   Type(Box<TypeTy>),
   Expression(Box<ExprTy>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RawSizeOf<ExprTy, TypeTy> {
   pub sizeof: RawSizeOfKind<ExprTy, TypeTy>,
   pub span: SourceSpan,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RawCStyleCast<ExprTy> {
   // pub target_type: Box<QualifiedType>,
   pub expr: Box<ExprTy>,
   pub span: SourceSpan,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RawArraySubscript<ExprTy> {
   pub array: Box<ExprTy>,
   pub index: Box<ExprTy>,
   pub span: SourceSpan,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RawCompoundLiteral {
   // pub target_type: Box<QualifiedType>,
   // pub initializer: Initializer,

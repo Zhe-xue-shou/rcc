@@ -209,6 +209,14 @@ impl Operator {
     }
   }
 
+  pub const fn ppmm2pm(&self) -> Option<Self> {
+    match self {
+      PlusPlus => Some(Plus),
+      MinusMinus => Some(Minus),
+      _ => None,
+    }
+  }
+
   pub const fn postfix(&self) -> bool {
     matches!(
       self,

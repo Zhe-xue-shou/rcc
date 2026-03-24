@@ -596,7 +596,6 @@ impl User for Instruction {
 }
 
 use ::rcc_utils::{interconvert, make_trio_for, static_dispatch};
-use ::slotmap::Key;
 
 interconvert!(Branch, Terminator);
 interconvert!(Jump, Terminator);

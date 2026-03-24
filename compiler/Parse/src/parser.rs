@@ -11,7 +11,7 @@ use ::rcc_shared::{
 };
 use ::rcc_utils::{IntoWith, StrRef, contract_assert, not_implemented_feature};
 
-use crate::parse::{
+use crate::{
   declaration::{
     ArrayModifier, DeclSpecs, Declaration, Declarator, DeclaratorType,
     Function, FunctionSignature, Initializer, Modifier, Parameter, Program,

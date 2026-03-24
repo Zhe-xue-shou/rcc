@@ -1,7 +1,6 @@
 use ::rcc_adt::{FloatFormat, Floating, Integral};
 use ::rcc_ast::{Context as ASTContext, types as ast};
 use ::rcc_shared::{Arena, Constant, Diagnosis, SourceManager};
-use ::slotmap::Key;
 
 use super::{
   Type, TypeRef, Value, ValueID,
@@ -29,7 +28,7 @@ pub struct Context<'c> {
   common_integer_zero: [ValueID; 5],
   common_floating_zero: [ValueID; 2],
   /// currently only for ir stage. use it in previous stage could cause unprecedented catastrophe. see the git stash.
-  constant_interner: RefCell<BiHashMap<ValueID, ::rcc_shared::Constant<'c>>>,
+  constant_interner: RefCell<BiHashMap<ValueID, Constant<'c>>>,
 
   ast_arena: &'c Arena,
 }
@@ -138,7 +137,7 @@ impl<'c> Context<'c> {
       128 => 5,
       _ => panic!("intern other integer constant on the fly"),
     };
-    self.common_integer_one[index + 6]
+    self.common_integer_one[index]
   }
 }
 impl<'c> Context<'c> {

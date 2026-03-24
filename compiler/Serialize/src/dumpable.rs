@@ -175,9 +175,9 @@ mod statement {
   pub type Continue<'c> = blueprints::RawContinue;
 }
 
-use statement::*;
+use self::statement::*;
 
-impl<'c> Dumpable<'c> for statement::Empty {
+impl<'c> Dumpable<'c> for Empty {
   fn dump(
     &self,
     dumper: &mut impl Dumper<'c>,
@@ -587,6 +587,14 @@ impl<'c> Dumpable<'c> for Expression<'_> {
         cast.expr.dump(dumper, &subprefix, true, palette)
       },
 
+      CompoundAssign(ca) => {
+        header!("CompoundAssign", ca, "");
+        dumper
+          .write_fmt(format_args!(" '{}'\n", ca.operator), &palette.operator);
+        ca.left.dump(dumper, &subprefix, false, palette);
+        ca.right.dump(dumper, &subprefix, true, palette)
+      },
+
       MemberAccess(ma) => {
         header!("MemberAccess", ma);
         dumper.write_fmt(format_args!(" .{}\n", ma.member), &palette.literal);
@@ -603,7 +611,6 @@ impl<'c> Dumpable<'c> for Expression<'_> {
         header!("SizeOf", sof, "\n");
         match &sof.sizeof {
           SizeOfKind::Type(ty) => {
-            // // Type child — just print it inline (no recursion needed)
             // dumper.print_indent(&subprefix, true);
             // dumper.write_fmt(format_args!("Type '{}'\n", ty), &palette.meta)
 

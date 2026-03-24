@@ -12,6 +12,7 @@ use super::expression::{
   ConstantLiteral as CL, Empty, Expression, ImplicitCast, MemberAccess, Paren,
   RawExpr, SizeOf, SizeOfKind, Ternary, Unary, ValueCategory, Variable,
 };
+use crate::expression::CompoundAssign;
 
 #[derive(Debug)]
 pub enum FoldingResult<T> {
@@ -97,7 +98,8 @@ impl<'c> Folding<'c> for RawExpr<'c> {
     ::rcc_utils::static_dispatch!(
       self,
       |variant| variant.fold(target_type, value_category, diag) =>
-      Empty Constant Unary Binary Call Paren MemberAccess Ternary SizeOf CStyleCast ArraySubscript CompoundLiteral Variable ImplicitCast
+      Empty Constant Unary Binary Call Paren MemberAccess Ternary SizeOf
+      CStyleCast ArraySubscript CompoundLiteral Variable ImplicitCast CompoundAssign
     )
   }
 }
@@ -597,6 +599,23 @@ impl<'c> Folding<'c> for ImplicitCast<'c> {
         .map(|c: CL| c.into_with(self.span)),
     }
     .map(|raw_expr| Expression::new(raw_expr, target_type, value_category))
+  }
+}
+impl<'c> Folding<'c> for CompoundAssign<'c> {
+  /// should always fail, but anyways
+  #[inline(always)]
+  fn fold(
+    self,
+    target_type: QualifiedType<'c>,
+    value_category: ValueCategory,
+    _diag: &impl Diagnosis<'c>,
+  ) -> FoldingResult<Expression<'c>> {
+    // let (raw_binary, inner_ty, inner_vc) = self.intermediate.destructure();
+    // let res = raw_binary
+    //   .as_binary_unchecked()
+    //   .fold(inner_ty, inner_vc, diag);
+
+    Failure(Expression::new(self.into(), target_type, value_category))
   }
 }
 mod private {

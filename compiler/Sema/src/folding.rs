@@ -269,15 +269,19 @@ impl<'c> Folding<'c> for Binary<'c> {
       self.operator.binary(),
       "not a binary operator! should not happen!"
     );
-    // TODO: logical && and || should be short-circuit evaluated,
-    // so that `static const int j = 0 && x;` would pass constant folding,
+    // logical && and || are short-circuit evaluated,
+    // so    `static const int j = 0 && x;` would pass constant folding,
     // while `static const int j = 0 || x;` would not.
     let fl = self.left.fold(diag);
     let fr = self.right.fold(diag);
-    let (folded_lhs, folded_rhs) =
-      if matches!(fl, Success(_)) && matches!(fr, Success(_)) {
-        (fl.take(), fr.take())
-      } else {
+    let (folded_lhs, folded_rhs) = match (fl, fr) {
+      (Success(left), Success(right)) => (left, right),
+      (Success(left), Failure(_)) if self.operator == Operator::And =>
+        return Success(left),
+      (Failure(_), Success(right)) if self.operator == Operator::Or =>
+        return Success(right),
+
+      (fl, fr) =>
         return Failure(Expression::new(
           Self {
             left: fl.take().into(),
@@ -287,8 +291,8 @@ impl<'c> Folding<'c> for Binary<'c> {
           .into(),
           target_type,
           value_category,
-        ));
-      };
+        )),
+    };
     if self.operator == Operator::Comma {
       diag.add_warning(LeftCommaNoEffect, self.span);
       return Success(Expression::new(

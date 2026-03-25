@@ -14,7 +14,7 @@ int f(int i, int j) {
   arr[0][2] = 0;
   k[p] = i + j;
   // p++;
-  p += 9;
+  double d = p += 9;
   // 1 ++;
   int *ptr;
   ptr = ptr + 4;

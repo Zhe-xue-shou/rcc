@@ -366,8 +366,10 @@ impl<'c> Emitter<'c> {
         let ast_type =
           parameter.symbol.borrow().qualified_type.unqualified_type;
         let arg_id = self.emit(Argument::new(index), ast_type);
-        self.locals.insert(parameter.symbol.as_ptr(), arg_id);
         let localed_arg_id = self.emit(inst::Alloca::new(), ast_type);
+        self
+          .locals
+          .insert(parameter.symbol.as_ptr(), localed_arg_id);
         _ = self.emit(
           inst::Memory::Store(inst::Store::new(localed_arg_id, arg_id)),
           self.ast().void_type(),
@@ -409,7 +411,10 @@ impl<'c> Emitter<'c> {
       (_, true) => common(),
       // 5.1.2.3.4 Program termination
       // If [...], reaching the `}` that terminates the main function returns a value of 0.
-      (_, false) if function_name == "main" => {
+      (_, false)
+        if function_name == "main"
+          && !self.ir().get_use_list(self.current_block).is_empty() =>
+      {
         let _implicit_return = self.emit(
           inst::Terminator::Return(inst::Return::new(Some(
             self
@@ -561,8 +566,8 @@ impl<'c> Emitter<'c> {
     let _should_be_now = self.push_block(immediate_block_id);
   }
 
-  fn compound(&mut self, body: ss::Compound<'c>) {
-    let ss::Compound { statements, .. } = body;
+  fn compound(&mut self, compound: ss::Compound<'c>) {
+    let ss::Compound { statements, .. } = compound;
     statements
       .into_iter()
       .for_each(|statement| self.statement(statement));
@@ -966,7 +971,8 @@ impl<'c> Emitter<'c> {
       Variable(variable) => self.variable(variable, unqualified_type),
       ImplicitCast(implicit_cast) =>
         self.implicit_cast(implicit_cast, unqualified_type),
-      CompoundAssign(compound_assignment) => todo!(),
+      CompoundAssign(compound_assign) =>
+        self.compound_assign(compound_assign, unqualified_type),
     }
   }
 
@@ -976,76 +982,6 @@ impl<'c> Emitter<'c> {
     ast_type: ast::TypeRef<'c>,
   ) -> ValueID {
     self.emit(constant.inner, ast_type)
-  }
-
-  fn unary(
-    &mut self,
-    unary: se::Unary<'c>,
-    ast_type: ast::TypeRef<'c>,
-  ) -> ValueID {
-    let se::Unary {
-      kind,
-      operand,
-      operator,
-      span,
-    } = unary;
-    let operand = self.expression(operand);
-    match operator {
-      Operator::Ampersand => self.addressof(operator, operand, ast_type, span),
-      Operator::Star => self.indirect(operator, operand, ast_type, span),
-      Operator::Not => self.logical_not(operator, operand, ast_type, span),
-      Operator::Tilde => self.tilde(operator, operand, ast_type, span),
-      Operator::Plus | Operator::Minus =>
-        self.unary_arithmetic(operator, operand, ast_type, span),
-      Operator::PlusPlus | Operator::MinusMinus =>
-        self.ppmm(operator, operand, kind, ast_type, span),
-      _ => unreachable!("operator is not unary: {:#?}", operator),
-    }
-  }
-
-  fn binary(
-    &mut self,
-    binary: se::Binary<'c>,
-    ast_type: ast::TypeRef<'c>,
-  ) -> ValueID {
-    let se::Binary {
-      left,
-      operator,
-      right,
-      span,
-    } = binary;
-
-    let left = self.expression(left);
-    let right = self.expression(right);
-    self.do_binary(operator, left, right, ast_type, span)
-  }
-
-  fn do_binary(
-    &mut self,
-    operator: Operator,
-    left: ValueID,
-    right: ValueID,
-    ast_type: ast::TypeRef<'c>,
-    span: SourceSpan,
-  ) -> ValueID {
-    use OperatorCategory::*;
-
-    macro_rules! call {
-      ($method:ident) => {
-        self.$method(operator, left, right, ast_type, span)
-      };
-    }
-
-    match operator.category() {
-      Assignment => call!(assignment),
-      Logical => call!(logical),
-      Relational => call!(relational),
-      Arithmetic => call!(arithmetic),
-      Bitwise => call!(bitwise),
-      BitShift => call!(bitshift),
-      Special => call!(comma),
-      Uncategorized => unreachable!("operator is not binary: {:#?}", operator),
-    }
   }
 
   fn member_access(
@@ -1065,9 +1001,72 @@ impl<'c> Emitter<'c> {
       condition,
       then_expr,
       else_expr,
-      ..
+      span,
     } = ternary;
-    todo!()
+    debug_assert_eq!(then_expr.qualified_type(), else_expr.qualified_type());
+    // type res; if (cond) { res = then; } else { res = else; }
+
+    let boolean_condition = self.expression(condition);
+    let condition = self.contextual_convert_to_i1(boolean_condition);
+
+    let now_block_id = self.current_block;
+    let then_block_id = self.new_empty_block();
+    let else_block_id = self.new_empty_block();
+    let immediate_block_id = self.new_empty_block();
+
+    let _now_block_terminator = self.emit(
+      inst::Terminator::Branch(inst::Branch::new(
+        condition,
+        then_block_id,
+        else_block_id,
+      )),
+      self.ast().void_type(),
+    );
+
+    let _should_be_now = self.push_block(then_block_id);
+    debug_assert_eq!(_should_be_now, now_block_id);
+
+    let then_id = self.expression(then_expr);
+
+    let _then_block_terminator = {
+      assert!(
+        lookup!(self, self.current_block)
+          .data
+          .as_basicblock_unchecked()
+          .terminator
+          .is_null()
+      );
+
+      self.emit(
+        inst::Terminator::Jump(inst::Jump::new(immediate_block_id)),
+        self.ast().void_type(),
+      )
+    };
+
+    let _last_block_of_then = self.push_block(else_block_id);
+
+    let else_id = self.expression(else_expr);
+
+    let _else_block_terminator = {
+      assert!(
+        lookup!(self, self.current_block)
+          .data
+          .as_basicblock_unchecked()
+          .terminator
+          .is_null()
+      );
+      self.emit(
+        inst::Terminator::Jump(inst::Jump::new(immediate_block_id)),
+        self.ast().void_type(),
+      )
+    };
+
+    let _last_block_of_else = self.push_block(immediate_block_id);
+
+    self.emit(
+      inst::Phi::new(vec![then_id, then_block_id, else_id, else_block_id]),
+      ast_type,
+    )
   }
 
   fn sizeof(
@@ -1129,50 +1128,6 @@ impl<'c> Emitter<'c> {
     }
   }
 
-  fn implicit_cast(
-    &mut self,
-    implicit_cast: se::ImplicitCast<'c>,
-    ast_type: ast::TypeRef<'c>,
-  ) -> ValueID {
-    let se::ImplicitCast {
-      cast_type, expr, ..
-    } = implicit_cast;
-
-    use ::std::cmp::Ordering::*;
-    use Signedness::*;
-    use ast::CastType::*;
-    use inst::{Load, Memory, Sext, Trunc, Zext};
-
-    let value_id = self.expression(expr);
-    match cast_type {
-      Noop | FunctionToPointerDecay | ArrayToPointerDecay => value_id,
-      LValueToRValue => self.emit(Memory::from(Load::new(value_id)), ast_type),
-      IntegralCast => {
-        assert!(
-          ast_type.as_primitive().is_some_and(|p| p.is_integer())
-            && ast_type.size_bits() > 0
-            && ast_type.size_bits() <= 128
-        );
-        match Ord::cmp(
-          lookup!(self, value_id).ir_type.as_integer_unchecked(),
-          &(ast_type.size_bits() as u8),
-        ) {
-          Less => match ast_type.signedness() {
-            Some(Signed) =>
-              self.emit(inst::Cast::from(Sext::new(value_id)), ast_type),
-            Some(Unsigned) =>
-              self.emit(inst::Cast::from(Zext::new(value_id)), ast_type),
-            None => unreachable!(),
-          },
-          Equal => value_id,
-          Greater =>
-            self.emit(inst::Cast::from(Trunc::new(value_id)), ast_type),
-        }
-      },
-      _ => todo!("implicit cast: {:?}", implicit_cast.cast_type),
-    }
-  }
-
   fn call(
     &mut self,
     call: se::Call<'c>,
@@ -1198,8 +1153,119 @@ impl<'c> Emitter<'c> {
   fn paren(&mut self, paren: se::Paren<'c>) -> ValueID {
     self.expression(paren.expr)
   }
+
+  fn implicit_cast(
+    &mut self,
+    implicit_cast: se::ImplicitCast<'c>,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    let se::ImplicitCast {
+      cast_type, expr, ..
+    } = implicit_cast;
+
+    let operand = self.expression(expr);
+    self.do_cast(operand, cast_type, ast_type)
+  }
+
+  fn do_cast(
+    &mut self,
+    operand: ValueID,
+    cast_type: ast::CastType,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    use ::std::cmp::Ordering::*;
+    use Signedness::*;
+    use ast::CastType::*;
+    use inst::{Cast, Load, Memory, Sext, Trunc, Zext};
+
+    match cast_type {
+      Noop | FunctionToPointerDecay | ArrayToPointerDecay => operand,
+      LValueToRValue => self.emit(Memory::from(Load::new(operand)), ast_type),
+      IntegralCast => {
+        assert!(
+          ast_type.as_primitive().is_some_and(|p| p.is_integer())
+            && ast_type.size_bits() > 0
+            && ast_type.size_bits() <= 128
+        );
+        match Ord::cmp(
+          lookup!(self, operand).ir_type.as_integer_unchecked(),
+          &(ast_type.size_bits() as u8),
+        ) {
+          Less => match ast_type.signedness() {
+            Some(Signed) => self.emit(Cast::from(Sext::new(operand)), ast_type),
+            Some(Unsigned) =>
+              self.emit(Cast::from(Zext::new(operand)), ast_type),
+            None => unreachable!(),
+          },
+          Equal => operand,
+          Greater => self.emit(Cast::from(Trunc::new(operand)), ast_type),
+        }
+      },
+      _ => todo!("implicit cast: {:?}", cast_type),
+    }
+  }
+
+  fn compound_assign(
+    &mut self,
+    compound_assign: se::CompoundAssign,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    let se::CompoundAssign {
+      operator,
+      left,
+      right,
+      intermediate_result_type,
+      ..
+    } = compound_assign;
+    todo!()
+  }
 }
 impl<'c> Emitter<'c> {
+  fn binary(
+    &mut self,
+    binary: se::Binary<'c>,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    let se::Binary {
+      left,
+      operator,
+      right,
+      span,
+    } = binary;
+
+    let left = self.expression(left);
+    let right = self.expression(right);
+    self.do_binary(operator, left, right, ast_type, span)
+  }
+
+  fn do_binary(
+    &mut self,
+    operator: Operator,
+    left: ValueID,
+    right: ValueID,
+    ast_type: ast::TypeRef<'c>,
+    span: SourceSpan,
+  ) -> ValueID {
+    use OperatorCategory::*;
+
+    macro_rules! call {
+      ($method:ident) => {
+        self.$method(operator, left, right, ast_type, span)
+      };
+    }
+
+    match operator.category() {
+      Assignment => call!(assignment),
+      Logical => call!(logical),
+      Relational => call!(relational),
+      Arithmetic => call!(arithmetic),
+      Bitwise => call!(bitwise),
+      BitShift => call!(bitshift),
+      Special => call!(comma),
+      Uncategorized => unreachable!("operator is not binary: {:#?}", operator),
+    }
+  }
+
   fn assignment(
     &mut self,
     operator: Operator,
@@ -1208,19 +1274,11 @@ impl<'c> Emitter<'c> {
     ast_type: ast::TypeRef<'c>,
     span: SourceSpan,
   ) -> ValueID {
-    assert_eq!(operator.category(), OperatorCategory::Assignment);
+    assert_eq!(operator, Operator::Assign);
     assert!(lookup!(self, left).ir_type.is_pointer());
 
-    let calculated_right = match operator.associated_operator() {
-      Some(operator) => {
-        let loaded_left =
-          self.emit(inst::Memory::from(inst::Load::new(left)), ast_type);
-        self.do_binary(operator, loaded_left, right, ast_type, span)
-      },
-      None => right,
-    };
     self.emit(
-      inst::Memory::Store(inst::Store::new(left, calculated_right)),
+      inst::Memory::Store(inst::Store::new(left, right)),
       self.ast().void_type(),
     )
   }
@@ -1233,92 +1291,13 @@ impl<'c> Emitter<'c> {
     ast_type: ast::TypeRef<'c>,
     span: SourceSpan,
   ) -> ValueID {
-    todo!()
-  }
-
-  fn relational(
-    &mut self,
-    operator: Operator,
-    left: ValueID,
-    right: ValueID,
-    ast_type: ast::TypeRef<'c>,
-    span: SourceSpan,
-  ) -> ValueID {
-    use super::Type::*;
-
-    let lhs_ir_type = lookup!(self, left).ir_type;
-    let rhs_ir_type = lookup!(self, right).ir_type;
-    match (lhs_ir_type, rhs_ir_type) {
-      (Integer(left_width), Integer(right_width)) => {
-        debug_assert!(
-          left_width == right_width
-            && (lookup!(self, left).ast_type.signedness()
-              == lookup!(self, right).ast_type.signedness())
-        );
-        let signedness = lookup!(self, left)
-          .ast_type
-          .signedness()
-          .expect("impossible to fail");
-        self.integral_relational(
-          operator, left, right, ast_type, signedness, span,
-        )
-      },
-      (Floating(_), Floating(_)) =>
-        self.floating_relational(operator, left, right, ast_type, span),
-      (Pointer(), Integer(integer)) | (Integer(integer), Pointer()) =>
-        panic!("this should be rejected or emit a warning"),
-      (Pointer(), Pointer()) => self.emit(
-        inst::ICmp::new(
-          inst::ICmpPredicate::from_op_and_sign(operator, Signedness::Unsigned),
-          left,
-          right,
-        ),
-        ast_type,
-      ),
+    match operator {
+      // A && B -> if(A) { B } else { 0 }
+      Operator::And => todo!(),
+      // A || B -> if(A) { 1 } else { B }
+      Operator::Or => todo!(),
       _ => unreachable!(),
     }
-  }
-
-  fn integral_relational(
-    &mut self,
-    operator: Operator,
-    left: ValueID,
-    right: ValueID,
-    ast_type: ast::TypeRef<'c>,
-    signedness: Signedness,
-    span: SourceSpan,
-  ) -> ValueID {
-    self.emit(
-      inst::ICmp::new(
-        inst::ICmpPredicate::from_op_and_sign(operator, signedness),
-        left,
-        right,
-      ),
-      ast_type,
-    )
-  }
-
-  fn floating_relational(
-    &mut self,
-    operator: Operator,
-    left: ValueID,
-    right: ValueID,
-    ast_type: ast::TypeRef<'c>,
-    span: SourceSpan,
-  ) -> ValueID {
-    use Operator::*;
-    use inst::FCmpPredicate::*;
-    let predicate = match operator {
-      Less => Olt,
-      LessEqual => Ole,
-      Greater => Ogt,
-      GreaterEqual => Oge,
-      EqualEqual => Oeq,
-      // `NaN` always not equal than other, even both are `NaN`.
-      NotEqual => Une,
-      _ => unreachable!(),
-    };
-    self.emit(inst::FCmp::new(predicate, left, right), ast_type)
   }
 
   fn arithmetic(
@@ -1329,18 +1308,74 @@ impl<'c> Emitter<'c> {
     ast_type: ast::TypeRef<'c>,
     span: SourceSpan,
   ) -> ValueID {
-    use Operator::*;
-    use inst::BinaryOp;
-    // currently only do integer arithmetic here
-    let op = match operator {
-      Plus => BinaryOp::Add,
-      Minus => BinaryOp::Sub,
-      Star => BinaryOp::Mul,
-      // Slash => BinaryOp::SDiv,
-      // Percent => BinaryOp::SRem,
-      _ => todo!(),
+    use inst::{Binary, BinaryOp};
+    let lhs_ty = self.visit(left, |lhs| lhs.ast_type);
+    let rhs_ty = self.visit(right, |rhs| rhs.ast_type);
+
+    debug_assert_eq!(lhs_ty.signedness(), rhs_ty.signedness());
+    let singedness = lhs_ty.signedness().unwrap();
+
+    let this = ::std::ptr::from_mut(self);
+
+    let sizeof = |pointer_type: &ast::Type<'_>| {
+      let this = unsafe { &mut *this };
+      this.emit(
+        Constant::Integral(Integral::from_uintptr(
+          pointer_type.as_pointer_unchecked().pointee.size(),
+        )),
+        this.ast().uintptr_type(),
+      )
     };
-    self.emit(inst::Binary::new(op, left, right), ast_type)
+
+    match (lhs_ty.is_pointer(), rhs_ty.is_pointer()) {
+      (false, false) => self.emit(
+        Binary::new(
+          BinaryOp::from_op_and_sign(operator, singedness)
+            .expect("semantic analysis should catch this."),
+          left,
+          right,
+        ),
+        ast_type,
+      ),
+      // SHOULD USE GEP.
+      (true, true) => {
+        debug_assert_eq!(operator, Operator::Minus);
+        use ast::Compatibility;
+        debug_assert!(Compatibility::compatible(
+          &lhs_ty.as_pointer_unchecked().pointee,
+          &rhs_ty.as_pointer_unchecked().pointee
+        ));
+        debug_assert!(RefEq::ref_eq(ast_type, self.ast().ptrdiff_type()));
+
+        let sizeof_id = sizeof(lhs_ty);
+        let offset = self.emit(
+          inst::Binary::new(inst::BinaryOp::Sub, left, right),
+          ast_type, // self.ast().ptrdiff_type()
+        );
+
+        self.emit(
+          inst::Binary::new(inst::BinaryOp::SDiv, offset, sizeof_id),
+          ast_type,
+        )
+      },
+      (true, false) => {
+        use ::std::debug_assert_matches;
+        debug_assert_matches!(operator, Operator::Plus | Operator::Minus);
+        debug_assert!(RefEq::ref_eq(ast_type, lhs_ty));
+        todo!()
+      },
+      (false, true) => {
+        debug_assert_eq!(operator, Operator::Plus);
+        debug_assert!(RefEq::ref_eq(ast_type, rhs_ty));
+
+        let sizeof_id = sizeof(rhs_ty);
+        let multiplied = self.emit(
+          Binary::new(BinaryOp::Mul, left, sizeof_id),
+          self.ast().ptrdiff_type(),
+        );
+        todo!()
+      },
+    }
   }
 
   fn bitwise(
@@ -1404,6 +1439,181 @@ impl<'c> Emitter<'c> {
   }
 }
 impl<'c> Emitter<'c> {
+  fn relational(
+    &mut self,
+    operator: Operator,
+    left: ValueID,
+    right: ValueID,
+    ast_type: ast::TypeRef<'c>,
+    span: SourceSpan,
+  ) -> ValueID {
+    use super::Type::*;
+
+    let lhs_ir_type = lookup!(self, left).ir_type;
+    let rhs_ir_type = lookup!(self, right).ir_type;
+
+    match (lhs_ir_type, rhs_ir_type) {
+      (Integer(left_width), Integer(right_width)) =>
+        self.integral_relational(operator, left, right, ast_type, span),
+      (Floating(_), Floating(_)) =>
+        self.floating_relational(operator, left, right, ast_type, span),
+      (Pointer(), Pointer()) =>
+        self.pointer_relational(operator, left, right, ast_type, span),
+
+      _ => unreachable!(),
+    }
+  }
+
+  fn integral_relational(
+    &mut self,
+    operator: Operator,
+    left: ValueID,
+    right: ValueID,
+    ast_type: ast::TypeRef<'c>,
+    span: SourceSpan,
+  ) -> ValueID {
+    debug_assert_eq!(
+      self.visit(left, |value| {
+        (
+          value.ast_type.as_primitive_unchecked().is_integer(),
+          value.ast_type.size_bits(),
+          value.ast_type.signedness().unwrap(),
+        )
+      }),
+      self.visit(right, |value| {
+        (
+          value.ast_type.as_primitive_unchecked().is_integer(),
+          value.ast_type.size_bits(),
+          value.ast_type.signedness().unwrap(),
+        )
+      }),
+    );
+    let signedness = self
+      .visit(left, |value| value.ast_type.signedness())
+      .expect("integer always have signedness");
+
+    self.do_integral_relational(
+      inst::ICmpPredicate::from_op_and_sign(operator, signedness),
+      left,
+      right,
+      ast_type,
+      span,
+    )
+  }
+
+  fn do_integral_relational(
+    &mut self,
+    operator: inst::ICmpPredicate,
+    left: ValueID,
+    right: ValueID,
+    ast_type: ast::TypeRef<'c>,
+    span: SourceSpan,
+  ) -> ValueID {
+    self.emit(inst::ICmp::new(operator, left, right), ast_type)
+  }
+
+  fn pointer_relational(
+    &mut self,
+    operator: Operator,
+    left: ValueID,
+    right: ValueID,
+    ast_type: ast::TypeRef<'c>,
+    span: SourceSpan,
+  ) -> ValueID {
+    self.do_pointer_relational(
+      inst::ICmpPredicate::from_op_and_sign(operator, Signedness::Unsigned),
+      left,
+      right,
+      ast_type,
+      span,
+    )
+  }
+
+  fn do_pointer_relational(
+    &mut self,
+    operator: inst::ICmpPredicate,
+    left: ValueID,
+    right: ValueID,
+    ast_type: ast::TypeRef<'c>,
+    span: SourceSpan,
+  ) -> ValueID {
+    self.emit(inst::ICmp::new(operator, left, right), ast_type)
+  }
+
+  fn floating_relational(
+    &mut self,
+    operator: Operator,
+    left: ValueID,
+    right: ValueID,
+    ast_type: ast::TypeRef<'c>,
+    span: SourceSpan,
+  ) -> ValueID {
+    self.do_floating_relational(
+      inst::FCmpPredicate::from_op(operator),
+      left,
+      right,
+      ast_type,
+      span,
+    )
+  }
+
+  fn do_floating_relational(
+    &mut self,
+    operator: inst::FCmpPredicate,
+    left: ValueID,
+    right: ValueID,
+    ast_type: ast::TypeRef<'c>,
+    span: SourceSpan,
+  ) -> ValueID {
+    self.emit(inst::FCmp::new(operator, left, right), ast_type)
+  }
+}
+impl<'c> Emitter<'c> {
+  fn unary(
+    &mut self,
+    unary: se::Unary<'c>,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    let se::Unary {
+      kind,
+      operand,
+      operator,
+      span,
+    } = unary;
+    let operand = self.expression(operand);
+
+    self.do_unary(operator, operand, kind, ast_type, span)
+  }
+
+  fn do_unary(
+    &mut self,
+    operator: Operator,
+    operand: ValueID,
+    kind: UnaryKind,
+    ast_type: ast::TypeRef<'c>,
+    span: SourceSpan,
+  ) -> ValueID {
+    macro_rules! call {
+      ($method:ident) => {
+        self.$method(operator, operand, ast_type, span)
+      };
+    }
+
+    use Operator::*;
+    match operator {
+      Ampersand => call!(addressof),
+      Star => call!(indirect),
+      Not => call!(logical_not),
+      Tilde => call!(tilde),
+      Plus | Minus => call!(unary_arithmetic),
+      PlusPlus | MinusMinus => match kind {
+        UnaryKind::Prefix => call!(ppmm_pre),
+        UnaryKind::Postfix => call!(ppmm_post),
+      },
+      _ => unreachable!("operator is not unary: {:#?}", operator),
+    }
+  }
+
   #[inline]
   fn addressof(
     &mut self,
@@ -1437,44 +1647,31 @@ impl<'c> Emitter<'c> {
   ) -> ValueID {
     assert_eq!(operator, Operator::Not);
 
-    // FIXME: avoid this trick but also reuse the code below. borrowck wont let self being borrowed
-    // SAFETY: safe today, maybe not tomorrow.
-    let this = ::std::ptr::from_mut(self);
+    let ir_type = self.visit(operand, |value| value.ir_type);
 
-    let common = move |cmp| {
-      let this = unsafe { &mut *this };
-      let xor = this.emit(
-        inst::Binary::new(inst::BinaryOp::Xor, cmp, this.ir().i1_true()),
-        this.ast().i1_bool_type(),
-      );
-      this.emit(inst::Cast::from(inst::Zext::new(xor)), ast_type)
-    };
-    let integral = move |zero_or_nullptr| {
-      let this = unsafe { &mut *this };
-      let cmp = this.emit(
-        inst::ICmp::new(inst::ICmpPredicate::Ne, operand, zero_or_nullptr),
-        this.ast().i1_bool_type(),
-      );
-      common(cmp)
-    };
-
-    let cannot_inline_me_otherwise_refcell_panic =
-      lookup!(self, operand).ir_type;
-
-    match cannot_inline_me_otherwise_refcell_panic {
-      super::Type::Pointer() => integral(self.ir().nullptr()),
-      super::Type::Integer(width) => integral(self.ir().integer_zero(*width)),
-      super::Type::Floating(format) => {
-        let cmp = self.emit(
-          inst::FCmp::new(
-            inst::FCmpPredicate::Une,
-            operand,
-            self.ir().floating_zero(*format),
-          ),
-          self.ast().i1_bool_type(),
-        );
-        common(cmp)
-      },
+    use super::Type::*;
+    match ir_type {
+      Pointer() => self.do_pointer_relational(
+        inst::ICmpPredicate::Ne,
+        operand,
+        self.ir().nullptr(),
+        ast_type,
+        span,
+      ),
+      Integer(width) => self.do_integral_relational(
+        inst::ICmpPredicate::Ne,
+        operand,
+        self.ir().integer_zero(*width),
+        ast_type,
+        span,
+      ),
+      Floating(format) => self.do_floating_relational(
+        inst::FCmpPredicate::Une,
+        operand,
+        self.ir().floating_zero(*format),
+        ast_type,
+        span,
+      ),
       _ => unreachable!(),
     }
   }
@@ -1505,9 +1702,10 @@ impl<'c> Emitter<'c> {
     ast_type: ast::TypeRef<'c>,
     span: SourceSpan,
   ) -> ValueID {
-    match operator {
-      Operator::Plus => operand,
-      Operator::Minus => self.emit(
+    let is_floating = self.visit(operand, |value| value.ir_type.is_floating());
+    match (operator, is_floating) {
+      (Operator::Plus, _) => operand,
+      (Operator::Minus, false) => self.emit(
         inst::Binary::new(
           inst::BinaryOp::Sub,
           self
@@ -1517,65 +1715,29 @@ impl<'c> Emitter<'c> {
         ),
         ast_type,
       ),
+      (Operator::Minus, true) =>
+        self.emit(inst::Unary::new(inst::UnaryOp::FNeg, operand), ast_type),
       _ => unreachable!(),
     }
   }
 
-  fn ppmm(
+  fn ppmm_pre(
     &mut self,
     operator: Operator,
     operand: ValueID,
-    kind: UnaryKind,
     ast_type: ast::TypeRef<'c>,
     span: SourceSpan,
   ) -> ValueID {
-    use Operator::*;
-    use UnaryKind::*;
-    use inst::BinaryOp::*;
+    todo!()
+  }
 
-    let value = lookup!(self, operand);
-    // TODO: pointer is unimplemented
-    debug_assert!(matches!(
-      value.ir_type,
-      super::Type::Pointer()
-        | super::Type::Integer(_)
-        | super::Type::Floating(_)
-    ));
-    debug_assert!(matches!(operator, PlusPlus | MinusMinus));
-
-    let (width, _signedness) = (
-      value.ast_type.size_bits() as u8,
-      value.ast_type.signedness(),
-    );
-
-    let binaryop = match operator {
-      PlusPlus => Add,
-      MinusMinus => Sub,
-      _ => unreachable!(),
-    };
-    match kind {
-      Prefix => {
-        let calculated = self.emit(
-          inst::Binary::new(binaryop, operand, self.ir().integer_one(width)),
-          ast_type,
-        );
-        _ = self.emit(
-          inst::Memory::Store(inst::Store::new(operand, calculated)),
-          self.ast().void_type(),
-        );
-        calculated
-      },
-      Postfix => {
-        let calculated = self.emit(
-          inst::Binary::new(binaryop, operand, self.ir().integer_one(width)),
-          ast_type,
-        );
-        _ = self.emit(
-          inst::Memory::Store(inst::Store::new(operand, calculated)),
-          self.ast().void_type(),
-        );
-        operand
-      },
-    }
+  fn ppmm_post(
+    &mut self,
+    operator: Operator,
+    operand: ValueID,
+    ast_type: ast::TypeRef<'c>,
+    span: SourceSpan,
+  ) -> ValueID {
+    todo!()
   }
 }

@@ -164,7 +164,7 @@ pub struct CompoundAssign<'c> {
   pub operator: Operator,
   pub left: Box<Expression<'c>>,
   pub right: Box<Expression<'c>>,
-  pub intermediate_result: QualifiedType<'c>,
+  pub intermediate_result_type: QualifiedType<'c>,
   pub span: SourceSpan,
 }
 
@@ -173,14 +173,14 @@ impl<'c> CompoundAssign<'c> {
     operator: Operator,
     left: Expression<'c>,
     right: Expression<'c>,
-    intermediate_result: QualifiedType<'c>,
+    intermediate_result_type: QualifiedType<'c>,
     span: SourceSpan,
   ) -> Self {
     Self {
       operator,
       left: left.into(),
       right: right.into(),
-      intermediate_result,
+      intermediate_result_type,
       span,
     }
   }

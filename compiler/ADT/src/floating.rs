@@ -1,5 +1,6 @@
 use ::rcc_utils::{
-  BuiltinFloat, NumTo, ToI128, ToU128, ensure_is_pod, pre, underlying_type_of,
+  BuiltinFloat, NumTo, ToI128, ToU128, const_pre, ensure_is_pod,
+  underlying_type_of,
 };
 
 #[derive(Debug, Copy, Hash, ::std::marker::ConstParamTy)]
@@ -163,7 +164,7 @@ macro_rules! impl_op {
       type Output = Self;
       #[inline]
       fn $method(self, rhs: Self) -> Self::Output {
-        pre + (
+        const_pre + (
           self.format, rhs.format,
           "Cannot perform operation on Floating values of different formats"
         );
@@ -229,7 +230,7 @@ impl const Not for Floating {
 
 impl const PartialOrd for Floating {
   fn partial_cmp(&self, other: &Self) -> Option<::std::cmp::Ordering> {
-    pre
+    const_pre
       + (
         self.format,
         other.format,

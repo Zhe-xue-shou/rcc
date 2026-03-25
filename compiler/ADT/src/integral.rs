@@ -1,6 +1,6 @@
 use ::rcc_utils::{
-  BuiltinFloat, BuiltinIntegerOrBoolean, NumFrom, NumTo, ToU128, ensure_is_pod,
-  pre, signed_type_of,
+  BuiltinFloat, BuiltinIntegerOrBoolean, NumFrom, NumTo, ToU128, const_pre,
+  ensure_is_pod, signed_type_of,
 };
 
 type Underlying = u128;
@@ -331,8 +331,8 @@ impl Integral {
 impl Integral {
   /// Add with overflow detection.
   pub const fn overflowing_add(self, rhs: Self) -> (Self, bool) {
-    pre + (self.signedness, rhs.signedness);
-    pre + (self.width, rhs.width, "width mismatch");
+    const_pre + (self.signedness, rhs.signedness);
+    const_pre + (self.width, rhs.width, "width mismatch");
 
     let sum = self.bits.wrapping_add(rhs.bits);
     let result = Self::new(sum, self.width, self.signedness);
@@ -353,8 +353,8 @@ impl Integral {
 
   /// Subtract with overflow detection.
   pub const fn overflowing_sub(self, rhs: Self) -> (Self, bool) {
-    pre + (self.signedness, rhs.signedness);
-    pre + (self.width, rhs.width, "width mismatch");
+    const_pre + (self.signedness, rhs.signedness);
+    const_pre + (self.width, rhs.width, "width mismatch");
 
     let diff = self.bits.wrapping_sub(rhs.bits);
     let result = Self::new(diff, self.width, self.signedness);
@@ -376,8 +376,8 @@ impl Integral {
 
   /// Multiply with overflow detection.
   pub const fn overflowing_mul(self, rhs: Self) -> (Self, bool) {
-    pre + (self.signedness, rhs.signedness);
-    pre + (self.width, rhs.width, "width mismatch");
+    const_pre + (self.signedness, rhs.signedness);
+    const_pre + (self.width, rhs.width, "width mismatch");
 
     let (product, overflow) = if self.is_signed() {
       let a = self.as_signed();
@@ -403,8 +403,8 @@ impl Integral {
 
   /// Divide, returns None on division by zero.
   pub const fn checked_div(self, rhs: Self) -> Option<Self> {
-    pre + (self.signedness, rhs.signedness);
-    pre + (self.width, rhs.width, "width mismatch");
+    const_pre + (self.signedness, rhs.signedness);
+    const_pre + (self.width, rhs.width, "width mismatch");
 
     if rhs.is_zero() {
       None?
@@ -421,8 +421,8 @@ impl Integral {
 
   /// Remainder, returns [`None`] on division by zero.
   pub const fn checked_rem(self, rhs: Self) -> Option<Self> {
-    pre + (self.signedness, rhs.signedness);
-    pre + (self.width, rhs.width, "width mismatch");
+    const_pre + (self.signedness, rhs.signedness);
+    const_pre + (self.width, rhs.width, "width mismatch");
 
     if rhs.is_zero() {
       None?
@@ -525,7 +525,7 @@ impl const BitAnd for Integral {
   #[inline]
   fn bitand(self, rhs: Self) -> Self {
     {
-      pre + (self.width, rhs.width, "width mismatch");
+      const_pre + (self.width, rhs.width, "width mismatch");
       Self::new(self.bits & rhs.bits, self.width, self.signedness)
     }
   }
@@ -536,7 +536,7 @@ impl const BitOr for Integral {
 
   #[inline]
   fn bitor(self, rhs: Self) -> Self {
-    pre + (self.width, rhs.width, "width mismatch");
+    const_pre + (self.width, rhs.width, "width mismatch");
     Self::new(self.bits | rhs.bits, self.width, self.signedness)
   }
 }
@@ -546,7 +546,7 @@ impl const BitXor for Integral {
 
   #[inline]
   fn bitxor(self, rhs: Self) -> Self {
-    pre + (self.width, rhs.width, "width mismatch");
+    const_pre + (self.width, rhs.width, "width mismatch");
 
     Self::new(self.bits ^ rhs.bits, self.width, self.signedness)
   }
@@ -582,13 +582,13 @@ impl const PartialOrd for Integral {
     if self.width != other.width || self.signedness != other.signedness {
       None
     } else {
-      pre
+      const_pre
         + (
           self.signedness,
           other.signedness,
           "cannot compare Integral values of different signedness",
         );
-      pre + (self.width, other.width, "width mismatch");
+      const_pre + (self.width, other.width, "width mismatch");
 
       if self.is_signed() {
         self.as_signed().cmp(&other.as_signed())

@@ -17,6 +17,22 @@ pub trait Emitable<'a, ValueType> {
   fn emit(&mut self, value: ValueType, ast_type: ast::TypeRef<'a>) -> ValueID;
 }
 
+impl<'c> Emitable<'c, inst::Phi> for Emitter<'c> {
+  fn emit(&mut self, phi: inst::Phi, ast_type: ast::TypeRef<'c>) -> ValueID {
+    assert!(
+      self.visit(self.current_block, |value| {
+        value.data.as_basicblock_unchecked().is_empty()
+      }),
+      "Phi nodes must be the first instruction in a block"
+    );
+    assert_eq!(
+      self.ir().get_use_list(self.current_block).len() * 2,
+      phi.flat_view().len(),
+      "Phi node must cover all incoming edges of the block"
+    );
+    self.emit_common_instruction(phi, ast_type)
+  }
+}
 impl<'c> Emitable<'c, inst::Terminator> for Emitter<'c> {
   fn emit(
     &mut self,

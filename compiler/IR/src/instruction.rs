@@ -6,18 +6,6 @@ use super::ValueID;
 pub trait User {
   fn use_list(&self) -> &[ValueID];
 }
-/// result = phi [val1, label1], [val2, label2]
-///
-/// left here as placeholder, do it later.
-#[derive(Debug, Clone)]
-pub struct Phi {
-  pub incomings: Vec<(ValueID, ValueID)>, // (Value, From_Block_Label)
-}
-impl User for Phi {
-  fn use_list(&self) -> &[ValueID] {
-    todo!("implement operands for phi instruction")
-  }
-}
 
 /// Creater must ensure [`Jump::label`] must be am ID points to a [`super::BasicBlock`].
 #[derive(Debug)]
@@ -164,9 +152,7 @@ pub struct Unary {
 }
 #[derive(Debug)]
 pub enum UnaryOp {
-  Neg,
-  Not,
-  Compl,
+  FNeg,
 }
 impl Unary {
   pub fn new(operator: UnaryOp, operand: ValueID) -> Self {
@@ -235,22 +221,56 @@ impl User for Binary {
 #[strum(serialize_all = "lowercase")]
 pub enum BinaryOp {
   Add,
+  FAdd,
   Sub,
+  FSub,
   Mul,
-  Div,
-  Mod,
+  FMul,
+  UDiv,
+  SDiv,
+  FDiv,
+  URem,
+  SRem,
+  FRem,
   /// Bitwise And.
   And,
   /// Bitwise Or.
   Or,
+  /// Bitwise eXclusive or.
   Xor,
+  /// Shift Left.
   Shl,
   /// Logical Shift Right for unsigned integers.
   LShr,
   /// for signed integers.
   AShr,
 }
-
+impl BinaryOp {
+  pub const fn from_op_and_sign(
+    operator: Operator,
+    signedness: Signedness,
+  ) -> Option<BinaryOp> {
+    use BinaryOp::*;
+    use Operator::*;
+    use Signedness::*;
+    match (operator, signedness) {
+      (Plus, _) => Some(Add),
+      (Minus, _) => Some(Sub),
+      (Star, _) => Some(Mul),
+      (Slash, Signed) => Some(SDiv),
+      (Slash, Unsigned) => Some(UDiv),
+      (Percent, Signed) => Some(SRem),
+      (Percent, Unsigned) => Some(URem),
+      (Ampersand, _) => Some(BinaryOp::And),
+      (Pipe, _) => Some(BinaryOp::Or),
+      (Caret, _) => Some(Xor),
+      (LeftShift, _) => Some(Shl),
+      (RightShift, Signed) => Some(AShr),
+      (RightShift, Unsigned) => Some(LShr),
+      _ => None,
+    }
+  }
+}
 #[derive(Debug)]
 pub struct ICmp {
   predicate: ICmpPredicate,
@@ -370,6 +390,22 @@ pub enum FCmpPredicate {
   Ule,
   Ugt,
   Uge,
+}
+impl FCmpPredicate {
+  pub const fn from_op(operator: Operator) -> Self {
+    use FCmpPredicate::*;
+    use Operator::*;
+    match operator {
+      Less => Olt,
+      LessEqual => Ole,
+      Greater => Ogt,
+      GreaterEqual => Oge,
+      EqualEqual => Oeq,
+      // `NaN` always not equal than other, even both are `NaN`.
+      NotEqual => Une,
+      _ => unreachable!(),
+    }
+  }
 }
 #[derive(Debug)]
 pub enum Cmp {
@@ -573,11 +609,74 @@ impl User for Call {
     &self.operands
   }
 }
+/// result = phi [val1, label1], [val2, label2]
+///
+/// if phi being used, it must be at the start of current block and has as many pairs as the branch had.
+#[derive(Debug, Clone)]
+pub struct Phi {
+  operands: Vec<ValueID>, // (Value, From_Block_Label) pair.
+}
 
+impl Phi {
+  pub fn new(operands: Vec<ValueID>) -> Self {
+    Self { operands }
+  }
+
+  pub fn flat_view(&self) -> &[ValueID] {
+    &self.operands
+  }
+
+  pub fn incomings(&self) -> &[(ValueID, ValueID)] {
+    debug_assert!(self.operands.len().is_multiple_of(2));
+    unsafe {
+      ::std::slice::from_raw_parts(
+        self.operands.as_ptr() as *const (ValueID, ValueID),
+        self.operands.len() / 2,
+      )
+    }
+  }
+}
+impl User for Phi {
+  fn use_list(&self) -> &[ValueID] {
+    &self.operands
+  }
+}
+
+#[derive(Debug)]
+pub struct Select {
+  operands: [ValueID; 3], // [condition, true_value, false_value]
+}
+impl User for Select {
+  fn use_list(&self) -> &[ValueID] {
+    &self.operands
+  }
+}
+impl Select {
+  pub fn new(
+    condition: ValueID,
+    true_value: ValueID,
+    false_value: ValueID,
+  ) -> Self {
+    Self {
+      operands: [condition, true_value, false_value],
+    }
+  }
+
+  pub fn condition(&self) -> ValueID {
+    self.operands[0]
+  }
+
+  pub fn true_value(&self) -> ValueID {
+    self.operands[1]
+  }
+
+  pub fn false_value(&self) -> ValueID {
+    self.operands[2]
+  }
+}
 /// This mimics LLVM ir's catagory.
 #[derive(Debug)]
 pub enum Instruction {
-  Phi(Phi),
   Terminator(Terminator),
   Unary(Unary),
   Binary(Binary),
@@ -585,12 +684,14 @@ pub enum Instruction {
   Cast(Cast),
   Call(Call),
   Cmp(Cmp),
+  Phi(Phi),
+  Select(Select),
 }
 impl User for Instruction {
   fn use_list(&self) -> &[ValueID] {
     static_dispatch!(
       self,
-      |variant| variant.use_list() => Phi Terminator Unary Binary Memory Cast Call Cmp
+      |variant| variant.use_list() => Phi Terminator Unary Binary Memory Cast Call Cmp Select
     )
   }
 }
@@ -626,6 +727,7 @@ interconvert!(Memory, Instruction);
 interconvert!(Cast, Instruction);
 interconvert!(Call, Instruction);
 interconvert!(Cmp, Instruction);
+interconvert!(Select, Instruction);
 
 make_trio_for!(Call, Instruction);
 make_trio_for!(Phi, Instruction);

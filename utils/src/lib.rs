@@ -149,12 +149,12 @@ pub fn debug_assertion(cond: bool, msg: &str) {
   debug_assert!(cond, "debug assertion failed: {}", msg);
 }
 
+use ::std::{fmt::Debug, marker::Destruct, ops::Add};
 #[allow(non_camel_case_types)]
-pub struct pre;
+pub struct const_pre;
 
-use ::std::marker::Destruct;
-impl<T: [const] PartialEq + [const] Destruct> const ::std::ops::Add<(T, T)>
-  for pre
+impl<T: [const] PartialEq + [const] Destruct + Debug> const Add<(T, T)>
+  for const_pre
 {
   type Output = ();
 
@@ -162,8 +162,8 @@ impl<T: [const] PartialEq + [const] Destruct> const ::std::ops::Add<(T, T)>
     const_assert_eq!(lhs, rhs)
   }
 }
-impl<T: [const] PartialEq + [const] Destruct> const
-  ::std::ops::Add<(T, T, &str)> for pre
+impl<T: [const] PartialEq + [const] Destruct + Debug> const Add<(T, T, &str)>
+  for const_pre
 {
   type Output = ();
 
@@ -171,3 +171,26 @@ impl<T: [const] PartialEq + [const] Destruct> const
     const_assert_eq!(lhs, rhs, msg)
   }
 }
+// #[allow(non_camel_case_types)]
+// pub struct pre;
+// impl Add<(bool, String)> for pre {
+//   type Output = ();
+
+//   fn add(self, (cond, msg): (bool, String)) -> Self::Output {
+//     debug_assert!(cond, "{}", msg)
+//   }
+// }
+// impl<T: PartialEq + Destruct + Debug> Add<(T, T)> for pre {
+//   type Output = ();
+
+//   fn add(self, (lhs, rhs): (T, T)) {
+//     debug_assert_eq!(lhs, rhs)
+//   }
+// }
+// impl<T: PartialEq + Debug> Add<(T, T, String)> for pre {
+//   type Output = ();
+
+//   fn add(self, (lhs, rhs, msg): (T, T, String)) {
+//     debug_assert_eq!(lhs, rhs, "{}", msg)
+//   }
+// }

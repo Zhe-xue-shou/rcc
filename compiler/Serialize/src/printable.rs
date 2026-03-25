@@ -159,7 +159,7 @@ impl<'c> Print<'c, inst::Instruction> for Value<'c> {
     ::rcc_utils::static_dispatch!(
         Instruction : variant,
         |variant| Print::print(self, printer, prefix, is_last, palette, variant) =>
-        Phi Terminator Unary Binary Memory Cast Call Cmp
+        Phi Terminator Unary Binary Memory Cast Call Cmp Select
     )
   }
 }
@@ -195,7 +195,7 @@ impl<'c> Print<'c, module::Function<'_>> for Value<'c> {
       if !use_list.is_empty() {
         printer.write_fmt(
           format_args!(
-            "\t\t\t\t\t; preds = {}",
+            "\t\t\t\t\t\t; preds = {}",
             use_list
               .iter()
               .map(|&user_id| format!(
@@ -364,7 +364,42 @@ impl<'c> Print<'c, module::Argument> for Value<'c> {
   }
 }
 
-please_print_me!(inst::Phi);
+impl<'c> Print<'c, inst::Phi> for Value<'c> {
+  fn print(
+    &self,
+    printer: &mut impl Printer<'c>,
+    prefix: &str,
+    is_last: bool,
+    palette: &Palette,
+    variant: &inst::Phi,
+  ) {
+    printer.write("phi ", &palette.literal);
+    printer.write(self.ir_type, &palette.meta);
+
+    let pairs = variant.incomings();
+    pairs
+      .iter()
+      .enumerate()
+      .for_each(|(index, &(value_id, block_id))| {
+        printer.write(" [", &palette.skeleton);
+
+        debug_assert_eq!(lookup!(printer, value_id).ir_type, self.ir_type);
+
+        self::pretty_print_contant_or_id(printer, value_id, palette, false);
+
+        printer.write(", ", &palette.skeleton);
+        debug_assert!(lookup!(printer, block_id).ir_type.is_label());
+
+        printer.write(pre!("%" => printer.get_id(block_id)), &palette.skeleton);
+        printer.write("]", &palette.skeleton);
+
+        printer.write(
+          if index + 1 == pairs.len() { "" } else { ", " },
+          &palette.skeleton,
+        );
+      });
+  }
+}
 impl<'c> Print<'c, inst::Terminator> for Value<'c> {
   fn print(
     &self,
@@ -485,6 +520,40 @@ impl<'c> Print<'c, inst::Cmp> for Value<'c> {
         |variant| Print::print(self, printer, prefix, is_last, palette, variant) =>
         ICmp FCmp
     )
+  }
+}
+
+impl<'c> Print<'c, inst::Select> for Value<'c> {
+  fn print(
+    &self,
+    printer: &mut impl Printer<'c>,
+    prefix: &str,
+    is_last: bool,
+    palette: &Palette,
+    variant: &inst::Select,
+  ) {
+    printer.write("select ", &palette.literal);
+    self::pretty_print_contant_or_id(
+      printer,
+      variant.condition(),
+      palette,
+      true,
+    );
+
+    printer.write(", ", &palette.skeleton);
+    self::pretty_print_contant_or_id(
+      printer,
+      variant.true_value(),
+      palette,
+      true,
+    );
+    printer.write(", ", &palette.skeleton);
+    self::pretty_print_contant_or_id(
+      printer,
+      variant.false_value(),
+      palette,
+      true,
+    );
   }
 }
 impl<'c> Print<'c, inst::ICmp> for Value<'c> {

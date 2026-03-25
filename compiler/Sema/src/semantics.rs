@@ -1104,14 +1104,19 @@ impl<'c> Sema<'c> {
     span: SourceSpan,
   ) -> Result<se::Expression<'c>, Diag<'c>> {
     use OperatorCategory::*;
+    macro_rules! call {
+      ($method:ident) => {
+        self.$method(operator, left, right, span)
+      };
+    }
     match operator.category() {
-      Assignment => self.assignment(operator, left, right, span),
-      Logical => self.logical(operator, left, right, span),
-      Relational => self.relational(operator, left, right, span),
-      Arithmetic => self.arithmetic(operator, left, right, span),
-      Bitwise => self.bitwise(operator, left, right, span),
-      BitShift => self.bitshift(operator, left, right, span),
-      Special => self.comma(operator, left, right, span),
+      Assignment => call!(assignment),
+      Logical => call!(logical),
+      Relational => call!(relational),
+      Arithmetic => call!(arithmetic),
+      Bitwise => call!(bitwise),
+      BitShift => call!(bitshift),
+      Special => call!(comma),
       Uncategorized => unreachable!("operator is not binary: {:#?}", operator),
     }
   }
@@ -1126,7 +1131,11 @@ impl<'c> Sema<'c> {
       else_expr: pe_else_expr,
       span,
     } = ternary;
-    let condition = self.expression(*pe_condition)?;
+    let condition = self
+      .expression(*pe_condition)?
+      .lvalue_conversion()
+      .decay(self.context())
+      .is_contextually_convertible_to_bool()?;
     let then_expr = self.expression(*pe_then_expr)?;
     let else_expr = self.expression(*pe_else_expr)?;
 
@@ -1216,45 +1225,45 @@ impl<'c> Sema<'c> {
     array_subscript: pe::ArraySubscript<'c>,
   ) -> Result<se::Expression<'c>, Diag<'c>> {
     // a[i] = *(a + i)
-    let pe::ArraySubscript {
-      array: pe_array,
-      index: pe_index,
-      span,
-    } = array_subscript;
-    let analyzed_array = self
-      .expression(*pe_array)?
+    let pe::ArraySubscript { array, index, span } = array_subscript;
+    let lhs = self
+      .expression(*array)?
       .lvalue_conversion()
       .decay(self.context());
-    let analyzed_index = self
-      .expression(*pe_index)?
+    let rhs = self
+      .expression(*index)?
       .lvalue_conversion()
       .decay(self.context());
 
-    // TODO: (-1)[ptr] is allowed, but not handlede.
-    if !analyzed_index.unqualified_type().is_integer() {
-      Err(
-        NonIntegerSubscript(analyzed_index.to_string())
-          .into_with(Severity::Error)
-          .into_with(span),
-      )?
-    }
-
-    let analyzed_index =
-      analyzed_index.ptrdiff_conversion_unchecked(self.context());
-
-    if let Type::Pointer(ptr) = analyzed_array.unqualified_type() {
-      let elem_type = ptr.pointee;
-      Ok(se::Expression::new_lvalue(
-        // store the pointer(decayed array) and index here, not the array here... maybe a wrong idesa, idk for now.
-        se::ArraySubscript::new(analyzed_array, analyzed_index, span).into(),
+    let doit = |array_side: se::Expression<'c>,
+                index_side: se::Expression<'c>| {
+      let analyzed_index =
+        index_side.ptrdiff_conversion_unchecked(self.context());
+      let elem_type =
+        array_side.unqualified_type().as_pointer_unchecked().pointee;
+      // store the pointer(decayed array) and index here, not the array here... maybe a wrong idesa, idk for now.
+      se::Expression::new_lvalue(
+        se::ArraySubscript::new(array_side, analyzed_index, span).into(),
         elem_type,
-      ))
-    } else {
-      Err(
-        DerefNonPtr(analyzed_array.to_string())
+      )
+    };
+
+    match (lhs.unqualified_type(), rhs.unqualified_type()) {
+      (Type::Pointer(ptr), Type::Primitive(p)) if p.is_integer() =>
+        Ok(doit(lhs, rhs)),
+      (Type::Primitive(p), Type::Pointer(ptr)) if p.is_integer() =>
+        Ok(doit(rhs, lhs)),
+
+      (Type::Pointer(_), t) | (t, Type::Pointer(_)) => Err(
+        NonIntegerSubscript(t.to_string())
           .into_with(Severity::Error)
           .into_with(span),
-      )
+      ),
+      _ => Err(
+        DerefNonPtr(lhs.to_string())
+          .into_with(Severity::Error)
+          .into_with(span),
+      ),
     }
   }
 
@@ -1324,26 +1333,30 @@ impl<'c> Sema<'c> {
           .into_with(Severity::Error)
           .into_with(span),
       ),
-      Some(_pm) => match kind {
-        ::rcc_ast::UnaryKind::Prefix => todo!(),
-        ::rcc_ast::UnaryKind::Postfix => todo!(),
+      Some(pm) => {
+        let one = se::Expression::new_rvalue(
+          se::Constant::new(
+            se::ConstantLiteral::Integral(Integral::from(1i32)),
+            span,
+          )
+          .into(),
+          self.ast().int_type().into(),
+        );
+        #[allow(unused)]
+        let expr_type = *operand.qualified_type();
+        _ = kind;
+        #[allow(unused)]
+        let (raw_expr, qualified_type, value_category) =
+          self.arithmetic(pm, operand, one, span)?.destructure();
+        todo!()
+        // let se::Binary { left, .. } = raw_expr.into_binary_unchecked();
+
+        // Ok(se::Expression::new(
+        //   se::Unary::new(operator, *left, kind, span).into(),
+        //   expr_type,
+        //   value_category,
+        // ))
       },
-
-      // {
-      //   let one = se::Expression::new_rvalue(
-      //     se::Constant::new(
-      //       se::ConstantLiteral::Integral(Integral::from(1i32)),
-      //       span,
-      //     )
-      //     .into(),
-      //     self.ast().int_type().into(),
-      //   );
-      //   let (raw_expr, qualified_type, value_category) = self
-      //     .arithmetic(operator, se::Expression::clone(&operand), one, span)?
-      //     .destructure();
-
-      //   todo!()
-      // },
       None => unreachable!(),
     }
   }
@@ -1508,7 +1521,7 @@ impl<'c> Sema<'c> {
         ))
       },
       Some(binary_op) => {
-        let (raw_binary, intermediate_result, ..) = self
+        let (raw_binary, intermediate_result_type, ..) = self
           .do_binary(binary_op, se::Expression::clone(&left), right, span)?
           .destructure();
 
@@ -1524,7 +1537,7 @@ impl<'c> Sema<'c> {
             operator,
             left,
             assigned_expr,
-            intermediate_result,
+            intermediate_result_type,
             span,
           )
           .into(),
@@ -1686,11 +1699,21 @@ impl<'c> Sema<'c> {
   ///
   /// - left and right are both pointer of type `T`, the operator is `-` -- return type is `ptrdiff_t`.
   /// - left and right are both pointer of type `T`, the operator is `+` -- error.
-  /// - left is a pointer to type `T`, right is an integer, the operator is `+` -- right converts to `size_t`, return type is `*T`
-  /// - left is a pointer to type `T`, right is an integer, the operator is `-` -- right converts to `ptrdiff_t`, return type is `*T`
+  /// - left is a pointer to type `T`, right is an integer, the operator is `+` -- right converts to `size_t`/`uintptr_t`(my implementation), return type is `*T`
+  /// - left is a pointer to type `T`, right is an integer, the operator is `-` -- right converts to `ptrdiff_t`(my implementation), return type is `*T`
   /// - left is an integer, right is a pointer to type `T`, the operator is `+` -- same as above.
   /// - left is an integer, right is a pointer to type `T`, the operator is `-` -- error.
   /// - left and right are pointers to incompatible type -- error.
+  ///
+  /// | Left         |    Op    | Right         | Result Type                 |
+  /// | ------------ | -------- | ------------- | --------------------------- |
+  /// | `*T`         | `-`      | `*T`          | `ptrdiff_t`                 |
+  /// | `*T`         | `+`      | `*T`          | *Invalid*                   |
+  /// | `*T`         | `+`      | Integer       | `*T`                        |
+  /// | `*T`         | `-`      | Integer       | `*T`                        |
+  /// | Integer      | `+`      | `*T`          | `*T`                        |
+  /// | Integer      | `-`      | `*T`          | *Invalid*                   |
+  /// | `*T1`        | `+/-`    | `*T2`         | *Incompatible*              |
   fn pointer_arithematic(
     &self,
     operator: Operator,
@@ -1756,7 +1779,7 @@ impl<'c> Sema<'c> {
       },
       // ptr - int => ptr
       (Type::Pointer(ptr), Type::Primitive(rhs))
-        if rhs.is_integer() && operator == Operator::Plus =>
+        if rhs.is_integer() && operator == Operator::Minus =>
       {
         let ptrty = left.unqualified_type().clone().lookup(self.context());
         Ok(se::Expression::new_rvalue(
@@ -1961,7 +1984,7 @@ impl<'c> Sema<'c> {
       None => None,
     };
 
-    let return_type = match &self
+    let return_type = self
       .current_function
       .as_ref()
       .shall_ok("return statement outside function should be handled in parser")
@@ -1969,12 +1992,9 @@ impl<'c> Sema<'c> {
       .borrow()
       .qualified_type
       .unqualified_type
-    {
-      Type::FunctionProto(proto) => proto.return_type,
-      _ => {
-        contract_violation!("current function's type is not function proto")
-      },
-    };
+      .as_functionproto_unchecked()
+      .return_type;
+
     match (&analyzed_expr, return_type.unqualified_type) {
       (None, Type::Primitive(Primitive::Void)) =>
         Ok(ss::Return::new(None, span)),

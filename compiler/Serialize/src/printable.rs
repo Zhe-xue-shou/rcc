@@ -159,7 +159,7 @@ impl<'c> Print<'c, inst::Instruction> for Value<'c> {
     ::rcc_utils::static_dispatch!(
         Instruction : variant,
         |variant| Print::print(self, printer, prefix, is_last, palette, variant) =>
-        Phi Terminator Unary Binary Memory Cast Call Cmp Select
+        Phi Terminator Unary Binary Memory Cast Call Cmp Select GetElementPtr
     )
   }
 }
@@ -398,6 +398,37 @@ impl<'c> Print<'c, inst::Phi> for Value<'c> {
           &palette.skeleton,
         );
       });
+  }
+}
+impl<'c> Print<'c, inst::GetElementPtr> for Value<'c> {
+  fn print(
+    &self,
+    printer: &mut impl Printer<'c>,
+    prefix: &str,
+    is_last: bool,
+    palette: &Palette,
+    variant: &inst::GetElementPtr,
+  ) {
+    printer.write("getelementptr ", &palette.literal);
+    let ptr = variant.ptr();
+    debug_assert!(lookup!(printer, ptr).ir_type.is_pointer());
+    printer.write(
+      printer.ir().visit(ptr, |value| {
+        printer
+          .ir()
+          .ir_type(&value.ast_type.as_pointer_unchecked().pointee)
+      }),
+      &palette.meta,
+    );
+
+    printer.write(", ", &palette.skeleton);
+    printer.write("ptr ", &palette.meta);
+    printer.write(pre!("%" => printer.get_id(ptr)), &palette.skeleton);
+
+    variant.indices().iter().for_each(|index| {
+      printer.write(", ", &palette.skeleton);
+      self::pretty_print_contant_or_id(printer, *index, palette, true);
+    });
   }
 }
 impl<'c> Print<'c, inst::Terminator> for Value<'c> {
@@ -753,5 +784,21 @@ impl<'c> Print<'c, inst::Zext> for Value<'c> {
     printer.write(self.ir_type, &palette.meta);
   }
 }
-please_print_me!(inst::Sext);
+impl<'c> Print<'c, inst::Sext> for Value<'c> {
+  fn print(
+    &self,
+    printer: &mut impl Printer<'c>,
+    prefix: &str,
+    is_last: bool,
+    palette: &Palette,
+    variant: &inst::Sext,
+  ) {
+    printer.write("sext ", &palette.literal);
+
+    self::pretty_print_contant_or_id(printer, variant.operand(), palette, true);
+
+    printer.write(" to ", &palette.skeleton);
+    printer.write(self.ir_type, &palette.meta);
+  }
+}
 please_print_me!(inst::Trunc);

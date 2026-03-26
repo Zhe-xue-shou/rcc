@@ -674,6 +674,29 @@ impl Select {
     self.operands[2]
   }
 }
+#[derive(Debug)]
+pub struct GetElementPtr {
+  operands: Vec<ValueID>,
+}
+
+impl GetElementPtr {
+  pub fn new(operands: Vec<ValueID>) -> Self {
+    Self { operands }
+  }
+
+  pub fn ptr(&self) -> ValueID {
+    self.operands[0]
+  }
+
+  pub fn indices(&self) -> &[ValueID] {
+    &self.operands[1..]
+  }
+}
+impl User for GetElementPtr {
+  fn use_list(&self) -> &[ValueID] {
+    &self.operands
+  }
+}
 /// This mimics LLVM ir's catagory.
 #[derive(Debug)]
 pub enum Instruction {
@@ -686,12 +709,14 @@ pub enum Instruction {
   Cmp(Cmp),
   Phi(Phi),
   Select(Select),
+  GetElementPtr(GetElementPtr),
 }
 impl User for Instruction {
   fn use_list(&self) -> &[ValueID] {
     static_dispatch!(
       self,
-      |variant| variant.use_list() => Phi Terminator Unary Binary Memory Cast Call Cmp Select
+      |variant| variant.use_list() =>
+      Phi Terminator Unary Binary Memory Cast Call Cmp Select GetElementPtr
     )
   }
 }
@@ -728,6 +753,7 @@ interconvert!(Cast, Instruction);
 interconvert!(Call, Instruction);
 interconvert!(Cmp, Instruction);
 interconvert!(Select, Instruction);
+interconvert!(GetElementPtr, Instruction);
 
 make_trio_for!(Call, Instruction);
 make_trio_for!(Phi, Instruction);

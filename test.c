@@ -42,14 +42,17 @@
 //   return i;
 // }
 
-// int getchar();
+int getchar();
 // int getchar2();
 // int getchar3();
 // int getchar4();
 // int getchar5();
 int main() {
   int *p;
-  int *q = p + 1;
+  int j = getchar();
+  int *q = p - j;
+  int *r = j + p;
+  long long i = q - r;
   // int c[2];
   // 1 [c] = 0;
   // return getchar() ? getchar2() ? getchar3() ? getchar4() ? 0 : 4 : 5 : 6 :

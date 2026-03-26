@@ -413,7 +413,8 @@ impl<'c> Emitter<'c> {
       // If [...], reaching the `}` that terminates the main function returns a value of 0.
       (_, false)
         if function_name == "main"
-          && !self.ir().get_use_list(self.current_block).is_empty() =>
+          // && !self.ir().get_use_list(self.current_block).is_empty()
+           =>
       {
         let _implicit_return = self.emit(
           inst::Terminator::Return(inst::Return::new(Some(
@@ -1188,10 +1189,9 @@ impl<'c> Emitter<'c> {
             && ast_type.size_bits() > 0
             && ast_type.size_bits() <= 128
         );
-        match Ord::cmp(
-          lookup!(self, operand).ir_type.as_integer_unchecked(),
-          &(ast_type.size_bits() as u8),
-        ) {
+        let width =
+          self.visit(operand, |value| value.ir_type.as_integer_unchecked());
+        match Ord::cmp(width, &(ast_type.size_bits() as u8)) {
           Less => match ast_type.signedness() {
             Some(Signed) => self.emit(Cast::from(Sext::new(operand)), ast_type),
             Some(Unsigned) =>
@@ -1313,20 +1313,8 @@ impl<'c> Emitter<'c> {
     let lhs_ty = self.visit(left, |lhs| lhs.ast_type);
     let rhs_ty = self.visit(right, |rhs| rhs.ast_type);
 
-    debug_assert_eq!(lhs_ty.signedness(), rhs_ty.signedness());
+    // debug_assert_eq!(lhs_ty.signedness(), rhs_ty.signedness());
     let singedness = lhs_ty.signedness().unwrap();
-
-    let this = ::std::ptr::from_mut(self);
-
-    let sizeof = |pointer_type: &ast::Type<'_>| {
-      let this = unsafe { &mut *this };
-      this.emit(
-        Constant::Integral(Integral::from_uintptr(
-          pointer_type.as_pointer_unchecked().pointee.size(),
-        )),
-        this.ast().uintptr_type(),
-      )
-    };
 
     match (lhs_ty.is_pointer(), rhs_ty.is_pointer()) {
       (false, false) => self.emit(
@@ -1338,43 +1326,42 @@ impl<'c> Emitter<'c> {
         ),
         ast_type,
       ),
-      // SHOULD USE GEP.
       (true, true) => {
-        debug_assert_eq!(operator, Operator::Minus);
-        use ast::Compatibility;
-        debug_assert!(Compatibility::compatible(
-          &lhs_ty.as_pointer_unchecked().pointee,
-          &rhs_ty.as_pointer_unchecked().pointee
-        ));
-        debug_assert!(RefEq::ref_eq(ast_type, self.ast().ptrdiff_type()));
-
-        let sizeof_id = sizeof(lhs_ty);
-        let offset = self.emit(
-          inst::Binary::new(inst::BinaryOp::Sub, left, right),
-          ast_type, // self.ast().ptrdiff_type()
-        );
-
-        self.emit(
-          inst::Binary::new(inst::BinaryOp::SDiv, offset, sizeof_id),
-          ast_type,
-        )
+        // ptrtoint cast -> sub -> sdiv.
+        todo!()
       },
       (true, false) => {
         use ::std::debug_assert_matches;
         debug_assert_matches!(operator, Operator::Plus | Operator::Minus);
         debug_assert!(RefEq::ref_eq(ast_type, lhs_ty));
-        todo!()
+
+        let operands = vec![
+          left,
+          self.unary_arithmetic(
+            operator,
+            right,
+            self.ast().ptrdiff_type(),
+            span,
+          ),
+        ];
+
+        self.emit(inst::GetElementPtr::new(operands), ast_type)
       },
       (false, true) => {
         debug_assert_eq!(operator, Operator::Plus);
         debug_assert!(RefEq::ref_eq(ast_type, rhs_ty));
 
-        let sizeof_id = sizeof(rhs_ty);
-        let multiplied = self.emit(
-          Binary::new(BinaryOp::Mul, left, sizeof_id),
-          self.ast().ptrdiff_type(),
-        );
-        todo!()
+        let operands = vec![
+          right,
+          self.unary_arithmetic(
+            operator,
+            left,
+            self.ast().ptrdiff_type(),
+            span,
+          ),
+        ];
+
+        self.emit(inst::GetElementPtr::new(operands), ast_type)
       },
     }
   }
@@ -1706,16 +1693,24 @@ impl<'c> Emitter<'c> {
     let is_floating = self.visit(operand, |value| value.ir_type.is_floating());
     match (operator, is_floating) {
       (Operator::Plus, _) => operand,
-      (Operator::Minus, false) => self.emit(
-        inst::Binary::new(
-          inst::BinaryOp::Sub,
-          self
-            .ir()
-            .integer_zero(lookup!(self, operand).ast_type.size_bits() as u8),
-          operand,
-        ),
-        ast_type,
-      ),
+      (Operator::Minus, false) => {
+        let (width, is_constant) = self.visit(operand, |value| {
+          (
+            value.ast_type.size_bits() as u8,
+            value.data.as_constant().map(|c| *c.as_integral_unchecked()),
+          )
+        });
+        match is_constant {
+          Some(integral) => self.emit(Constant::Integral(-integral), ast_type),
+          None => {
+            let zero = self.ir().integer_zero(width);
+            self.emit(
+              inst::Binary::new(inst::BinaryOp::Sub, zero, operand),
+              ast_type,
+            )
+          },
+        }
+      },
       (Operator::Minus, true) =>
         self.emit(inst::Unary::new(inst::UnaryOp::FNeg, operand), ast_type),
       _ => unreachable!(),

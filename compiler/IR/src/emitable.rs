@@ -33,6 +33,15 @@ impl<'c> Emitable<'c, inst::Phi> for Emitter<'c> {
     self.emit_common_instruction(phi, ast_type)
   }
 }
+impl<'c> Emitable<'c, inst::GetElementPtr> for Emitter<'c> {
+  fn emit(
+    &mut self,
+    gep: inst::GetElementPtr,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    self.emit_common_instruction(gep, ast_type)
+  }
+}
 impl<'c> Emitable<'c, inst::Terminator> for Emitter<'c> {
   fn emit(
     &mut self,

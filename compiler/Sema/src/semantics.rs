@@ -1688,7 +1688,7 @@ impl<'c> Sema<'c> {
   ///
   /// - left and right are both pointer of type `T`, the operator is `-` -- return type is `ptrdiff_t`.
   /// - left and right are both pointer of type `T`, the operator is `+` -- error.
-  /// - left is a pointer to type `T`, right is an integer, the operator is `+` -- right converts to `size_t`/`uintptr_t`(my implementation), return type is `*T`
+  /// - left is a pointer to type `T`, right is an integer, the operator is `+` -- right converts to `ptrdiff_t`(my implementation), return type is `*T`
   /// - left is a pointer to type `T`, right is an integer, the operator is `-` -- right converts to `ptrdiff_t`(my implementation), return type is `*T`
   /// - left is an integer, right is a pointer to type `T`, the operator is `+` -- same as above.
   /// - left is an integer, right is a pointer to type `T`, the operator is `-` -- error.
@@ -1742,7 +1742,7 @@ impl<'c> Sema<'c> {
         Ok(se::Expression::new_rvalue(
           se::Binary::new(
             operator,
-            left.uintptr_conversion_unchecked(self.context()),
+            left.ptrdiff_conversion_unchecked(self.context()),
             right,
             span,
           )
@@ -1759,7 +1759,7 @@ impl<'c> Sema<'c> {
           se::Binary::new(
             operator,
             left,
-            right.uintptr_conversion_unchecked(self.context()),
+            right.ptrdiff_conversion_unchecked(self.context()),
             span,
           )
           .into(),

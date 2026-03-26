@@ -1107,37 +1107,6 @@ impl<'c> Emitter<'c> {
     self.do_cast(operand, cast_type, ast_type)
   }
 
-  fn do_cast(
-    &mut self,
-    operand: ValueID,
-    cast_type: ast::CastType,
-    ast_type: ast::TypeRef<'c>,
-  ) -> ValueID {
-    use ::std::cmp::Ordering::*;
-    use Signedness::*;
-    use ast::CastType::*;
-    use inst::{Load, Sext, Trunc, Zext};
-
-    match cast_type {
-      Noop | FunctionToPointerDecay | ArrayToPointerDecay => operand,
-      LValueToRValue => self.emit(Load::new(operand), ast_type),
-      IntegralCast => {
-        let width =
-          self.visit(operand, |value| value.ir_type.as_integer_unchecked());
-        match Ord::cmp(width, &(ast_type.size_bits() as u8)) {
-          Less => match ast_type.signedness() {
-            Some(Signed) => self.emit(Sext::new(operand), ast_type),
-            Some(Unsigned) => self.emit(Zext::new(operand), ast_type),
-            None => unreachable!(),
-          },
-          Equal => operand,
-          Greater => self.emit(Trunc::new(operand), ast_type),
-        }
-      },
-      _ => todo!("implicit cast: {:?}", cast_type),
-    }
-  }
-
   fn compound_assign(
     &mut self,
     compound_assign: se::CompoundAssign,
@@ -1153,6 +1122,211 @@ impl<'c> Emitter<'c> {
     todo!()
   }
 }
+impl<'c> Emitter<'c> {
+  fn do_cast(
+    &mut self,
+    operand: ValueID,
+    cast_type: ast::CastType,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    use ast::CastType::*;
+
+    match cast_type {
+      BitCast => self.bitcast(operand, ast_type),
+      IntegralCast => self.integral_cast(operand, ast_type),
+      FloatingCast => self.floating_cast(operand, ast_type),
+      LValueToRValue => self.lvalue_to_rvalue_cast(operand, ast_type),
+      NullptrToPointer => self.nullptr_to_pointer_cast(operand, ast_type),
+      PointerToBoolean => self.pointer_to_boolean_cast(operand, ast_type),
+      IntegralToBoolean => self.integral_to_boolean_cast(operand, ast_type),
+      FloatingToBoolean => self.floating_to_boolean_cast(operand, ast_type),
+      IntegralToPointer => self.integral_to_pointer_cast(operand, ast_type),
+      PointerToIntegral => self.pointer_to_integral_cast(operand, ast_type),
+      FloatingToIntegral => self.floating_to_integral_cast(operand, ast_type),
+      IntegralToFloating => self.integral_to_floating_cast(operand, ast_type),
+      Noop | ToVoid | ArrayToPointerDecay | FunctionToPointerDecay => operand, //< noop
+    }
+  }
+
+  /// Three `MeowToBoolean` casts acts much like the [`Self::logical_not`].
+  #[inline(always)]
+  fn nullptr_to_pointer_cast(
+    &mut self,
+    operand: ValueID,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    eprintln!(
+      "the nullptr to ptr conversion shall be folded before hit here, whose \
+       type has already been assigned to the corresponding pointer type, and \
+       has a data of Constant::Nullptr()."
+    );
+    self.emit(inst::BitCast::new(operand), ast_type)
+  }
+
+  #[inline(always)]
+  fn floating_to_boolean_cast(
+    &mut self,
+    operand: ValueID,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    debug_assert!(RefEq::ref_eq(ast_type, self.ast().i8_bool_type()));
+    // compare to 0.0, and then zext to i8
+    let format =
+      *self.visit(operand, |value| value.ir_type.as_floating_unchecked());
+
+    let compared = self.do_floating_relational(
+      inst::FCmpPredicate::Une,
+      operand,
+      self.ir().floating_zero(format),
+      self.ast().i1_bool_type(),
+      SourceSpan::default(), // doesn't matter.
+    );
+    self.emit(inst::Zext::new(compared), ast_type)
+  }
+
+  #[inline(always)]
+  fn integral_to_boolean_cast(
+    &mut self,
+    operand: ValueID,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    debug_assert!(RefEq::ref_eq(ast_type, self.ast().i8_bool_type()));
+    // compare to 0, and then zext to i8
+    let width =
+      *self.visit(operand, |value| value.ir_type.as_integer_unchecked());
+    let compared = self.do_integral_relational(
+      inst::ICmpPredicate::Ne,
+      operand,
+      self.ir().integer_zero(width),
+      self.ast().i1_bool_type(),
+      SourceSpan::default(),
+    );
+    self.emit(inst::Zext::new(compared), ast_type)
+  }
+
+  #[inline(always)]
+  fn pointer_to_boolean_cast(
+    &mut self,
+    operand: ValueID,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    debug_assert!(RefEq::ref_eq(ast_type, self.ast().i8_bool_type()));
+    // compare to nullptr, and then zext to i8
+    let compared = self.do_pointer_relational(
+      inst::ICmpPredicate::Ne,
+      operand,
+      self.ir().nullptr(),
+      self.ast().i1_bool_type(),
+      SourceSpan::default(), // ditto.
+    );
+    self.emit(inst::Zext::new(compared), ast_type)
+  }
+
+  #[inline(always)]
+  fn lvalue_to_rvalue_cast(
+    &mut self,
+    operand: ValueID,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    self.emit(inst::Load::new(operand), ast_type)
+  }
+
+  #[inline(always)]
+  fn bitcast(
+    &mut self,
+    operand: ValueID,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    self.emit(inst::BitCast::new(operand), ast_type)
+  }
+
+  #[inline(always)]
+  fn integral_to_pointer_cast(
+    &mut self,
+    operand: ValueID,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    self.emit(inst::IntToPtr::new(operand), ast_type)
+  }
+
+  #[inline(always)]
+  fn pointer_to_integral_cast(
+    &mut self,
+    operand: ValueID,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    self.emit(inst::PtrToInt::new(operand), ast_type)
+  }
+
+  fn floating_to_integral_cast(
+    &mut self,
+    operand: ValueID,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    let signedness = ast_type
+      .signedness()
+      .expect("integer always has signedness");
+    use Signedness::*;
+    match signedness {
+      Signed => self.emit(inst::FPToSI::new(operand), ast_type),
+      Unsigned => self.emit(inst::FPToUI::new(operand), ast_type),
+    }
+  }
+
+  fn integral_to_floating_cast(
+    &mut self,
+    operand: ValueID,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    let signedness = self
+      .visit(operand, |value| value.ast_type.signedness())
+      .expect("integer always has signedness");
+    use Signedness::*;
+    match signedness {
+      Signed => self.emit(inst::SIToFP::new(operand), ast_type),
+      Unsigned => self.emit(inst::UIToFP::new(operand), ast_type),
+    }
+  }
+
+  fn floating_cast(
+    &mut self,
+    operand: ValueID,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    use ::std::cmp::Ordering::*;
+    use inst::{FPExt, FPTrunc};
+    let format =
+      self.visit(operand, |value| value.ir_type.as_floating_unchecked());
+    match Ord::cmp(format, &ast_type.as_primitive_unchecked().floating_format())
+    {
+      Less => self.emit(FPExt::new(operand), ast_type),
+      Equal => operand,
+      Greater => self.emit(FPTrunc::new(operand), ast_type),
+    }
+  }
+
+  fn integral_cast(
+    &mut self,
+    operand: ValueID,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
+    use ::std::cmp::Ordering::*;
+    use Signedness::*;
+    use inst::{Sext, Trunc, Zext};
+    let width =
+      self.visit(operand, |value| value.ir_type.as_integer_unchecked());
+    match Ord::cmp(width, &(ast_type.size_bits() as u8)) {
+      Less => match ast_type.signedness() {
+        Some(Signed) => self.emit(Sext::new(operand), ast_type),
+        Some(Unsigned) => self.emit(Zext::new(operand), ast_type),
+        None => unreachable!(),
+      },
+      Equal => operand,
+      Greater => self.emit(Trunc::new(operand), ast_type),
+    }
+  }
+}
+
 impl<'c> Emitter<'c> {
   fn binary(
     &mut self,
@@ -1479,7 +1653,10 @@ impl<'c> Emitter<'c> {
     ast_type: ast::TypeRef<'c>,
     span: SourceSpan,
   ) -> ValueID {
-    self.emit(inst::ICmp::new(operator, left, right), ast_type)
+    self.emit(
+      inst::ICmp::new(operator, left, right),
+      self.ast().i1_bool_type(),
+    )
   }
 
   fn floating_relational(

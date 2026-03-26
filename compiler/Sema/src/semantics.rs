@@ -1590,9 +1590,24 @@ impl<'c> Sema<'c> {
           self.context().converted_bool().into(),
         ))
       },
+      (
+        Type::Primitive(Primitive::Nullptr),
+        Type::Primitive(Primitive::Nullptr),
+      ) if matches!(operator, Operator::EqualEqual | Operator::NotEqual) =>
+        Ok(se::Expression::new_rvalue(
+          se::Binary::from_operator_unchecked(operator, left, right, span)
+            .into(),
+          self.context().converted_bool().into(),
+        )),
+
       (l, r) if l.is_pointer() || r.is_pointer() =>
         self.pointer_relational(operator, left, right, span),
-      _ => todo!("enums??? idkfr"),
+
+      (l, r) => Err(
+        InvalidComparison(l.to_string(), r.to_string(), operator)
+          .into_with(Severity::Error)
+          .into_with(span),
+      ),
     }
   }
 
@@ -1607,6 +1622,29 @@ impl<'c> Sema<'c> {
       left.unqualified_type().is_pointer()
         || right.unqualified_type().is_pointer()
     );
+    let ptr_with_nullptr =
+      |ptr: se::Expression<'c>, nullptr: se::Expression<'c>| {
+        let casted_nullptr = se::Expression::new_rvalue(
+          se::ImplicitCast::new(
+            nullptr.into(),
+            ::rcc_ast::types::CastType::NullptrToPointer,
+            span,
+          )
+          .into(),
+          *ptr.qualified_type(),
+        );
+        Ok(se::Expression::new_rvalue(
+          se::Binary::from_operator_unchecked(
+            operator,
+            ptr,
+            casted_nullptr,
+            span,
+          )
+          .into(),
+          self.context().converted_bool().into(),
+        ))
+      };
+
     // if one of the operand is not a pointer and is not zero, emit a warning.
     match (left.unqualified_type(), right.unqualified_type()) {
       (Type::Pointer(left_ptr), Type::Pointer(right_ptr)) => {
@@ -1628,8 +1666,18 @@ impl<'c> Sema<'c> {
           )
         }
       },
-      // (Type::Pointer(ptr), Type::Primitive(Primitive::Nullptr)) => todo!(),
-      _ => todo!(),
+
+      (Type::Pointer(ptr), Type::Primitive(Primitive::Nullptr))
+        if matches!(operator, Operator::EqualEqual | Operator::NotEqual) =>
+        ptr_with_nullptr(left, right),
+      (Type::Primitive(Primitive::Nullptr), Type::Pointer(ptr))
+        if matches!(operator, Operator::EqualEqual | Operator::NotEqual) =>
+        ptr_with_nullptr(right, left),
+      (l, r) => Err(
+        InvalidComparison(l.to_string(), r.to_string(), operator)
+          .into_with(Severity::Error)
+          .into_with(span),
+      ),
     }
   }
 

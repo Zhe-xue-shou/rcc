@@ -1,29 +1,63 @@
+//! Revised v1: removed custom conversion.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ::strum_macros::Display)]
 pub enum CastType {
-  Noop, // don't use this for implicit casts - in that case no cast is needed; only used for explicit casts like (int)x where x is already int
-  ToVoid, // (void)expr
+  /// don't use this for implicit casts - in that case no cast is needed;
+  /// only used for explicit casts like `(int)x` where `x` is already `int`
+  Noop,
+  /// `(void)expr`
+  ToVoid,
+  /// pesudo cast; no actual conversion, just reinterpret the bits, like
+  /// ```c
+  /// int a = 42;
+  /// double b = *(double *)&a; // copied
+  /// ```
+  /// or just
+  /// ```cpp
+  /// auto a = 42;
+  /// auto b = reinterpret_cast<double&>(a); // no copy ;)
+  /// ```
+  /// we got a fancy name for that in rust:
+  /// ```rust, norun
+  /// let a = 42;
+  /// let b = unsafe { ::std::mem::transmute::<i32, f64>(a) }; //< this won't work; size mismatch
+  /// ```
+  BitCast,
 
-  LValueToRValue,         // Read value from a variable (6.3.2.1)
-  ArrayToPointerDecay,    // int[10] -> int*
-  FunctionToPointerDecay, // void f() -> void(*)()
-  NullptrToPointer,       // nullptr -> ptr
+  /// Read value from a variable (item 6.3.2.1).
+  LValueToRValue,
+  /// `int[10]` -> `int*`
+  ArrayToPointerDecay,
+  /// `void f()` -> `void(*)()`
+  FunctionToPointerDecay,
+  /// `nullptr` -> ptr
+  NullptrToPointer,
 
-  IntegralCast, // int -> long, unsigned -> int - bit widening/narrowing
-  IntegralToFloating, // int -> float
-  IntegralToBoolean, // int -> bool
+  /// `int` -> `long`
+  IntegralCast,
+  /// `int` -> `float`
+  IntegralToFloating,
+  /// `int` -> `bool`/`_Bool`
+  ///
+  /// Only exists in explicit cast (in C).
+  IntegralToBoolean,
 
-  FloatingCast,       // float -> double
-  FloatingToIntegral, // float -> int
+  /// `float` -> `double`
+  FloatingCast,
+  /// `float` -> `int`
+  FloatingToIntegral,
+  /// `float` -> `bool`/`_Bool`
+  ///
   /// this is *not* correct for conditional checks like `if (x)` where `x` is a float, but for explicit casts like `(bool)x`.
-  FloatingToBoolean, // float -> bool
+  ///
+  /// Only exists in explicit cast (in C).
+  FloatingToBoolean,
 
-  IntegralToPointer, // int -> ptr (addr 0 is null)
+  /// `int` -> ptr
+  IntegralToPointer,
   PointerToIntegral,
-  PointerToBoolean, // ptr -> bool
-  BitCast, // pesudo cast; no actual conversion, just reinterpret the bits
-
-  // ^^^ those exist in Clang's frontend too
-  // vvv custom casts
-  NullptrToIntegral, // nullptr -> int
-  NullptrToBoolean,  // nullptr -> bool
+  /// ptr -> `bool`/`_Bool`
+  ///
+  /// Only exists in explicit cast (in C).
+  PointerToBoolean,
 }

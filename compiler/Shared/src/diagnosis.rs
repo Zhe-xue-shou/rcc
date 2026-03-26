@@ -225,6 +225,14 @@ mod data {
     InvalidConversion(CustomMessage),
     #[error("Cannot apply operator '{2}' to types '{0}' and '{1}'")]
     InvalidOprand(QualTyStr, QualTyStr, Operator),
+    #[error("Comparison of distinct pointer types '{0}' and '{1}'")]
+    CompareDistinctPointerTypes(QualTyStr, QualTyStr),
+    #[error("Comparison of pointer and integer types '{0}' and '{1}'")]
+    CompareBetweenPointerAndInteger(QualTyStr, QualTyStr),
+    #[error(
+      "Invalid comparison between types '{0}' and '{1}' with operator '{2}'"
+    )]
+    InvalidComparison(QualTyStr, QualTyStr, Operator),
     #[error("{0}")]
     Placeholder(CustomMessage),
     #[error("{0}")]
@@ -259,10 +267,6 @@ mod data {
     "Arithmetic overflow in operation '{}' between '{}' and '{}'", &.0.2, &.0.0, &.0.1
   )]
     ArithmeticBinOpOverflow(Box<(Constant<'c>, Constant<'c>, Operator)>),
-    #[error("Comparison of distinct pointer types '{0}' and '{1}'")]
-    CompareDistinctPointerTypes(QualTyStr, QualTyStr),
-    #[error("Comparison of pointer and integer types '{0}' and '{1}'")]
-    CompareBetweenPointerAndInteger(QualTyStr, QualTyStr),
     #[error(
     "'{}' is used in a logical operation, {}", &.0, if let Some(suggest) = &.1 {
       format!(

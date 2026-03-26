@@ -33,6 +33,13 @@ pub struct Context<'c> {
   double_type: TypeRef<'c>,
   voidptr_type: TypeRef<'c>,
 
+  /// this field serve differenc purpose and represented as i1 NOT i8 in IR
+  /// -- it's a loophole in my design --
+  /// do NOT use this in AST level -- use `bool_type` during AST!
+  ///
+  /// it works because my `TypeInfo::size_bits` returns 1 instead of 8.
+  fake_bool_type: TypeRef<'c>,
+
   converted_bool: TypeRef<'c>, // shall be `int` according to C standard.
 
   unnamed_str: StrRef<'c>,
@@ -67,6 +74,7 @@ impl<'c> Context<'c> {
         .alloc(Pointer::new(QualifiedType::new_unqualified(void_type)).into()),
 
       converted_bool: int_type,
+      fake_bool_type: arena.alloc(Primitive::__IRBit.into()),
 
       unnamed_str: arena.alloc_str("<unnamed>"),
     };
@@ -208,6 +216,11 @@ impl<'c> Context<'c> {
   /// Mostly this is not the correct choice for a converted bool: use [`Self::converted_bool`] instead.
   #[must_use]
   pub fn i1_bool_type(&self) -> TypeRef<'c> {
+    self.fake_bool_type
+  }
+
+  #[must_use]
+  pub fn i8_bool_type(&self) -> TypeRef<'c> {
     self.bool_type
   }
 

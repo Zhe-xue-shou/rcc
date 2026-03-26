@@ -1,7 +1,5 @@
 use ::rcc_adt::{Floating, Integral};
-use ::rcc_ast::types::{
-  CastType, Compatibility, QualifiedType, Type, TypeInfo,
-};
+use ::rcc_ast::types::{CastType, Compatibility, QualifiedType, TypeInfo};
 use ::rcc_shared::{
   DiagData::*, Diagnosis, Operator, OperatorCategory, SourceSpan,
 };
@@ -274,24 +272,38 @@ impl<'c> Folding<'c> for Binary<'c> {
     // while `static const int j = 0 || x;` would not.
     let fl = self.left.fold(diag);
     let fr = self.right.fold(diag);
+
+    let f = |left, right| {
+      Expression::new(
+        Self {
+          left,
+          right,
+          ..self
+        }
+        .into(),
+        target_type,
+        value_category,
+      )
+    };
+
     let (folded_lhs, folded_rhs) = match (fl, fr) {
       (Success(left), Success(right)) => (left, right),
-      (Success(left), Failure(_)) if self.operator == Operator::And =>
+      (Success(left), Failure(_))
+        if self.operator == Operator::And
+          && left.raw_expr().as_constant_unchecked().is_zero() =>
         return Success(left),
-      (Failure(_), Success(right)) if self.operator == Operator::Or =>
-        return Success(right),
 
-      (fl, fr) =>
-        return Failure(Expression::new(
-          Self {
-            left: fl.take().into(),
-            right: fr.take().into(),
-            ..self
-          }
-          .into(),
-          target_type,
-          value_category,
-        )),
+      (Success(left), Failure(right)) if self.operator == Operator::And =>
+        return Failure(f(left.into(), right.into())),
+
+      (Success(left), Failure(_))
+        if self.operator == Operator::Or
+          && left.raw_expr().as_constant_unchecked().is_not_zero() =>
+        return Success(left),
+      (Success(left), Failure(right)) if self.operator == Operator::Or =>
+        return Failure(f(left.into(), right.into())),
+
+      (fl, fr) => return Failure(f(fl.take().into(), fr.take().into())),
     };
     if self.operator == Operator::Comma {
       diag.add_warning(LeftCommaNoEffect, self.span);
@@ -525,10 +537,7 @@ impl<'c> Folding<'c> for ImplicitCast<'c> {
       PointerToIntegral | PointerToBoolean => Failure(raw_expr),
       ArrayToPointerDecay => todo!("address constant"),
       FunctionToPointerDecay => todo!("address constant"),
-      NullptrToPointer => match *target_type.unqualified_type {
-        Type::Pointer(_) => todo!(),
-        _ => contract_violation!("unreachable"),
-      },
+      NullptrToPointer => Success(raw_expr),
       IntegralCast => match raw_expr {
         RawExpr::Constant(c) => {
           let target_primitive =
@@ -601,15 +610,6 @@ impl<'c> Folding<'c> for ImplicitCast<'c> {
       IntegralToPointer => contract_violation!(
         "no such implicit cast in C -- only for explicit casts!"
       ),
-      NullptrToIntegral => match *target_type.unqualified_type {
-        Type::Primitive(p) => Success(
-          Integral::new(0, p.size_bits() as u8, p.is_signed().into()).into(),
-        ),
-        _ => contract_violation!("unreachable"),
-      }
-      .map(|c: CL| c.into_with(self.span)),
-      NullptrToBoolean => Success(Integral::from_bool(false).into())
-        .map(|c: CL| c.into_with(self.span)),
     }
     .map(|raw_expr| Expression::new(raw_expr, target_type, value_category))
   }

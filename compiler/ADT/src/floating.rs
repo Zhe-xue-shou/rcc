@@ -4,7 +4,7 @@ use ::rcc_utils::{
 };
 
 #[derive(Debug, Copy, Hash, ::std::marker::ConstParamTy)]
-#[derive_const(Clone, PartialEq, Eq)]
+#[derive_const(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Format {
   /// standard IEEE float.
   IEEE32 = 32,
@@ -330,17 +330,13 @@ const fn clamp_float_to_unsigned<F: [const] ToU128 + BuiltinFloat>(
 #[allow(clippy::unnecessary_cast)]
 #[allow(non_upper_case_globals)]
 mod tests {
-  macro_rules! const_assert_eq {
-    ($a:expr, $b:expr) => {
-      const _: () = assert!($a == $b);
-    };
-  }
   macro_rules! const_assert_approx_eq {
     ($a:expr, $b:expr, $epsilon:expr) => {
       const _: () = assert!(($a - $b).abs() <= $epsilon);
     };
   }
 
+  use ::rcc_utils::static_assert_eq;
   use ::std::{f32, f64};
 
   #[allow(unused)]
@@ -350,8 +346,8 @@ mod tests {
   const fn test_floating() {
     const F1: Floating = Floating::from(f32::consts::PI);
     const F2: Floating = Floating::from(f64::consts::PI);
-    const_assert_eq!(F1.format(), Format::IEEE32);
-    const_assert_eq!(F2.format(), Format::IEEE64);
+    static_assert_eq!(F1.format(), Format::IEEE32);
+    static_assert_eq!(F2.format(), Format::IEEE64);
     const_assert_approx_eq!(F1.cast(Format::IEEE64), F2, 1e-7f64.into());
     const_assert_approx_eq!(F2.cast(Format::IEEE32), F1, f32::EPSILON.into());
   }

@@ -187,7 +187,7 @@ impl<'c> Constant<'c> {
   }
 
   #[inline(always)]
-  pub fn is_one(&self) -> bool {
+  pub fn is_not_zero(&self) -> bool {
     !self.is_zero()
   }
 

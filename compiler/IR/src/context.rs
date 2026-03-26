@@ -298,8 +298,8 @@ impl<'c> Context<'c> {
         Double => self.float64_type,
         Void => self.void_type,
         Nullptr => self.pointer_type,
-        integer @ (Bool | Char | SChar | Short | Int | Long | LongLong
-        | UChar | UShort | UInt | ULong | ULongLong) =>
+        integer @ (__IRBit | Bool | Char | SChar | Short | Int | Long
+        | LongLong | UChar | UShort | UInt | ULong | ULongLong) =>
           self.make_integer(integer.size_bits() as u8),
         placeholder @ (LongDouble | ComplexFloat | ComplexDouble
         | ComplexLongDouble) => todo!("{placeholder:#?} not implemented"),

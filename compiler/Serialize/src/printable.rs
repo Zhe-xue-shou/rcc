@@ -39,7 +39,7 @@ fn pretty_print_contant_or_id<'c>(
         debug_assert!(value.is_nullptr());
         printer.write("null", &palette.literal)
       },
-      Integer(1u8) => printer.write(value.is_one(), &palette.literal),
+      Integer(1u8) => printer.write(value.is_not_zero(), &palette.literal),
       // if the value is max, print it as -1 for better readability.
       Integer(width) => match value.as_integral_unchecked() {
         bitmask if *bitmask == Integral::bitmask(*width) =>
@@ -360,7 +360,7 @@ impl<'c> Print<'c, module::Argument> for Value<'c> {
   ) {
     printer.write(suff!(" " => self.ir_type), &palette.meta);
     printer.write(pre!("%" => index), &palette.skeleton);
-    printer.write(if is_last { "" } else { ", " }, &palette.dim);
+    printer.write(if is_last { "" } else { ", " }, &palette.skeleton);
   }
 }
 

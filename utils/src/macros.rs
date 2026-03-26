@@ -268,6 +268,21 @@ macro_rules! static_assert {
   };
 }
 #[macro_export]
+macro_rules! static_assert_eq {
+  ($lhs:expr, $right:expr, $($arg:tt)+) => {
+    #[allow(clippy::bool_comparison)]
+    const _: () = {
+      assert!($lhs == $right, $($arg)+);
+    };
+  };
+  ($lhs:expr, $right:expr) => {
+    #[allow(clippy::bool_comparison)]
+    const _: () = {
+      assert!($lhs == $right);
+    };
+  };
+}
+#[macro_export]
 macro_rules! ensure_is_pod {
   ($ty:ty) => {
     $crate::static_assert!(

@@ -105,13 +105,14 @@ impl<'c> const TypeInfo<'c> for Primitive {
       ComplexFloat => 8,
       ComplexDouble => 16,
       ComplexLongDouble => 16,
+      __IRBit => panic!("invalid call"),
     }
   }
 
   #[inline]
   fn size_bits(&self) -> usize {
     match self {
-      Bool => 1,
+      __IRBit => 1,
       _ => self.size() * 8,
     }
   }

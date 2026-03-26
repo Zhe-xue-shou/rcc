@@ -160,11 +160,13 @@ mod instruction {
           "ICmp inst must have boolean as return type."
         );
         debug_assert!(
-          self.visit(icmp.lhs(), |value| value.ir_type.is_integer()),
+          self.visit(icmp.lhs(), |value| value.ir_type.is_integer()
+            || value.ir_type.is_pointer()),
           "ICmp lhs must be an integer"
         );
         debug_assert!(
-          self.visit(icmp.rhs(), |value| value.ir_type.is_integer()),
+          self.visit(icmp.rhs(), |value| value.ir_type.is_integer()
+            || value.ir_type.is_pointer()),
           "ICmp rhs must be an integer"
         );
 

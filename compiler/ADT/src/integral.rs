@@ -659,30 +659,27 @@ impl_from_integral!(usize, usize::BITS, Unsigned);
 #[allow(clippy::unnecessary_cast)]
 #[allow(non_upper_case_globals)]
 mod tests {
-  macro_rules! const_assert_eq {
-    ($a:expr, $b:expr) => {
-      const _: () = assert!($a == $b);
-    };
-  }
+  use ::rcc_utils::{static_assert, static_assert_eq};
+
   #[allow(unused)]
   use super::*;
 
   #[test]
   const fn test_sign_extension() {
     const neg_one_i8: Integral = Integral::from(-1 as i8);
-    const_assert_eq!(neg_one_i8.as_signed(), -1);
-    const_assert_eq!(neg_one_i8.bits(), 0xFF);
+    static_assert_eq!(neg_one_i8.as_signed(), -1);
+    static_assert_eq!(neg_one_i8.bits(), 0xFF);
 
     const extended: Integral = neg_one_i8.sext(32);
-    const_assert_eq!(extended.as_signed(), -1);
-    const_assert_eq!(extended.bits(), 0xFFFFFFFF);
+    static_assert_eq!(extended.as_signed(), -1);
+    static_assert_eq!(extended.bits(), 0xFFFFFFFF);
   }
 
   #[test]
   const fn test_truncation() {
     const big: Integral = Integral::from(0x12345678 as i32);
     const small: Integral = big.trunc(8, Unsigned);
-    const_assert_eq!(small.bits(), 0x78);
+    static_assert_eq!(small.bits(), 0x78);
   }
 
   #[test]
@@ -690,21 +687,21 @@ mod tests {
     const max_i8: Integral = Integral::new(127, 8, Signed);
     const one: Integral = Integral::new(1, 8, Signed);
     const R: (Integral, bool) = max_i8.overflowing_add(one);
-    assert!(R.1);
-    const_assert_eq!(R.0.as_signed(), -128);
+    static_assert!(R.1);
+    static_assert_eq!(R.0.as_signed(), -128);
   }
 
   #[test]
   const fn test_signed_comparison() {
     const neg: Integral = Integral::from(-1 as i8);
     const pos: Integral = Integral::from(1 as i8);
-    assert!(neg < pos);
+    static_assert!(neg < pos);
   }
 
   #[test]
   const fn test_unsigned_comparison() {
     const a: Integral = Integral::from(255 as u8);
     const b: Integral = Integral::from(1 as u8);
-    assert!(a > b);
+    static_assert!(a > b);
   }
 }

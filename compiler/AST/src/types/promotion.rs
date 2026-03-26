@@ -49,7 +49,7 @@ impl Primitive {
     }
   }
 
-  /// These value should be consistent with member function of `Integral::width`.
+  /// These value should be consistent with [`Integral::width`].
   pub const fn integer_width(&self) -> u8 {
     match self {
       Bool => 1,

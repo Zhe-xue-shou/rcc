@@ -414,9 +414,11 @@ impl<'c> Print<'c, inst::GetElementPtr> for Value<'c> {
     debug_assert!(lookup!(printer, ptr).ir_type.is_pointer());
     printer.write(
       printer.ir().visit(ptr, |value| {
-        printer
-          .ir()
-          .ir_type(&value.ast_type.as_pointer_unchecked().pointee)
+        printer.ir().ir_type(match value.ast_type {
+          ::rcc_ast::types::Type::Pointer(pointer) => &pointer.pointee,
+          ::rcc_ast::types::Type::Array(array) => value.ast_type,
+          _ => unreachable!("{:?}", value.ast_type),
+        })
       }),
       &palette.meta,
     );

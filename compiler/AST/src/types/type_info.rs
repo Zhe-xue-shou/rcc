@@ -20,6 +20,8 @@ pub const trait TypeInfo<'c> {
   fn is_complete(&self) -> bool {
     self.size() != 0
   }
+  #[must_use]
+  fn extent(&self) -> usize;
 }
 
 impl<'c> TypeInfo<'c> for QualifiedType<'c> {
@@ -41,6 +43,11 @@ impl<'c> TypeInfo<'c> for QualifiedType<'c> {
   #[inline(always)]
   fn default_value(&self) -> Constant<'c> {
     self.unqualified_type.default_value()
+  }
+
+  #[inline(always)]
+  fn extent(&self) -> usize {
+    self.unqualified_type.extent()
   }
 }
 impl<'c> TypeInfo<'c> for Type<'c> {
@@ -76,6 +83,15 @@ impl<'c> TypeInfo<'c> for Type<'c> {
     ::rcc_utils::static_dispatch!(
       self,
       |variant| variant.default_value() =>
+      Primitive Array Pointer FunctionProto Enum Record Union
+    )
+  }
+
+  #[inline]
+  fn extent(&self) -> usize {
+    ::rcc_utils::static_dispatch!(
+      self,
+      |variant| variant.extent() =>
       Primitive Array Pointer FunctionProto Enum Record Union
     )
   }
@@ -137,6 +153,15 @@ impl<'c> const TypeInfo<'c> for Primitive {
       _ => unreachable!(),
     }
   }
+
+  #[inline(always)]
+  fn extent(&self) -> usize {
+    use Primitive::*;
+    match self {
+      Void => 0,
+      _ => 1,
+    }
+  }
 }
 
 impl<'c> TypeInfo<'c> for Array<'c> {
@@ -162,6 +187,12 @@ impl<'c> TypeInfo<'c> for Array<'c> {
   fn default_value(&self) -> Constant<'c> {
     panic!("default value for non-scalar type should not be requested");
   }
+
+  // dont inline this...
+  // #[inline(never)]
+  fn extent(&self) -> usize {
+    self.element_type.extent() + 1
+  }
 }
 
 impl<'c> TypeInfo<'c> for Record<'c> {
@@ -186,6 +217,10 @@ impl<'c> TypeInfo<'c> for Record<'c> {
   #[inline(always)]
   fn default_value(&self) -> Constant<'c> {
     panic!("default value for non-scalar type should not be requested");
+  }
+
+  fn extent(&self) -> usize {
+    1
   }
 }
 
@@ -213,6 +248,11 @@ impl<'c> TypeInfo<'c> for Union<'c> {
   fn default_value(&self) -> Constant<'c> {
     panic!("default value for non-scalar type should not be requested");
   }
+
+  #[inline(always)]
+  fn extent(&self) -> usize {
+    1
+  }
 }
 impl<'c> const TypeInfo<'c> for Pointer<'c> {
   #[inline(always)]
@@ -233,6 +273,11 @@ impl<'c> const TypeInfo<'c> for Pointer<'c> {
   #[inline(always)]
   fn default_value(&self) -> Constant<'c> {
     Constant::Nullptr()
+  }
+
+  #[inline(always)]
+  fn extent(&self) -> usize {
+    1
   }
 }
 
@@ -256,6 +301,12 @@ impl<'c> TypeInfo<'c> for FunctionProto<'c> {
   fn default_value(&self) -> Constant<'c> {
     panic!("default value for non-scalar type should not be requested");
   }
+
+  /// not meaningful.
+  #[inline(always)]
+  fn extent(&self) -> usize {
+    0
+  }
 }
 impl<'c> TypeInfo<'c> for Enum<'c> {
   #[inline(always)]
@@ -277,5 +328,10 @@ impl<'c> TypeInfo<'c> for Enum<'c> {
   #[inline(always)]
   fn default_value(&self) -> Constant<'c> {
     self.underlying_type.default_value()
+  }
+
+  #[inline(always)]
+  fn extent(&self) -> usize {
+    1
   }
 }

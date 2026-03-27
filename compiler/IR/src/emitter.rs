@@ -1038,7 +1038,25 @@ impl<'c> Emitter<'c> {
     array_subscript: se::ArraySubscript<'c>,
     ast_type: ast::TypeRef<'c>,
   ) -> ValueID {
-    todo!()
+    let se::ArraySubscript { array, index, .. } = array_subscript;
+    debug_assert!(
+      array.qualified_type().is_pointer()
+        && index.qualified_type().is_integer(),
+      "precond: array subscript should have been checked to have a pointer \
+       type and an integer type. if the index hand is pointer while the array \
+       hand is integer, Sema has already swapped them to make it a pointer \
+       subscript."
+    );
+    let current_extent = array.unqualified_type().extent();
+    let target_extent = ast_type.extent();
+
+    let array_id = self.expression(array);
+    let index_id = self.expression(index);
+
+    // assume sema checked that the target extent type is contained within the current extent and the type is valid..
+
+    // TODO: this is wrong.
+    self.emit(inst::GetElementPtr::new(vec![array_id, index_id]), ast_type)
   }
 
   fn compound_literal(
@@ -1128,21 +1146,26 @@ impl<'c> Emitter<'c> {
     cast_type: ast::CastType,
     ast_type: ast::TypeRef<'c>,
   ) -> ValueID {
-    use ast::CastType::*;
+    macro_rules! call {
+      ($method:ident) => {
+        self.$method(operand, ast_type)
+      };
+    }
 
+    use ast::CastType::*;
     match cast_type {
-      BitCast => self.bitcast(operand, ast_type),
-      IntegralCast => self.integral_cast(operand, ast_type),
-      FloatingCast => self.floating_cast(operand, ast_type),
-      LValueToRValue => self.lvalue_to_rvalue_cast(operand, ast_type),
-      NullptrToPointer => self.nullptr_to_pointer_cast(operand, ast_type),
-      PointerToBoolean => self.pointer_to_boolean_cast(operand, ast_type),
-      IntegralToBoolean => self.integral_to_boolean_cast(operand, ast_type),
-      FloatingToBoolean => self.floating_to_boolean_cast(operand, ast_type),
-      IntegralToPointer => self.integral_to_pointer_cast(operand, ast_type),
-      PointerToIntegral => self.pointer_to_integral_cast(operand, ast_type),
-      FloatingToIntegral => self.floating_to_integral_cast(operand, ast_type),
-      IntegralToFloating => self.integral_to_floating_cast(operand, ast_type),
+      BitCast => call!(bitcast),
+      IntegralCast => call!(integral_cast),
+      FloatingCast => call!(floating_cast),
+      LValueToRValue => call!(lvalue_to_rvalue_cast),
+      NullptrToPointer => call!(nullptr_to_pointer_cast),
+      PointerToBoolean => call!(pointer_to_boolean_cast),
+      IntegralToBoolean => call!(integral_to_boolean_cast),
+      FloatingToBoolean => call!(floating_to_boolean_cast),
+      IntegralToPointer => call!(integral_to_pointer_cast),
+      PointerToIntegral => call!(pointer_to_integral_cast),
+      FloatingToIntegral => call!(floating_to_integral_cast),
+      IntegralToFloating => call!(integral_to_floating_cast),
       Noop | ToVoid | ArrayToPointerDecay | FunctionToPointerDecay => operand, //< noop
     }
   }

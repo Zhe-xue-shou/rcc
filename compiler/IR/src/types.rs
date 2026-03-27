@@ -20,15 +20,16 @@ impl<'ir> TypeInfo<'ir> for Type<'ir> {
   }
 
   fn size_bits(&self) -> usize {
+    use Type::*;
     match self {
-      Self::Void() => 0,
-      Self::Label() => 0,
-      Self::Floating(format) => format.size_bits(),
-      Self::Pointer() => 64, // TODO: make it target dependent.
-      Self::Integer(width) => *width as usize,
-      Self::Array(array) => array.element_type.size_bits() * array.length,
-      Self::Function(_) => 0, // function type itself does not occupy space.
-      Self::Struct(_) => unimplemented!(),
+      Void() => 0,
+      Label() => 0,
+      Pointer() => 64,  // TODO: make it target dependent.
+      Function(_) => 0, // function type itself does not occupy space.
+      Floating(format) => format.size_bits(),
+      Integer(width) => *width as usize,
+      Array(array) => array.element_type.size_bits() * array.length,
+      Struct(_) => unimplemented!(),
     }
   }
 
@@ -38,6 +39,20 @@ impl<'ir> TypeInfo<'ir> for Type<'ir> {
 
   fn default_value(&self) -> ::rcc_shared::Constant<'ir> {
     todo!()
+  }
+
+  fn extent(&self) -> usize {
+    use Type::*;
+    match self {
+      Void() => 0,
+      Label() => 0,
+      Floating(_) => 1,
+      Pointer() => 1,
+      Integer(_) => 1,
+      Function(_) => 0,
+      Struct(_) => 1,
+      Array(array) => 1 + array.element_type.extent(),
+    }
   }
 }
 

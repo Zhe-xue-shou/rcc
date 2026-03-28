@@ -132,12 +132,12 @@ impl<'c> ::core::default::Default for Expression<'c> {
 
 #[derive(Debug, Clone)]
 pub struct Variable<'c> {
-  pub name: SymbolRef<'c>,
+  pub symbol: SymbolRef<'c>,
   pub span: SourceSpan,
 }
 impl<'c> Variable<'c> {
   pub fn new(name: SymbolRef<'c>, span: SourceSpan) -> Self {
-    Self { name, span }
+    Self { symbol: name, span }
   }
 }
 #[derive(Debug, Clone)]
@@ -227,7 +227,7 @@ impl<'c> Expression<'c> {
   }
 
   fn is_named_integer_constant_unchecked(variable: &Variable<'c>) -> bool {
-    let sym = variable.name.borrow();
+    let sym = variable.symbol.borrow();
 
     (sym.qualified_type.unqualified_type.is_integer()
       || sym.qualified_type.unqualified_type.as_array().is_some())
@@ -249,7 +249,7 @@ impl<'c> Expression<'c> {
         unary.operand.is_lvalue()
           || matches!(unary.operand.unqualified_type(), Type::FunctionProto(_))
           || matches!(unary.operand.raw_expr(),
-          RawExpr::Variable(var) if var.name.borrow().storage_class.is_static()),
+          RawExpr::Variable(var) if var.symbol.borrow().storage_class.is_static()),
       _ => false,
     }
   }
@@ -279,7 +279,7 @@ mod fmt {
   // the "specialization" for the smart pointer case
   impl<'c> Display for Variable<'c> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      write!(f, "{}", self.name.borrow())
+      write!(f, "{}", self.symbol.borrow())
     }
   }
   impl<'c> Display for ImplicitCast<'c> {

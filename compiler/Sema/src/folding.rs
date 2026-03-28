@@ -507,14 +507,38 @@ impl<'c> Folding<'c> for Variable<'c> {
     value_category: ValueCategory,
     session: &Session<'c, D>,
   ) -> FoldingResult<Expression<'c>> {
-    if self.name.borrow().is_constexpr() {
-      session.diag().add_error(
-        UnsupportedFeature("constexpr variable not implemented".to_string()),
-        self.span,
-      );
-      Failure(Expression::new(self, target_type, value_category))
-    } else {
-      Failure(Expression::new(self, target_type, value_category))
+    use ::rcc_ast::types::Qualifiers;
+    use ::rcc_shared::Storage::*;
+    let storage = self.symbol.borrow().storage_class;
+    match storage {
+      Static
+        if self
+          .symbol
+          .borrow()
+          .qualified_type
+          .qualifiers
+          .contains(Qualifiers::Const) =>
+      {
+        session.diag().add_error(
+          UnsupportedFeature(
+            "static variable const initialization from const variable \
+             unimplemented."
+              .to_string(),
+          ),
+          self.span,
+        );
+        Failure(Expression::new(self, target_type, value_category))
+      },
+      Automatic | Register | Extern | Static =>
+        Failure(Expression::new(self, target_type, value_category)),
+      ThreadLocal | Constexpr => {
+        session.diag().add_error(
+          UnsupportedFeature("constexpr variable not implemented".to_string()),
+          self.span,
+        );
+        Failure(Expression::new(self, target_type, value_category))
+      },
+      Typedef => unreachable!(),
     }
   }
 }

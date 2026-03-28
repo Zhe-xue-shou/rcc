@@ -1444,7 +1444,7 @@ impl<'c> Sema<'c> {
           .into_with(Severity::Error)
           .into_with(span),
       )
-    } else if matches!(operand.raw_expr(), se::RawExpr::Variable(variable) if variable.name.borrow().storage_class.is_register())
+    } else if matches!(operand.raw_expr(), se::RawExpr::Variable(variable) if variable.symbol.borrow().storage_class.is_register())
     {
       Err(
         AddressofOperandRegVar(operand.to_string())

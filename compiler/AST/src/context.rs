@@ -37,7 +37,7 @@ pub struct Context<'c> {
   /// -- it's a loophole in my design --
   /// do NOT use this in AST level -- use `bool_type` during AST!
   ///
-  /// it works because my `TypeInfo::size_bits` returns 1 instead of 8.
+  /// it works because my [`TypeInfo::size_bits`] returns 1 instead of 8.
   fake_bool_type: TypeRef<'c>,
 
   converted_bool: TypeRef<'c>, // shall be `int` according to C standard.

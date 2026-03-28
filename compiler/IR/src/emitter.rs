@@ -1,5 +1,3 @@
-#![allow(unused_variables)]
-#![deny(unused_must_use)]
 use ::rcc_adt::{Integral, Signedness};
 use ::rcc_ast::{
   SymbolPtr, UnaryKind,
@@ -117,20 +115,16 @@ impl<'c> Emitter<'c> {
   fn contextual_convert_to_i1(&mut self, value_id: ValueID) -> ValueID {
     use inst::*;
 
-    use super::types::Type;
+    use super::types::Type::*;
 
     let ir_type = lookup!(self, value_id).ir_type;
     match ir_type {
-      Type::Void()
-      | Type::Label()
-      | Type::Struct(_)
-      | Type::Array(_)
-      | Type::Function(_) => unreachable!(),
-      Type::Pointer() => self.emit(
+      Void() | Label() | Struct(_) | Array(_) | Function(_) => unreachable!(),
+      Pointer() => self.emit(
         ICmp::new(ICmpPredicate::Ne, value_id, self.ir().nullptr()),
         self.ast().i1_bool_type(),
       ),
-      Type::Floating(format) => self.emit(
+      Floating(format) => self.emit(
         FCmp::new(
           FCmpPredicate::Une,
           value_id,
@@ -138,7 +132,8 @@ impl<'c> Emitter<'c> {
         ),
         self.ast().i1_bool_type(),
       ),
-      Type::Integer(width) => self.emit(
+      Integer(1u8) => value_id,
+      Integer(width) => self.emit(
         ICmp::new(ICmpPredicate::Ne, value_id, self.ir().integer_zero(*width)),
         self.ast().i1_bool_type(),
       ),
@@ -285,8 +280,8 @@ impl<'c> Emitter<'c> {
       symbol,
       parameters,
       body,
-      gotos,
-      labels,
+      gotos: _,
+      labels: _,
       ..
     } = function;
 
@@ -553,10 +548,10 @@ impl<'c> Emitter<'c> {
 
   fn return_stmt(&mut self, return_stmt: ss::Return<'c>) {
     let ss::Return { expression, .. } = return_stmt;
-    let ast_type = expression
-      .as_ref()
-      .map(|e| e.unqualified_type())
-      .unwrap_or(self.ast().void_type());
+    // let ast_type = expression
+    //   .as_ref()
+    //   .map(|e| e.unqualified_type())
+    //   .unwrap_or(self.ast().void_type());
     let operand: Option<ValueID> = expression.map(|e| self.expression(e));
     let _ret_inst =
       self.emit(inst::Return::new(operand), self.ast().void_type());
@@ -822,15 +817,15 @@ impl<'c> Emitter<'c> {
   }
 
   fn switch(&self, switch: ss::Switch<'c>) {
-    todo!()
+    todo!("{switch:#?}")
   }
 
   fn goto(&self, goto: ss::Goto<'c>) {
-    todo!()
+    todo!("{goto:#?}")
   }
 
   fn label(&mut self, label: ss::Label<'c>) {
-    todo!()
+    todo!("{label:#?}")
   }
 
   fn break_stmt(&mut self, break_stmt: ss::Break<'c>) {
@@ -937,10 +932,10 @@ impl<'c> Emitter<'c> {
 
   fn member_access(
     &mut self,
-    member_access: se::MemberAccess<'c>,
-    ast_type: ast::TypeRef<'c>,
+    _member_access: se::MemberAccess<'c>,
+    _ast_type: ast::TypeRef<'c>,
   ) -> ValueID {
-    todo!("GEP")
+    todo!()
   }
 
   fn ternary(
@@ -952,7 +947,7 @@ impl<'c> Emitter<'c> {
       condition,
       then_expr,
       else_expr,
-      span,
+      ..
     } = ternary;
     let then_expr = then_expr.expect("unimplemened for ?:");
     debug_assert_eq!(then_expr.qualified_type(), else_expr.qualified_type());
@@ -1031,8 +1026,8 @@ impl<'c> Emitter<'c> {
 
   fn cstyle_cast(
     &mut self,
-    cstyle_cast: se::CStyleCast<'c>,
-    ast_type: ast::TypeRef<'c>,
+    _cstyle_cast: se::CStyleCast<'c>,
+    _ast_type: ast::TypeRef<'c>,
   ) -> ValueID {
     todo!()
   }
@@ -1040,7 +1035,7 @@ impl<'c> Emitter<'c> {
   fn array_subscript(
     &mut self,
     array_subscript: se::ArraySubscript<'c>,
-    ast_type: ast::TypeRef<'c>,
+    _ast_type: ast::TypeRef<'c>,
   ) -> ValueID {
     let se::ArraySubscript { array, index, .. } = array_subscript;
     debug_assert!(
@@ -1070,8 +1065,8 @@ impl<'c> Emitter<'c> {
 
   fn compound_literal(
     &mut self,
-    compound_literal: se::CompoundLiteral,
-    ast_type: ast::TypeRef<'c>,
+    _compound_literal: se::CompoundLiteral,
+    _ast_type: ast::TypeRef<'c>,
   ) -> ValueID {
     todo!()
   }
@@ -1081,11 +1076,12 @@ impl<'c> Emitter<'c> {
     variable: se::Variable<'c>,
     _ast_type: ast::TypeRef<'c>,
   ) -> ValueID {
-    let name = variable.name.borrow().name;
-    if let Some(&vid) = self.locals.get(&(variable.name.as_ptr() as *const _)) {
+    let name = variable.symbol.borrow().name;
+    if let Some(&vid) = self.locals.get(&(variable.symbol.as_ptr() as *const _))
+    {
       vid
     } else if let Some(&vid) =
-      self.globals.get(&(variable.name.as_ptr() as *const _))
+      self.globals.get(&(variable.symbol.as_ptr() as *const _))
     {
       vid
     } else {
@@ -1443,9 +1439,15 @@ impl<'c> Emitter<'c> {
       span,
     } = binary;
 
-    let left = self.expression(left);
-    let right = self.expression(right);
-    self.do_binary(operator, left, right, ast_type, span)
+    match operator {
+      Operator::And => self.logical_and(operator, left, right, ast_type, span),
+      Operator::Or => self.logical_or(operator, left, right, ast_type, span),
+      _ => {
+        let left = self.expression(left);
+        let right = self.expression(right);
+        self.do_binary(operator, left, right, ast_type, span)
+      },
+    }
   }
 
   fn do_binary(
@@ -1481,8 +1483,8 @@ impl<'c> Emitter<'c> {
     operator: Operator,
     left: ValueID,
     right: ValueID,
-    ast_type: ast::TypeRef<'c>,
-    span: SourceSpan,
+    _ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
   ) -> ValueID {
     debug_assert_eq!(operator, Operator::Assign);
     debug_assert!(lookup!(self, left).ir_type.is_pointer());
@@ -1490,6 +1492,9 @@ impl<'c> Emitter<'c> {
     self.emit(inst::Store::new(left, right), self.ast().void_type())
   }
 
+  #[allow(unused)]
+  #[inline(always)]
+  #[cold]
   fn logical(
     &mut self,
     operator: Operator,
@@ -1498,13 +1503,100 @@ impl<'c> Emitter<'c> {
     ast_type: ast::TypeRef<'c>,
     span: SourceSpan,
   ) -> ValueID {
-    match operator {
-      // A && B -> if(A) { B } else { 0 }
-      Operator::And => todo!(),
-      // A || B -> if(A) { 1 } else { B }
-      Operator::Or => todo!(),
-      _ => unreachable!(),
-    }
+    unreachable!("short-circuit && and || handled upstream.");
+  }
+
+  // A && B -> if(A) { B } else { 0 }
+  fn logical_and(
+    &mut self,
+    operator: Operator,
+    left: impl Unbox<Output = se::Expression<'c>>,
+    right: impl Unbox<Output = se::Expression<'c>>,
+    ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
+  ) -> ValueID {
+    debug_assert_eq!(operator, Operator::And);
+    let left_side_id = self.expression(left);
+    let lhs = self.contextual_convert_to_i1(left_side_id);
+
+    let now_block_id = self.current_block;
+    let rhs_block_id = self.new_empty_block();
+    let immediate_block_id = self.new_empty_block();
+
+    let _now_block_terminator = self.emit(
+      inst::Branch::new(lhs, rhs_block_id, immediate_block_id),
+      self.ast().void_type(),
+    );
+
+    let _should_be_now = self.push_block(rhs_block_id);
+    debug_assert_eq!(now_block_id, _should_be_now);
+
+    let right_side_id = self.expression(right);
+    let rhs = self.contextual_convert_to_i1(right_side_id);
+    let _rhs_block_terminator =
+      self.emit(inst::Jump::new(immediate_block_id), self.ast().void_type());
+
+    let _last_block_of_rhs_block = self.push_block(immediate_block_id);
+
+    let i1_res = self.emit(
+      inst::Phi::new(vec![
+        self.ir().i1_false(),
+        now_block_id,
+        rhs,
+        rhs_block_id,
+      ]),
+      self.ast().i1_bool_type(),
+    );
+
+    debug_assert!(RefEq::ref_eq(ast_type, self.ast().converted_bool()));
+
+    self.emit(inst::Zext::new(i1_res), ast_type)
+  }
+
+  // A || B -> if(A) { 1 } else { B }
+  fn logical_or(
+    &mut self,
+    operator: Operator,
+    left: impl Unbox<Output = se::Expression<'c>>,
+    right: impl Unbox<Output = se::Expression<'c>>,
+    ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
+  ) -> ValueID {
+    debug_assert_eq!(operator, Operator::Or);
+
+    let left_side_id = self.expression(left);
+    let lhs = self.contextual_convert_to_i1(left_side_id);
+
+    let now_block_id = self.current_block;
+    let rhs_block_id = self.new_empty_block();
+    let immediate_block_id = self.new_empty_block();
+
+    let _now_block_terminator = self.emit(
+      inst::Branch::new(lhs, immediate_block_id, rhs_block_id),
+      self.ast().void_type(),
+    );
+
+    let _should_be_now = self.push_block(rhs_block_id);
+    debug_assert_eq!(now_block_id, _should_be_now);
+
+    let right_side_id = self.expression(right);
+    let rhs = self.contextual_convert_to_i1(right_side_id);
+    let _rhs_block_terminator =
+      self.emit(inst::Jump::new(immediate_block_id), self.ast().void_type());
+
+    let _last_block_of_rhs_block = self.push_block(immediate_block_id);
+    let i1_res = self.emit(
+      inst::Phi::new(vec![
+        self.ir().i1_true(),
+        now_block_id,
+        rhs,
+        rhs_block_id,
+      ]),
+      self.ast().i1_bool_type(),
+    );
+
+    debug_assert!(RefEq::ref_eq(ast_type, self.ast().converted_bool()));
+    self.emit(inst::Zext::new(i1_res), ast_type)
   }
 
   fn arithmetic(
@@ -1574,7 +1666,7 @@ impl<'c> Emitter<'c> {
     right: ValueID,
     ast_type: ast::TypeRef<'c>,
     signedness: Signedness,
-    span: SourceSpan,
+    _span: SourceSpan,
   ) -> ValueID {
     use inst::{Binary, BinaryOp};
     self.emit(
@@ -1632,7 +1724,7 @@ impl<'c> Emitter<'c> {
     left: ValueID,
     right: ValueID,
     ast_type: ast::TypeRef<'c>,
-    span: SourceSpan,
+    _span: SourceSpan,
   ) -> ValueID {
     use Operator::*;
     use inst::BinaryOp;
@@ -1651,7 +1743,7 @@ impl<'c> Emitter<'c> {
     left: ValueID,
     right: ValueID,
     ast_type: ast::TypeRef<'c>,
-    span: SourceSpan,
+    _span: SourceSpan,
   ) -> ValueID {
     use Operator::*;
     use Signedness::*;
@@ -1677,10 +1769,10 @@ impl<'c> Emitter<'c> {
   fn comma(
     &mut self,
     operator: Operator,
-    left: ValueID,
+    _left: ValueID,
     right: ValueID,
-    ast_type: ast::TypeRef<'c>,
-    span: SourceSpan,
+    _ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
   ) -> ValueID {
     debug_assert_eq!(operator, Operator::Comma);
     right
@@ -1701,7 +1793,7 @@ impl<'c> Emitter<'c> {
     let rhs_ir_type = lookup!(self, right).ir_type;
 
     match (lhs_ir_type, rhs_ir_type) {
-      (Integer(left_width), Integer(right_width)) =>
+      (Integer(_), Integer(_)) =>
         self.integral_relational(operator, left, right, ast_type, span),
       (Floating(_), Floating(_)) =>
         self.floating_relational(operator, left, right, ast_type, span),
@@ -1755,7 +1847,7 @@ impl<'c> Emitter<'c> {
     left: ValueID,
     right: ValueID,
     ast_type: ast::TypeRef<'c>,
-    span: SourceSpan,
+    _span: SourceSpan,
   ) -> ValueID {
     self.emit(inst::ICmp::new(operator, left, right), ast_type)
   }
@@ -1782,8 +1874,8 @@ impl<'c> Emitter<'c> {
     operator: inst::ICmpPredicate,
     left: ValueID,
     right: ValueID,
-    ast_type: ast::TypeRef<'c>,
-    span: SourceSpan,
+    _ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
   ) -> ValueID {
     self.emit(
       inst::ICmp::new(operator, left, right),
@@ -1814,7 +1906,7 @@ impl<'c> Emitter<'c> {
     left: ValueID,
     right: ValueID,
     ast_type: ast::TypeRef<'c>,
-    span: SourceSpan,
+    _span: SourceSpan,
   ) -> ValueID {
     self.emit(inst::FCmp::new(operator, left, right), ast_type)
   }
@@ -1868,8 +1960,8 @@ impl<'c> Emitter<'c> {
     &mut self,
     operator: Operator,
     operand: ValueID,
-    ast_type: ast::TypeRef<'c>,
-    span: SourceSpan,
+    _ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
   ) -> ValueID {
     debug_assert_eq!(operator, Operator::Ampersand);
     operand
@@ -1883,8 +1975,8 @@ impl<'c> Emitter<'c> {
     &mut self,
     operator: Operator,
     operand: ValueID,
-    ast_type: ast::TypeRef<'c>,
-    span: SourceSpan,
+    _ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
   ) -> ValueID {
     debug_assert_eq!(operator, Operator::Star);
     debug_assert!(lookup!(self, operand).ir_type.is_pointer());
@@ -1934,7 +2026,7 @@ impl<'c> Emitter<'c> {
     operator: Operator,
     operand: ValueID,
     ast_type: ast::TypeRef<'c>,
-    span: SourceSpan,
+    _span: SourceSpan,
   ) -> ValueID {
     debug_assert_eq!(operator, Operator::Tilde);
     debug_assert!(ast_type.as_primitive().is_some_and(|p| p.is_integer()));
@@ -1953,7 +2045,7 @@ impl<'c> Emitter<'c> {
     operator: Operator,
     operand: ValueID,
     ast_type: ast::TypeRef<'c>,
-    span: SourceSpan,
+    _span: SourceSpan,
   ) -> ValueID {
     let is_floating = self.visit(operand, |value| value.ir_type.is_floating());
     match (operator, is_floating) {

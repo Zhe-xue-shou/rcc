@@ -214,8 +214,14 @@ mod instruction {
     impl<'c> Emitable<'c, Zext> for Emitter<'c> {
       fn emit(&mut self, zext: Zext, ast_type: ast::TypeRef<'c>) -> ValueID {
         debug_assert!(
-          ast_type.as_primitive().is_some_and(|p| p.is_unsigned()),
-          "Zext target type must be an unsigned integer"
+          ast_type.as_primitive().is_some_and(|p| p.is_unsigned())
+            || self.visit(zext.operand(), |value| value
+              .ir_type
+              .as_integer()
+              .is_some_and(|&i| i == 1)),
+          "Zext target type must be an unsigned or the operand is an i1 \
+           boolean, (which is an exception because it makes nosense to sext \
+           it)"
         );
         debug_assert!(
           self.visit(zext.operand(), |value| value

@@ -102,7 +102,7 @@ pub enum TypeSpecifier<'c> {
   Union(Struct<'c>),
   Enum(EnumSpecifier<'c>),
   /// there's a dedicated class
-  /// [`AutoType`](https://github.com/LiAuTraver/llvm-project/blob/4f9d5a8bc85431b722e6f90744f3683adffc17b4/clang/include/clang/AST/TypeBase.h#L7155)
+  /// [`AutoType`](https://github.com/llvm/llvm-project/blob/4f9d5a8bc85431b722e6f90744f3683adffc17b4/clang/include/clang/AST/TypeBase.h#L7155)
   /// in clang's frontend, while im just only holds it as placeholder since the logic i implemented is simple.
   AutoType,
 }
@@ -366,18 +366,19 @@ mod cvt {
     type Error = ();
 
     fn try_from(kw: &Keyword) -> Result<Self, Self::Error> {
+      use TypeSpecifier::*;
       match kw {
-        Keyword::Void => Ok(TypeSpecifier::Void),
-        Keyword::Char => Ok(TypeSpecifier::Char),
-        Keyword::Short => Ok(TypeSpecifier::Short),
-        Keyword::Int => Ok(TypeSpecifier::Int),
-        Keyword::Long => Ok(TypeSpecifier::Long),
-        Keyword::Float => Ok(TypeSpecifier::Float),
-        Keyword::Double => Ok(TypeSpecifier::Double),
-        Keyword::Signed => Ok(TypeSpecifier::Signed),
-        Keyword::Unsigned => Ok(TypeSpecifier::Unsigned),
-        Keyword::Bool => Ok(TypeSpecifier::Bool),
-        Keyword::AutoType => Ok(TypeSpecifier::AutoType),
+        Keyword::Void => Ok(Void),
+        Keyword::Char => Ok(Char),
+        Keyword::Short => Ok(Short),
+        Keyword::Int => Ok(Int),
+        Keyword::Long => Ok(Long),
+        Keyword::Float => Ok(Float),
+        Keyword::Double => Ok(Double),
+        Keyword::Signed => Ok(Signed),
+        Keyword::Unsigned => Ok(Unsigned),
+        Keyword::Bool => Ok(Bool),
+        Keyword::AutoType => Ok(AutoType),
         _ => Err(()),
       }
     }

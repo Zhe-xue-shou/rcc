@@ -531,7 +531,7 @@ impl<'c> Dumpable<'c> for Expression<'_> {
       Variable(variable) => {
         header!("Variable", variable);
         dumper.write_fmt(
-          format_args!(" '{}'\n", variable.name.borrow()),
+          format_args!(" '{}'\n", variable.symbol.borrow()),
           &palette.literal,
         )
       },

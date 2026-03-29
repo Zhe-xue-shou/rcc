@@ -13,13 +13,10 @@ int main() {
   // // int a = 0;
   // // a += 3;
   // // float b = 0;
-  // // short c = 1;
+  short c = 1;
   // // b += c;
-  // int a[10][100][1000];
-  // __auto_type ptr = a;
-  // __auto_type b = a[1][2][3];
-  // __auto_type d = b && c;
+  int a[10][100][1000];
+  __auto_type ptr = a;
+  __auto_type b = a[1][2][3];
+  __auto_type d = b && c;
 }
-const int b = 0;
-const int c = 1;
-const __auto_type e = b || c && 0;

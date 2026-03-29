@@ -1,7 +1,13 @@
 use ::rcc_utils::{
-  BuiltinFloat, NumTo, ToI128, ToU128, const_pre, ensure_is_pod,
+  BuiltinFloat, NumTo, const_pre, ensure_is_pod, signed_type_of,
   underlying_type_of,
 };
+
+type Underlying = u128;
+use ::rcc_utils::ToU128 as ToUnderlying;
+type SignedUnderlying = signed_type_of!(u128);
+use ::rcc_utils::ToI128 as ToSignedUnderlying;
+const __MAX_ZU: u8 = 128;
 
 #[derive(Debug, Copy, Hash, ::std::marker::ConstParamTy)]
 #[derive_const(Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -37,31 +43,22 @@ impl Format {
 #[derive_const(Clone, PartialEq, Eq)]
 pub struct Floating {
   // i dont thinks its need ed to use the u128 jere, just a tagger union would be fine.
-  bits: u128,
+  bits: Underlying,
   format: Format,
 }
 
 ensure_is_pod!(Floating);
 
-impl ::std::fmt::Display for Floating {
-  fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-    match self.format {
-      IEEE32 => f32::from_bits(self.bits as underlying_type_of!(f32)).fmt(f),
-      IEEE64 => f64::from_bits(self.bits as underlying_type_of!(f64)).fmt(f),
-    }
-  }
+impl Floating {
+  pub const IEEE32_ONE: Floating = Floating::from(1.0f32);
+  pub const IEEE32_ZERO: Floating = Floating::from(0.0f32);
+  pub const IEEE64_ONE: Floating = Floating::from(1.0f64);
+  pub const IEEE64_ZERO: Floating = Floating::from(0.0f64);
+  pub const MAX_SUPPORTED_SIZE_BITS: u8 = self::__MAX_ZU;
 }
 
-impl ::std::fmt::LowerExp for Floating {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self.format {
-      IEEE32 => f32::from_bits(self.bits as underlying_type_of!(f32)).fmt(f),
-      IEEE64 => f64::from_bits(self.bits as underlying_type_of!(f64)).fmt(f),
-    }
-  }
-}
 impl Floating {
-  pub const fn new<T: [const] ToU128>(bits: T, format: Format) -> Self {
+  pub const fn new<T: [const] ToUnderlying>(bits: T, format: Format) -> Self {
     Self {
       bits: bits.to_u128(),
       format,
@@ -130,7 +127,7 @@ impl Floating {
     }
   }
 
-  pub const fn cast(self, format: Format) -> Floating {
+  pub const fn cast(self, format: Format) -> Self {
     match (self.format, format) {
       (IEEE32, IEEE64) => Floating::from(f32::from_bits(
         self.bits as underlying_type_of!(f32),
@@ -156,30 +153,32 @@ impl Floating {
 
 impl const From<f32> for Floating {
   fn from(val: f32) -> Self {
-    Floating::new(val.to_bits() as u128, IEEE32)
+    Floating::new(val.to_bits() as Underlying, IEEE32)
   }
 }
 
 impl const From<f64> for Floating {
   fn from(val: f64) -> Self {
-    Floating::new(val.to_bits() as u128, IEEE64)
+    Floating::new(val.to_bits() as Underlying, IEEE64)
   }
 }
 
 impl ::std::default::Default for Floating {
   fn default() -> Self {
     Self {
-      bits: f64::default().to_bits() as u128,
+      bits: f64::default().to_bits() as Underlying,
       format: IEEE64,
     }
   }
 }
 
-use ::std::ops::{Add, Div, Mul, Neg, Not, Sub};
-
 use super::{Integral, Signedness};
 
-macro_rules! impl_op {
+mod ops {
+  use ::std::ops::{Add, Div, Mul, Neg, Not, Sub};
+
+  use super::*;
+  macro_rules! impl_op {
   ($trait:ident, $method:ident, $op:tt) => {
     impl const $trait for Floating {
       type Output = Self;
@@ -187,7 +186,7 @@ macro_rules! impl_op {
       fn $method(self, rhs: Self) -> Self::Output {
         const_pre + (
           self.format, rhs.format,
-          "Cannot perform operation on Floating values of different formats"
+          concat!("Cannot perform ", stringify!($op), " on Floating values of different formats")
         );
         match self.format {
           IEEE32 => {
@@ -208,7 +207,7 @@ macro_rules! impl_op {
   };
 }
 
-macro_rules! impl_all_ops {
+  macro_rules! impl_all_ops {
   ($($trait:ident, $method:ident, $op:tt);* $(;)?) => {
     $(
       impl_op!($trait, $method, $op);
@@ -216,56 +215,57 @@ macro_rules! impl_all_ops {
   };
 }
 
-impl_all_ops! {
-  Add, add, +;
-  Sub, sub, -;
-  Mul, mul, *;
-  Div, div, /;
-}
+  impl_all_ops! {
+    Add, add, +;
+    Sub, sub, -;
+    Mul, mul, *;
+    Div, div, /;
+  }
 
-impl const Neg for Floating {
-  type Output = Self;
+  impl const Neg for Floating {
+    type Output = Self;
 
-  fn neg(self) -> Self::Output {
-    match self.format {
-      IEEE32 => {
-        let lhs_f = f32::from_bits(self.bits as underlying_type_of!(f32));
-        Floating::from(-lhs_f)
-      },
-      IEEE64 => {
-        let lhs_f = f64::from_bits(self.bits as underlying_type_of!(f64));
-        Floating::from(-lhs_f)
-      },
+    fn neg(self) -> Self::Output {
+      match self.format {
+        IEEE32 => {
+          let lhs_f = f32::from_bits(self.bits as underlying_type_of!(f32));
+          Floating::from(-lhs_f)
+        },
+        IEEE64 => {
+          let lhs_f = f64::from_bits(self.bits as underlying_type_of!(f64));
+          Floating::from(-lhs_f)
+        },
+      }
     }
   }
-}
 
-impl const Not for Floating {
-  type Output = bool;
+  impl const Not for Floating {
+    type Output = bool;
 
-  #[inline(always)]
-  fn not(self) -> Self::Output {
-    self.is_zero()
+    #[inline(always)]
+    fn not(self) -> Self::Output {
+      self.is_zero()
+    }
   }
-}
 
-impl const PartialOrd for Floating {
-  fn partial_cmp(&self, other: &Self) -> Option<::std::cmp::Ordering> {
-    const_pre
-      + (
-        self.format,
-        other.format,
-        "Cannot compare Floating values of different formats",
-      );
-    match self.format {
-      IEEE32 => f32::partial_cmp(
-        &f32::from_bits(self.bits as underlying_type_of!(f32)),
-        &f32::from_bits(other.bits as underlying_type_of!(f32)),
-      ),
-      IEEE64 => f64::partial_cmp(
-        &f64::from_bits(self.bits as underlying_type_of!(f64)),
-        &f64::from_bits(other.bits as underlying_type_of!(f64)),
-      ),
+  impl const PartialOrd for Floating {
+    fn partial_cmp(&self, other: &Self) -> Option<::std::cmp::Ordering> {
+      const_pre
+        + (
+          self.format,
+          other.format,
+          "Cannot compare Floating values of different formats",
+        );
+      match self.format {
+        IEEE32 => f32::partial_cmp(
+          &f32::from_bits(self.bits as underlying_type_of!(f32)),
+          &f32::from_bits(other.bits as underlying_type_of!(f32)),
+        ),
+        IEEE64 => f64::partial_cmp(
+          &f64::from_bits(self.bits as underlying_type_of!(f64)),
+          &f64::from_bits(other.bits as underlying_type_of!(f64)),
+        ),
+      }
     }
   }
 }
@@ -287,7 +287,7 @@ impl Floating {
     width: u8,
     signedness: Signedness,
   ) -> Integral {
-    debug_assert!(width > 0 && width <= 128);
+    debug_assert!(width > 0 && width <= Self::MAX_SUPPORTED_SIZE_BITS);
     match (self.format, signedness) {
       // Float to signed
       (IEEE32, Signedness::Signed) => {
@@ -317,20 +317,55 @@ impl Floating {
 }
 
 /// Clamp a float to the range of a signed integer with given width.
-const fn clamp_float_to_signed<F: [const] ToI128 + BuiltinFloat>(
+const fn clamp_float_to_signed<F: [const] ToSignedUnderlying + BuiltinFloat>(
   f: F,
   width: u8,
-) -> i128 {
-  f.to_i128()
-    .clamp(-(1i128 << (width - 1)), (1i128 << (width - 1)) - 1)
+) -> SignedUnderlying {
+  f.to_i128().clamp(
+    -((1 as SignedUnderlying) << (width - 1)),
+    ((1 as SignedUnderlying) << (width - 1)) - 1,
+  )
 }
 
 /// Clamp a float to the range of an unsigned integer with given width.
-const fn clamp_float_to_unsigned<F: [const] ToU128 + BuiltinFloat>(
+const fn clamp_float_to_unsigned<F: [const] ToUnderlying + BuiltinFloat>(
   f: F,
   width: u8,
-) -> u128 {
-  f.to_u128().clamp(0, (1u128 << width) - 1)
+) -> Underlying {
+  f.to_u128().clamp(0, ((1 as Underlying) << width) - 1)
+}
+mod fmt {
+  use super::*;
+  macro_rules! impl_fmt {
+    ($trait:ident, $method:ident) => {
+      impl ::std::fmt::$trait for Floating {
+        fn $method(
+          &self,
+          f: &mut ::std::fmt::Formatter<'_>,
+        ) -> ::std::fmt::Result {
+          match self.format {
+            IEEE32 =>
+              f32::from_bits(self.bits as underlying_type_of!(f32)).$method(f),
+            IEEE64 =>
+              f64::from_bits(self.bits as underlying_type_of!(f64)).$method(f),
+          }
+        }
+      }
+    };
+  }
+
+  macro_rules! impl_all_fmt {
+    ($($trait:ident, $method:ident);* $(;)?) => {
+      $(
+        impl_fmt!($trait, $method);
+      )*
+    };
+  }
+  impl_all_fmt! {
+    Display, fmt;
+    LowerExp, fmt;
+    UpperExp, fmt;
+  }
 }
 
 #[cfg(test)]

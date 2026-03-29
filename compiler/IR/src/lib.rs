@@ -1,5 +1,6 @@
 #[macro_use]
 mod emitter;
+mod constant;
 mod context;
 mod emitable;
 mod fmt;

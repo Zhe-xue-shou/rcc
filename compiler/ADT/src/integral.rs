@@ -1,17 +1,22 @@
 use ::rcc_utils::{
-  BuiltinFloat, BuiltinIntegerOrBoolean, NumFrom, NumTo, ToU128, const_pre,
+  BuiltinFloat, BuiltinIntegerOrBoolean, NumFrom, NumTo, const_pre,
   ensure_is_pod, signed_type_of,
 };
 
+/// the reason these stuffs exists is that
+/// i planned somedays after when the sizae is considered large,
+/// change this to usize/u64 to be not that difficult.
 type Underlying = u128;
 type SignedUnderlying = signed_type_of!(u128);
+use ::rcc_utils::ToU128 as ToUnderlying;
+const __MAX_ZU: u8 = 128;
 
 /// Signedness of an integer type.
 #[derive(Debug, Copy, Hash)]
 #[derive_const(Clone, PartialEq, Eq)]
 pub enum Signedness {
-  Unsigned = 0,
-  Signed = 1,
+  Unsigned,
+  Signed,
 }
 use Signedness::*;
 
@@ -46,7 +51,7 @@ impl const From<bool> for Signedness {
 /// Also, methods w.r.t. 2 or more [`Integral`]s (e.g. [`Integral::overflowing_add`]) needs to ensure
 /// that the operands have the same width and signedness, otherwise panic.
 ///
-/// It does not support 0-width integers, and the current maximum width is 128 bits.
+/// It does not support 0-width integers, and the current maximum width isSelf::MAX_SUPPORTED_SIZE_BITSbits.
 ///
 /// It's an oversight that the signedness does not matter at IR Level,
 /// so at IR Level the [`Integral::signedness`] field should always be ignored.
@@ -63,13 +68,30 @@ pub struct Integral {
   width: u8,
   /// Whether this integer should be interpreted as signed.
   ///
-  /// U should always ignore the signedness after IR pass.
+  /// # U should always ignore the [`Signedness`] after IRCodeGen pass
+  ///
+  /// **making them all [`Unsigned`]!**
+  ///
+  /// *Additional explanation:*
+  /// The reason it's here is that as long as our maximun support [Self::width]
+  /// is `128` bits, our struct alignment should at least aligned as `0x10`
+  /// because 1. rust's memory model mandates alignment, so reference
+  /// to the packed struct field must be aligned. 2. it actually slows down
+  /// the CPU cuz the additional load inst if not aligned.
+  ///
+  /// Hence, the size remains unchanged for our custom [`Integral`] type
+  /// compared to its corresponding type without [`Signedness`] information --
+  /// there's no point of the goal is to reduce the size -- too lazy is also a reason :)
+  ///
+  /// So we stores [`this`](Integral) struct -- that is with signedness in
+  /// IR Constant value. **again, you should always IGNORE the [`Signedness`]!**
   signedness: Signedness,
 }
 
 ensure_is_pod!(Integral);
 
 impl Integral {
+  pub const MAX_SUPPORTED_SIZE_BITS: u8 = self::__MAX_ZU;
   pub const WIDTH_BOOL: u8 = 1;
   pub const WIDTH_CHAR: u8 = 8;
   pub const WIDTH_INT: u8 = 32;
@@ -88,12 +110,17 @@ impl Integral {
 impl Integral {
   /// Create a new integral value, automatically masking to the specified width.
   #[inline]
-  pub const fn new<T: [const] ToU128 + BuiltinIntegerOrBoolean>(
+  pub const fn new<T: [const] ToUnderlying + BuiltinIntegerOrBoolean>(
     value: T,
     width: u8,
     signedness: Signedness,
   ) -> Self {
-    debug_assert!(width > 0 && width <= 128, "width must be 1-128");
+    const_pre
+      + (
+        width > 0,
+        /* and */ width <= Self::MAX_SUPPORTED_SIZE_BITS,
+        "invalid width!",
+      );
     Self {
       bits: Self::mask(value.to_u128(), width),
       width,
@@ -102,7 +129,9 @@ impl Integral {
   }
 
   #[inline]
-  pub const fn from_signed<T: [const] ToU128 + BuiltinIntegerOrBoolean>(
+  pub const fn from_signed<
+    T: [const] ToUnderlying + BuiltinIntegerOrBoolean,
+  >(
     value: T,
     width: u8,
   ) -> Self {
@@ -110,7 +139,9 @@ impl Integral {
   }
 
   #[inline]
-  pub const fn from_unsigned<T: [const] ToU128 + BuiltinIntegerOrBoolean>(
+  pub const fn from_unsigned<
+    T: [const] ToUnderlying + BuiltinIntegerOrBoolean,
+  >(
     value: T,
     width: u8,
   ) -> Self {
@@ -130,8 +161,11 @@ impl Integral {
 
   #[inline]
   pub const fn bitmask(width: u8) -> Self {
-    debug_assert!(width > 0 && width <= 128, "width must be 1-128");
-    Self::new(Self::mask(u128::MAX, width), width, Unsigned)
+    debug_assert!(
+      width > 0 && width <= Self::MAX_SUPPORTED_SIZE_BITS,
+      "invalid width!"
+    );
+    Self::new(Self::mask(Underlying::MAX, width), width, Unsigned)
   }
 
   #[inline]
@@ -172,31 +206,20 @@ impl Integral {
 
   /// sign-extended to i128.
   #[inline]
-  pub const fn as_signed(&self) -> i128 {
-    if self.width == 128 {
-      self.bits as i128
+  pub const fn as_signed(&self) -> SignedUnderlying {
+    if self.width == Self::MAX_SUPPORTED_SIZE_BITS {
+      self.bits as SignedUnderlying
     } else {
-      let shift = 128 - self.width;
-      ((self.bits as i128) << shift) >> shift
+      let shift = Self::MAX_SUPPORTED_SIZE_BITS - self.width;
+      ((self.bits as SignedUnderlying) << shift) >> shift
     }
   }
 
   /// get the bits as unsigned, same as [`Integral::bits()`].
   #[inline]
-  pub const fn as_unsigned(&self) -> u128 {
+  pub const fn as_unsigned(&self) -> Underlying {
     self.bits
   }
-
-  // /// Get the value respecting signedness.
-  // /// Returns (value as i128, whether it's actually negative).
-  // #[inline]
-  // pub const fn value(&self) -> i128 {
-  //   if self.is_signed() {
-  //     self.as_signed()
-  //   } else {
-  //     self.bits as i128
-  //   }
-  // }
 
   #[inline]
   pub const fn is_zero(&self) -> bool {
@@ -211,8 +234,8 @@ impl Integral {
   /// Check if the sign bit is set.
   #[inline]
   pub const fn sign_bit(&self) -> bool {
-    if self.width == 128 {
-      (self.bits as i128) < 0
+    if self.width == Self::MAX_SUPPORTED_SIZE_BITS {
+      (self.bits as SignedUnderlying) < 0
     } else {
       (self.bits >> (self.width - 1)) & 1 != 0
     }
@@ -235,7 +258,7 @@ impl Integral {
     match signedness {
       Unsigned => Self::new(0, width, signedness),
       Signed => {
-        let min = 1u128 << (width - 1);
+        let min = (1 as Underlying) << (width - 1);
         Self::new(min, width, signedness)
       },
     }
@@ -245,7 +268,8 @@ impl Integral {
   pub const fn max_value(width: u8, signedness: Signedness) -> Self {
     match signedness {
       Unsigned => Self::new(Self::max_unsigned(width), width, signedness),
-      Signed => Self::new((1u128 << (width - 1)) - 1, width, signedness),
+      Signed =>
+        Self::new(((1 as Underlying) << (width - 1)) - 1, width, signedness),
     }
   }
 
@@ -383,7 +407,7 @@ impl Integral {
       let a = self.as_signed();
       let b = rhs.as_signed();
       let (p, o) = a.overflowing_mul(b);
-      (p as u128, o)
+      (p as Underlying, o)
     } else {
       self.bits.overflowing_mul(rhs.bits)
     };
@@ -393,7 +417,7 @@ impl Integral {
     // check if truncation lost bits
     let truncation_overflow = if self.is_signed() {
       let extended = result.as_signed();
-      extended != (product as i128)
+      extended != (product as SignedUnderlying)
     } else {
       result.bits != product
     };
@@ -411,7 +435,7 @@ impl Integral {
     }
 
     let quotient = if self.is_signed() {
-      (self.as_signed() / rhs.as_signed()) as u128
+      (self.as_signed() / rhs.as_signed()) as Underlying
     } else {
       self.bits / rhs.bits
     };
@@ -429,7 +453,7 @@ impl Integral {
     }
 
     let remainder = if self.is_signed() {
-      (self.as_signed() % rhs.as_signed()) as u128
+      (self.as_signed() % rhs.as_signed()) as Underlying
     } else {
       self.bits % rhs.bits
     };
@@ -446,7 +470,7 @@ impl Integral {
   /// Arithmetic right shift, always sign-fill.
   pub const fn ashr(self, amount: u32) -> Self {
     Self::new(
-      (self.as_signed() >> amount.min(self.width.to())) as u128,
+      (self.as_signed() >> amount.min(self.width.to())) as Underlying,
       self.width,
       self.signedness,
     )
@@ -454,148 +478,146 @@ impl Integral {
 
   #[inline]
   const fn mask(value: Underlying, width: u8) -> Underlying {
-    if width >= 128 {
+    if width >= Self::MAX_SUPPORTED_SIZE_BITS {
       value
     } else {
-      value & ((1u128 << width) - 1)
+      value & (((1 as Underlying) << width) - 1)
     }
   }
 
   #[inline]
   const fn max_unsigned(width: u8) -> Underlying {
-    if width >= 128 {
+    if width >= Self::MAX_SUPPORTED_SIZE_BITS {
       Underlying::MAX
     } else {
-      (1u128 << width) - 1
+      ((1 as Underlying) << width) - 1
     }
   }
 }
+mod ops {
+  use ::std::ops::{Add, BitAnd, BitOr, BitXor, Mul, Neg, Not, Shl, Shr, Sub};
 
-use ::std::ops::{Add, BitAnd, BitOr, BitXor, Mul, Neg, Not, Shl, Shr, Sub};
+  use super::*;
 
-impl const Add for Integral {
-  type Output = Self;
+  impl const Add for Integral {
+    type Output = Self;
 
-  #[inline]
-  fn add(self, rhs: Self) -> Self {
-    self.overflowing_add(rhs).0
-  }
-}
-
-impl const Sub for Integral {
-  type Output = Self;
-
-  #[inline]
-  fn sub(self, rhs: Self) -> Self {
-    self.overflowing_sub(rhs).0
-  }
-}
-
-impl const Mul for Integral {
-  type Output = Self;
-
-  #[inline]
-  fn mul(self, rhs: Self) -> Self {
-    self.overflowing_mul(rhs).0
-  }
-}
-
-impl const Neg for Integral {
-  type Output = Self;
-
-  /// Negate (two's complement).
-  #[inline]
-  fn neg(self) -> Self {
-    Self::new((!self.bits).wrapping_add(1), self.width, self.signedness)
-  }
-}
-
-impl const Not for Integral {
-  type Output = Self;
-
-  #[inline]
-  fn not(self) -> Self {
-    Self::new(!self.bits, self.width, self.signedness)
-  }
-}
-
-impl const BitAnd for Integral {
-  type Output = Self;
-
-  #[inline]
-  fn bitand(self, rhs: Self) -> Self {
-    {
-      const_pre + (self.width, rhs.width, "width mismatch");
-      Self::new(self.bits & rhs.bits, self.width, self.signedness)
+    #[inline]
+    fn add(self, rhs: Self) -> Self {
+      self.overflowing_add(rhs).0
     }
   }
-}
 
-impl const BitOr for Integral {
-  type Output = Self;
+  impl const Sub for Integral {
+    type Output = Self;
 
-  #[inline]
-  fn bitor(self, rhs: Self) -> Self {
-    const_pre + (self.width, rhs.width, "width mismatch");
-    Self::new(self.bits | rhs.bits, self.width, self.signedness)
+    #[inline]
+    fn sub(self, rhs: Self) -> Self {
+      self.overflowing_sub(rhs).0
+    }
   }
-}
 
-impl const BitXor for Integral {
-  type Output = Self;
+  impl const Mul for Integral {
+    type Output = Self;
 
-  #[inline]
-  fn bitxor(self, rhs: Self) -> Self {
-    const_pre + (self.width, rhs.width, "width mismatch");
-
-    Self::new(self.bits ^ rhs.bits, self.width, self.signedness)
+    #[inline]
+    fn mul(self, rhs: Self) -> Self {
+      self.overflowing_mul(rhs).0
+    }
   }
-}
 
-impl const Shl<u32> for Integral {
-  type Output = Self;
+  impl const Neg for Integral {
+    type Output = Self;
 
-  #[inline]
-  fn shl(self, rhs: u32) -> Self {
-    let amount = rhs.min(self.width as u32);
-    Self::new(self.bits << amount, self.width, self.signedness)
+    /// Negate (two's complement).
+    #[inline]
+    fn neg(self) -> Self {
+      Self::new((!self.bits).wrapping_add(1), self.width, self.signedness)
+    }
   }
-}
 
-impl const Shr<u32> for Integral {
-  type Output = Self;
+  impl const Not for Integral {
+    type Output = Self;
 
-  #[inline]
-  fn shr(self, rhs: u32) -> Self {
-    let amount = rhs.min(self.width as u32);
-    let result = if self.is_signed() {
-      (self.as_signed() >> amount) as u128
-    } else {
-      self.bits >> amount
-    };
-    Self::new(result, self.width, self.signedness)
+    #[inline]
+    fn not(self) -> Self {
+      Self::new(!self.bits, self.width, self.signedness)
+    }
   }
-}
 
-impl const PartialOrd for Integral {
-  fn partial_cmp(&self, other: &Self) -> Option<::std::cmp::Ordering> {
-    if self.width != other.width || self.signedness != other.signedness {
-      None
-    } else {
-      const_pre
-        + (
-          self.signedness,
-          other.signedness,
-          "cannot compare Integral values of different signedness",
-        );
-      const_pre + (self.width, other.width, "width mismatch");
+  impl const BitAnd for Integral {
+    type Output = Self;
 
-      if self.is_signed() {
-        self.as_signed().cmp(&other.as_signed())
-      } else {
-        self.bits.cmp(&other.bits)
+    #[inline]
+    fn bitand(self, rhs: Self) -> Self {
+      {
+        const_pre + (self.width, rhs.width, "width mismatch");
+        Self::new(self.bits & rhs.bits, self.width, self.signedness)
       }
-      .into()
+    }
+  }
+
+  impl const BitOr for Integral {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, rhs: Self) -> Self {
+      const_pre + (self.width, rhs.width, "width mismatch");
+      Self::new(self.bits | rhs.bits, self.width, self.signedness)
+    }
+  }
+
+  impl const BitXor for Integral {
+    type Output = Self;
+
+    #[inline]
+    fn bitxor(self, rhs: Self) -> Self {
+      const_pre + (self.width, rhs.width, "width mismatch");
+
+      Self::new(self.bits ^ rhs.bits, self.width, self.signedness)
+    }
+  }
+
+  impl const Shl<u32> for Integral {
+    type Output = Self;
+
+    #[inline]
+    fn shl(self, rhs: u32) -> Self {
+      let amount = rhs.min(self.width as u32);
+      Self::new(self.bits << amount, self.width, self.signedness)
+    }
+  }
+
+  impl const Shr<u32> for Integral {
+    type Output = Self;
+
+    #[inline]
+    fn shr(self, rhs: u32) -> Self {
+      let amount = rhs.min(self.width as u32);
+      let result = if self.is_signed() {
+        (self.as_signed() >> amount) as Underlying
+      } else {
+        self.bits >> amount
+      };
+      Self::new(result, self.width, self.signedness)
+    }
+  }
+
+  impl const PartialOrd for Integral {
+    fn partial_cmp(&self, other: &Self) -> Option<::std::cmp::Ordering> {
+      if self.width != other.width || self.signedness != other.signedness {
+        None
+      } else {
+        const_pre + (self.signedness, other.signedness, "signedness mismatch");
+        const_pre + (self.width, other.width, "width mismatch");
+
+        if self.is_signed() {
+          self.as_signed().cmp(&other.as_signed())
+        } else {
+          self.bits.cmp(&other.bits)
+        }
+        .into()
+      }
     }
   }
 }
@@ -630,30 +652,32 @@ mod fmt {
     }
   }
 }
-
-macro_rules! impl_from_integral {
-  ($t:ty, $width:expr, $signedness:expr) => {
-    impl const From<$t> for Integral {
-      #[inline(always)]
-      fn from(value: $t) -> Self {
-        Integral::new(value, $width as u8, $signedness)
+mod cvt {
+  use super::*;
+  macro_rules! impl_from_integral {
+    ($t:ty, $width:expr, $signedness:expr) => {
+      impl const From<$t> for Integral {
+        #[inline(always)]
+        fn from(value: $t) -> Self {
+          Integral::new(value, $width as u8, $signedness)
+        }
       }
-    }
-  };
+    };
+  }
+  impl_from_integral!(bool, 1, Unsigned);
+  impl_from_integral!(i8, i8::BITS, Signed);
+  impl_from_integral!(u8, u8::BITS, Unsigned);
+  impl_from_integral!(i16, i16::BITS, Signed);
+  impl_from_integral!(u16, u16::BITS, Unsigned);
+  impl_from_integral!(i32, i32::BITS, Signed);
+  impl_from_integral!(u32, u32::BITS, Unsigned);
+  impl_from_integral!(i64, i64::BITS, Signed);
+  impl_from_integral!(u64, u64::BITS, Unsigned);
+  impl_from_integral!(i128, i128::BITS, Signed);
+  impl_from_integral!(u128, u128::BITS, Unsigned);
+  impl_from_integral!(isize, isize::BITS, Signed);
+  impl_from_integral!(usize, usize::BITS, Unsigned);
 }
-impl_from_integral!(bool, 1, Unsigned);
-impl_from_integral!(i8, i8::BITS, Signed);
-impl_from_integral!(u8, u8::BITS, Unsigned);
-impl_from_integral!(i16, i16::BITS, Signed);
-impl_from_integral!(u16, u16::BITS, Unsigned);
-impl_from_integral!(i32, i32::BITS, Signed);
-impl_from_integral!(u32, u32::BITS, Unsigned);
-impl_from_integral!(i64, i64::BITS, Signed);
-impl_from_integral!(u64, u64::BITS, Unsigned);
-impl_from_integral!(i128, i128::BITS, Signed);
-impl_from_integral!(u128, u128::BITS, Unsigned);
-impl_from_integral!(isize, isize::BITS, Signed);
-impl_from_integral!(usize, usize::BITS, Unsigned);
 
 #[cfg(test)]
 #[allow(clippy::unnecessary_cast)]

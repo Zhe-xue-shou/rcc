@@ -111,13 +111,11 @@ name = "rcc-ast"
 version = "0.1.0"
 dependencies = [
  "bitflags",
- "paste",
  "rcc-adt",
  "rcc-shared",
  "rcc-utils",
  "strum",
  "strum_macros",
- "termcolor",
 ]
 
 [[package]]
@@ -125,7 +123,6 @@ name = "rcc-ir"
 version = "0.1.0"
 dependencies = [
  "bimap",
- "paste",
  "rcc-adt",
  "rcc-ast",
  "rcc-sema",
@@ -134,7 +131,6 @@ dependencies = [
  "slotmap",
  "strum",
  "strum_macros",
- "termcolor",
 ]
 
 [[package]]
@@ -150,27 +146,16 @@ dependencies = [
 name = "rcc-parse"
 version = "0.1.0"
 dependencies = [
- "bimap",
- "bitflags",
- "bumpalo",
- "paste",
  "rcc-adt",
  "rcc-ast",
  "rcc-shared",
  "rcc-utils",
- "strum",
- "strum_macros",
- "termcolor",
 ]
 
 [[package]]
 name = "rcc-sema"
 version = "0.1.0"
 dependencies = [
- "bimap",
- "bitflags",
- "bumpalo",
- "paste",
  "rcc-adt",
  "rcc-ast",
  "rcc-parse",
@@ -178,7 +163,6 @@ dependencies = [
  "rcc-utils",
  "strum",
  "strum_macros",
- "termcolor",
 ]
 
 [[package]]
@@ -200,7 +184,6 @@ name = "rcc-shared"
 version = "0.1.0"
 dependencies = [
  "bumpalo",
- "paste",
  "rcc-adt",
  "rcc-utils",
  "strum",

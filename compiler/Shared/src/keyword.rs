@@ -5,80 +5,49 @@
   Eq,
   ::strum_macros::Display,
   ::strum_macros::EnumString,
+  ::strum_macros::AsRefStr,
+  ::strum_macros::IntoStaticStr,
   ::std::marker::ConstParamTy,
 )]
+#[strum(serialize_all = "snake_case")]
 pub enum Keyword {
   // C
-  #[strum(serialize = "auto")]
   Auto,
-  #[strum(serialize = "break")]
   Break,
-  #[strum(serialize = "case")]
   Case,
-  #[strum(serialize = "char")]
   Char,
-  #[strum(serialize = "const")]
   Const,
-  #[strum(serialize = "continue")]
   Continue,
-  #[strum(serialize = "default")]
   Default,
-  #[strum(serialize = "do")]
   Do,
-  #[strum(serialize = "double")]
   Double,
-  #[strum(serialize = "else")]
   Else,
-  #[strum(serialize = "enum")]
   Enum,
-  #[strum(serialize = "extern")]
   Extern,
-  #[strum(serialize = "float")]
   Float,
-  #[strum(serialize = "for")]
   For,
-  #[strum(serialize = "goto")]
   Goto,
-  #[strum(serialize = "if")]
   If,
-  #[strum(serialize = "int")]
   Int,
-  #[strum(serialize = "long")]
   Long,
-  #[strum(serialize = "register")]
   Register,
-  #[strum(serialize = "return")]
   Return,
-  #[strum(serialize = "short")]
   Short,
-  #[strum(serialize = "signed")]
   Signed,
-  #[strum(serialize = "sizeof")]
   Sizeof,
-  #[strum(serialize = "static")]
   Static,
-  #[strum(serialize = "struct")]
   Struct,
-  #[strum(serialize = "switch")]
   Switch,
-  #[strum(serialize = "typedef")]
   Typedef,
-  #[strum(serialize = "union")]
-  Union,
-  #[strum(serialize = "unsigned")]
-  Unsigned,
-  #[strum(serialize = "void")]
-  Void,
-  #[strum(serialize = "volatile")]
-  Volatile,
-  #[strum(serialize = "restrict")]
-  Restrict,
   #[strum(serialize = "thread_local")]
   #[strum(serialize = "_Thread_local")]
   ThreadLocal,
-  #[strum(serialize = "inline")]
+  Union,
+  Unsigned,
+  Void,
+  Volatile,
+  Restrict,
   Inline,
-  #[strum(serialize = "while")]
   While,
   // ^^^ focus / not considered vvv
   #[strum(serialize = "_Bool")]
@@ -107,38 +76,22 @@ pub enum Keyword {
   #[strum(serialize = "_Imaginary")]
   Imaginary,
   // ^^^ pre C23 / C23 vvv
-  #[strum(serialize = "constexpr")]
   Constexpr,
-
-  /// not keyword in C but a predefined constant, but I'll just treat it as keyword anyway
-  #[strum(serialize = "nullptr")]
+  /// predefined constant, treat it as keyword anyway
   Nullptr,
-  #[strum(serialize = "true")]
   True,
-  #[strum(serialize = "false")]
   False,
   // make these deliberately keyword.
-  #[strum(serialize = "and")]
   And,
-  #[strum(serialize = "and_eq")]
   AndEq,
-  #[strum(serialize = "bitand")]
   Bitand,
-  #[strum(serialize = "bitor")]
   Bitor,
-  #[strum(serialize = "compl")]
   Compl,
-  #[strum(serialize = "not")]
   Not,
-  #[strum(serialize = "not_eq")]
   NotEq,
-  #[strum(serialize = "or")]
   Or,
-  #[strum(serialize = "or_eq")]
   OrEq,
-  #[strum(serialize = "xor")]
   Xor,
-  #[strum(serialize = "xor_eq")]
   XorEq,
 
   // some stuffs.
@@ -164,9 +117,13 @@ pub enum Keyword {
   Eq,
   ::strum_macros::Display,
   ::strum_macros::EnumString,
+  ::strum_macros::IntoStaticStr,
+  ::strum_macros::AsRefStr,
   ::std::marker::ConstParamTy,
 )]
 #[allow(unused)]
+#[strum(serialize_all = "snake_case")]
+/// kept as reserved keyword.
 pub enum Reserved {
   #[strum(serialize = "typeof")] // C23
   #[strum(serialize = "__typeof__")]
@@ -176,17 +133,14 @@ pub enum Reserved {
   TypeOfUnqual,
   #[strum(serialize = "_BitInt")]
   BitInt,
-  // C23 optional, but I'll keep it reserved keyword
   #[strum(serialize = "_Decimal32")]
   Decimal32,
   #[strum(serialize = "_Decimal64")]
   Decimal64,
   #[strum(serialize = "_Decimal128")]
   Decimal128,
-  // ^^^ C23 / C++, although not considering C++, but some words probably reserve them and emit a warning if used as identifiers vvv
-  #[strum(serialize = "asm")]
+  // ^^^ C23 / C++ vvv
   Asm,
-  #[strum(serialize = "catch")]
   Catch,
   #[strum(serialize = "char8_t")]
   Char8,
@@ -194,87 +148,90 @@ pub enum Reserved {
   Char16,
   #[strum(serialize = "char32_t")]
   Char32,
-  #[strum(serialize = "class")]
   Class,
-  #[strum(serialize = "concept")]
   Concept,
-  #[strum(serialize = "consteval")]
   Consteval,
-  #[strum(serialize = "constinit")]
   Constinit,
-  #[strum(serialize = "const_cast")]
   ConstCast,
-  #[strum(serialize = "co_await")]
   CoAwait,
-  #[strum(serialize = "co_return")]
   CoReturn,
-  #[strum(serialize = "co_yield")]
   CoYield,
-  #[strum(serialize = "decltype")]
   Decltype,
-  #[strum(serialize = "delete")]
   Delete,
-  #[strum(serialize = "dynamic_cast")]
   DynamicCast,
-  #[strum(serialize = "explicit")]
   Explicit,
-  #[strum(serialize = "export")]
   Export,
-  #[strum(serialize = "friend")]
   Friend,
-  #[strum(serialize = "mutable")]
   Mutable,
-  #[strum(serialize = "namespace")]
   Namespace,
-  #[strum(serialize = "new")]
   New,
-  #[strum(serialize = "noexcept")]
   Noexcept,
-  #[strum(serialize = "operator")]
   Operator,
-  #[strum(serialize = "private")]
   Private,
-  #[strum(serialize = "protected")]
   Protected,
-  #[strum(serialize = "public")]
   Public,
-  #[strum(serialize = "reinterpret_cast")]
   ReinterpretCast,
-  #[strum(serialize = "requires")]
   Requires,
-  #[strum(serialize = "static_cast")]
   StaticCast,
-  #[strum(serialize = "template")]
   Template,
-  #[strum(serialize = "this")]
   This,
-  #[strum(serialize = "throw")]
   Throw,
-  #[strum(serialize = "try")]
   Try,
-  #[strum(serialize = "typeid")]
   Typeid,
-  #[strum(serialize = "typename")]
   Typename,
-  #[strum(serialize = "using")]
   Using,
-  #[strum(serialize = "virtual")]
   Virtual,
   #[strum(serialize = "wchar_t")]
   WideChar,
   // ^^^ keywords/contextual vvv
-  #[strum(serialize = "final")]
   Final,
-  #[strum(serialize = "override")]
   Override,
-  #[strum(serialize = "import")]
   Import,
-  #[strum(serialize = "module")]
   Module,
 }
 
 impl PartialEq<Keyword> for &Keyword {
   fn eq(&self, other: &Keyword) -> bool {
     **self == *other
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use ::std::str::FromStr;
+  use Keyword::*;
+  use Reserved::*;
+
+  use super::*;
+
+  #[test]
+  fn simple() {
+    assert_eq!(Auto.to_string(), "auto");
+    assert_eq!(Auto, Keyword::from_str("auto").unwrap());
+  }
+
+  #[test]
+  fn reserved() {
+    assert_eq!(Asm.to_string(), "asm");
+    assert_eq!(Asm, Reserved::from_str("asm").unwrap());
+  }
+  #[test]
+  fn snake_case() {
+    assert_eq!(AutoType.to_string(), "__auto_type");
+    assert_eq!(AutoType, Keyword::from_str("__auto_type").unwrap());
+    assert!(Keyword::from_str("auto_type").is_err());
+  }
+
+  #[test]
+  fn multi() {
+    assert_eq!(ThreadLocal.to_string(), "_Thread_local");
+    assert_eq!(ThreadLocal, Keyword::from_str("_Thread_local").unwrap());
+    assert_eq!(ThreadLocal, Keyword::from_str("thread_local").unwrap());
+  }
+  #[test]
+  fn renamed() {
+    assert_eq!(Char8.to_string(), "char8_t");
+    assert_eq!(Char8, Reserved::from_str("char8_t").unwrap());
+    assert!(Reserved::from_str("char8").is_err());
   }
 }

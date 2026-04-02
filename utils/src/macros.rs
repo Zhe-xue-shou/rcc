@@ -140,7 +140,7 @@ macro_rules! make_trio_for {
   };
 
   (@impl $inner:ident, $main:ident, $variant:ident, [$($inner_lt:tt)*], [$($main_lt:tt)*]) => {
-    ::paste::paste! {
+    $crate::paste! {
       impl$($main_lt)* $main$($main_lt)* {
         #[inline]
         pub fn [<is_ $variant:lower>](&self) -> bool {
@@ -214,7 +214,7 @@ macro_rules! make_trio_for_unit_tuple {
   };
 
   (@impl $variant:ident, $main:ident, [$($main_lt:tt)*]) => {
-    ::paste::paste! {
+    $crate::paste! {
       impl$($main_lt)* $main$($main_lt)* {
         #[inline]
         pub fn [<is_ $variant:lower>](&self) -> bool {

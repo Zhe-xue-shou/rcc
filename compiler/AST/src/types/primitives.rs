@@ -8,8 +8,10 @@
   Hash,
   ::strum_macros::Display,
   ::strum_macros::IntoStaticStr,
+  ::strum_macros::AsRefStr,
   ::strum_macros::EnumString,
 )]
+
 pub enum Primitive {
   #[strum(serialize = "bool")]
   #[strum(serialize = "_Bool")]

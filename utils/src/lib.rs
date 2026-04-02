@@ -7,14 +7,22 @@
 #![feature(const_ops)]
 #![feature(const_type_name)]
 #![feature(const_eval_select)]
+
 mod macros;
 mod num_traits;
+mod opaque;
 
 use ::std::{cell::RefCell, rc::Rc};
 
-pub use self::num_traits::*;
-
-pub type SmallString = ::compact_str::CompactString;
+mod fwd {
+  pub use ::paste::paste;
+  pub type SmallString = ::compact_str::CompactString;
+}
+pub use self::{
+  fwd::{SmallString, paste},
+  num_traits::*,
+  opaque::Opaque,
+};
 
 /// A handy trait for converting between types with additional context.
 pub trait IntoWith<With, To> {
@@ -162,6 +170,3 @@ impl<T: [const] PartialEq + [const] Destruct + Debug> const Add<(T, T, &str)>
     const_assert_eq!(lhs, rhs, msg)
   }
 }
-
-mod opaque;
-pub use opaque::Opaque;

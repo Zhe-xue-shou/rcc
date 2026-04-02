@@ -27,24 +27,25 @@ pub struct DeclNode<'c> {
   /// only canonical one would be updated.
   definition: Option<DeclRef<'c>>,
 }
-
+/// SAFETY: this struct is safe as long as the [`DeclNode`] it points to are located inside the Arena, so does itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
 pub struct DeclRef<'c> {
   ptr: NonNull<DeclNode<'c>>,
   marker: PhantomData<&'c DeclNode<'c>>,
 }
 
 impl<'c> DeclRef<'c> {
-  pub fn from_ptr(ptr: *mut DeclNode<'c>) -> Self {
+  fn from_ptr(ptr: *mut DeclNode<'c>) -> Self {
     Self {
       ptr: NonNull::new(ptr).expect("declaration pointer shall not be null"),
       marker: PhantomData,
     }
   }
 
-  pub fn as_ptr(self) -> *mut DeclNode<'c> {
-    self.ptr.as_ptr()
-  }
+  // fn as_ptr(self) -> *mut DeclNode<'c> {
+  //   self.ptr.as_ptr()
+  // }
 
   fn as_decl(self) -> &'c DeclNode<'c> {
     unsafe { self.ptr.as_ref() }
@@ -131,7 +132,7 @@ impl<'c> DeclRef<'c> {
   // }
 
   #[inline]
-  pub fn set_definition(self, definition: Option<DeclRef<'c>>) {
+  fn set_definition(self, definition: Option<DeclRef<'c>>) {
     self.as_decl_mut().definition = definition;
   }
 }
@@ -157,7 +158,7 @@ impl<'c> DeclNode<'c> {
       canonical_decl: unsafe { MaybeUninit::uninit().assume_init() },
       definition: None,
     });
-    let this = DeclRef::from_ptr(node as *mut _);
+    let this = DeclRef::from_ptr(&raw mut *node as *mut _);
 
     node.canonical_decl = previous_decl
       .map(|prev| prev.canonical_decl())
@@ -165,7 +166,8 @@ impl<'c> DeclNode<'c> {
 
     node.definition = match declkind {
       VarDeclKind::Definition => Some(this),
-      _ => previous_decl.and_then(|previous| previous.definition()),
+      _ =>
+        previous_decl.and_then(|previous: DeclRef<'_>| previous.definition()),
     };
 
     if matches!(declkind, VarDeclKind::Definition) {

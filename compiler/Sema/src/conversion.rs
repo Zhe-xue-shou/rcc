@@ -21,11 +21,11 @@ impl<'c> Expression<'c> {
     rhs: ExprRef<'c>,
     context: &'c Context<'c>,
   ) -> Result<(ExprRef<'c>, ExprRef<'c>, QualifiedType<'c>), Diag<'c>> {
-    assert!(
+    debug_assert!(
       !lhs.is_lvalue() && !rhs.is_lvalue(),
       "perform lvalue conversion first"
     );
-    assert!(
+    debug_assert!(
       !matches!(
         lhs.unqualified_type(),
         Type::FunctionProto(_) | Type::Array(_)
@@ -44,8 +44,8 @@ impl<'c> Expression<'c> {
     self: ExprRef<'c>,
     context: &'c Context<'c>,
   ) -> Result<ExprRef<'c>, Diag<'c>> {
-    assert!(!self.is_lvalue(), "perform lvalue conversion first");
-    assert!(
+    debug_assert!(!self.is_lvalue(), "perform lvalue conversion first");
+    debug_assert!(
       !matches!(
         self.unqualified_type(),
         Type::FunctionProto(_) | Type::Array(_)
@@ -78,7 +78,7 @@ impl<'c> Expression<'c> {
     self: ExprRef<'c>,
     context: &'c Context<'c>,
   ) -> Result<ExprRef<'c>, Diag<'c>> {
-    assert!(
+    debug_assert!(
       !matches!(
         self.unqualified_type(),
         Type::FunctionProto(_) | Type::Array(_)
@@ -93,7 +93,7 @@ impl<'c> Expression<'c> {
   pub fn is_contextually_convertible_to_bool(
     self: ExprRef<'c>,
   ) -> Result<ExprRef<'c>, Diag<'c>> {
-    assert!(
+    debug_assert!(
       !self.is_lvalue(),
       "perform lvalue_conversion() first; an lvalue is not contextually \
        convertible to bool"
@@ -144,7 +144,7 @@ impl<'c> Expression<'c> {
     context: &'c Context<'c>,
     target_type: &QualifiedType<'c>,
   ) -> Result<ExprRef<'c>, Diag<'c>> {
-    assert!(
+    debug_assert!(
       !matches!(
         self.unqualified_type(),
         Type::FunctionProto(_) | Type::Array(_)
@@ -205,7 +205,7 @@ impl<'c> Expression<'c> {
     self: ExprRef<'c>,
     context: &'c Context<'c>,
   ) -> ExprRef<'c> {
-    assert!(
+    debug_assert!(
       self.qualifiers().is_empty(),
       "function type should not have qualifiers: {:?}",
       self.qualified_type()
@@ -236,7 +236,7 @@ impl<'c> Expression<'c> {
       Type::Array(a) => a,
       _ => unreachable!(),
     };
-    assert!(
+    debug_assert!(
       self.qualifiers().is_empty(),
       "array type should not have qualifiers: {:?}",
       self.qualified_type()

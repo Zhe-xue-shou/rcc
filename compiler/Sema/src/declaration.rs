@@ -77,8 +77,7 @@ impl<'c> Function<'c> {
     context: &'c Context<'c>,
     function: Function<'c>,
   ) -> FunctionRef<'c> {
-    let function = context.arena().alloc(function);
-    &*function
+    context.arena().alloc(function)
   }
 
   pub fn new(
@@ -226,9 +225,10 @@ mod fmt {
 
   impl<'c> Display for Initializer<'c> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+      use Initializer::*;
       match self {
-        Initializer::Scalar(expr) => write!(f, "{}", expr),
-        Initializer::Aggregate(_) => todo!(),
+        Scalar(expr) => write!(f, "{}", expr),
+        Aggregate(_) => todo!(),
       }
     }
   }

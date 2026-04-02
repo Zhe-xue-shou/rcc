@@ -14,13 +14,13 @@ pub enum CastType {
   /// ```
   /// or just
   /// ```cpp
-  /// auto a = 42;
-  /// auto b = reinterpret_cast<double&>(a); // no copy ;)
+  /// auto  a = 42;
+  /// auto& b = reinterpret_cast<double&>(a); // no copy
   /// ```
   /// we got a fancy name for that in rust:
-  /// ```rust, norun
+  /// ```rust
   /// let a = 42;
-  /// let b = unsafe { ::std::mem::transmute::<i32, f64>(a) }; //< this won't work; size mismatch
+  /// let b = unsafe { ::std::mem::transmute::<i64, f64>(a) };
   /// ```
   BitCast,
 

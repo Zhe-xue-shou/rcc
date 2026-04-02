@@ -10,11 +10,8 @@ pub mod types;
 
 pub use self::{
   blueprints::*,
-  constant::{Constant, ConstantRef, ConstantRefMut},
+  constant::{Address, Constant, ConstantRef, ConstantRefMut},
   context::Context,
-  environment::{
-    Environment, Symbol, SymbolPtr, SymbolPtrMut, SymbolRef, UnitScope,
-    VarDeclKind,
-  },
+  environment::UnitScope,
   session::{Session, SessionRef},
 };

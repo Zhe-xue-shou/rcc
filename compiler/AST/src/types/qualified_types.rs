@@ -1,5 +1,5 @@
 use ::rcc_shared::{Keyword, Literal};
-use ::rcc_utils::{IntoWith, ensure_is_pod};
+use ::rcc_utils::{IntoWith, RefEq, ensure_is_pod};
 
 use super::{TypeRef, TypeRefMut};
 
@@ -77,6 +77,11 @@ impl<'c> QualifiedType<'c> {
 
   pub fn destructure(self) -> (Qualifiers, TypeRef<'c>) {
     (self.qualifiers, self.unqualified_type)
+  }
+
+  pub fn ref_eq_same(lhs: &QualifiedType, rhs: &QualifiedType) -> bool {
+    RefEq::ref_eq(lhs.unqualified_type, rhs.unqualified_type)
+      && lhs.qualifiers == rhs.qualifiers
   }
 }
 impl<'c> From<TypeRef<'c>> for QualifiedType<'c> {

@@ -4,14 +4,31 @@ use ::rcc_ast::types::{
 };
 use ::rcc_sema::{
   declaration::{
-    ExternalDeclaration, Function, Initializer, TranslationUnit, VarDef,
+    ExternalDeclarationRef, Function, Initializer, TranslationUnit, VarDef,
   },
-  expression::Expression,
-  statement::Statement,
+  expression::{Empty, Expression},
+  statement::{
+    self, Break, Case, Compound, Continue, DoWhile, For, Goto, If, Label,
+    Return, Statement, Switch, While,
+  },
 };
-use ::std::fmt;
 
 use crate::{DumpSpan, Dumpable, Dumper, Palette, quoted};
+
+impl<'c, T> Dumpable<'c> for &T
+where
+  T: Dumpable<'c> + ?Sized,
+{
+  fn dump(
+    &self,
+    dumper: &mut impl Dumper<'c>,
+    prefix: &str,
+    is_last: bool,
+    palette: &Palette,
+  ) {
+    (**self).dump(dumper, prefix, is_last, palette)
+  }
+}
 
 impl<'c> Dumpable<'c> for QualifiedType<'_> {
   fn dump(
@@ -157,26 +174,6 @@ impl<'c> Dumpable<'c> for Union<'_> {
   }
 }
 
-mod statement {
-  use ::rcc_ast::blueprints;
-  pub type Empty = blueprints::Placeholder;
-  pub type Return<'c, E> = blueprints::RawReturn<E>;
-  pub type If<'c, S, E> = blueprints::RawIf<S, E>;
-  pub type While<'c, S, E> = blueprints::RawWhile<S, E>;
-  pub type DoWhile<'c, S, E> = blueprints::RawDoWhile<S, E>;
-  pub type For<'c, S, E> = blueprints::RawFor<S, E>;
-  pub type Switch<'c, S, E, C> = blueprints::RawSwitch<S, E, C>;
-  pub type Case<'c, S, C> = blueprints::RawCase<S, C>;
-  pub type Default<'c, S> = blueprints::RawDefault<S>;
-  pub type Label<'c, S> = blueprints::RawLabel<'c, S>;
-  pub type Goto<'c> = blueprints::RawGoto<'c>;
-  pub type Compound<'c, S> = blueprints::RawCompound<S>;
-  pub type Break<'c> = blueprints::RawBreak;
-  pub type Continue<'c> = blueprints::RawContinue;
-}
-
-use self::statement::*;
-
 impl<'c> Dumpable<'c> for Empty {
   fn dump(
     &self,
@@ -208,10 +205,7 @@ macro_rules! headers {
   }};
 }
 
-impl<'c, E> Dumpable<'c> for Return<'_, E>
-where
-  E: Dumpable<'c>,
-{
+impl<'c> Dumpable<'c> for Return<'_> {
   fn dump(
     &self,
     dumper: &mut impl Dumper<'c>,
@@ -228,10 +222,7 @@ where
   }
 }
 
-impl<'c, S> Dumpable<'c> for Compound<'_, S>
-where
-  S: Dumpable<'c>,
-{
+impl<'c> Dumpable<'c> for Compound<'_> {
   fn dump(
     &self,
     dumper: &mut impl Dumper<'c>,
@@ -248,11 +239,7 @@ where
   }
 }
 
-impl<'c, S, E> Dumpable<'c> for If<'_, S, E>
-where
-  S: Dumpable<'c>,
-  E: Dumpable<'c>,
-{
+impl<'c> Dumpable<'c> for If<'_> {
   fn dump(
     &self,
     dumper: &mut impl Dumper<'c>,
@@ -276,11 +263,7 @@ where
   }
 }
 
-impl<'c, S, E> Dumpable<'c> for While<'_, S, E>
-where
-  S: Dumpable<'c>,
-  E: Dumpable<'c>,
-{
+impl<'c> Dumpable<'c> for While<'_> {
   fn dump(
     &self,
     dumper: &mut impl Dumper<'c>,
@@ -296,11 +279,7 @@ where
   }
 }
 
-impl<'c, S, E> Dumpable<'c> for DoWhile<'_, S, E>
-where
-  S: Dumpable<'c>,
-  E: Dumpable<'c>,
-{
+impl<'c> Dumpable<'c> for DoWhile<'_> {
   fn dump(
     &self,
     dumper: &mut impl Dumper<'c>,
@@ -316,11 +295,7 @@ where
   }
 }
 
-impl<'c, S, E> Dumpable<'c> for For<'_, S, E>
-where
-  S: Dumpable<'c>,
-  E: Dumpable<'c>,
-{
+impl<'c> Dumpable<'c> for For<'_> {
   fn dump(
     &self,
     dumper: &mut impl Dumper<'c>,
@@ -344,12 +319,7 @@ where
   }
 }
 
-impl<'c, S, E, C> Dumpable<'c> for Switch<'_, S, E, C>
-where
-  S: Dumpable<'c> + fmt::Display,
-  E: Dumpable<'c> + fmt::Display,
-  C: fmt::Display,
-{
+impl<'c> Dumpable<'c> for Switch<'_> {
   fn dump(
     &self,
     dumper: &mut impl Dumper<'c>,
@@ -374,11 +344,7 @@ where
     }
   }
 }
-impl<'c, S, E> Dumpable<'c> for Case<'_, S, E>
-where
-  S: Dumpable<'c> + fmt::Display,
-  E: fmt::Display,
-{
+impl<'c> Dumpable<'c> for Case<'_> {
   fn dump(
     &self,
     dumper: &mut impl Dumper<'c>,
@@ -395,10 +361,7 @@ where
     })
   }
 }
-impl<'c, S> Dumpable<'c> for statement::Default<'_, S>
-where
-  S: Dumpable<'c>,
-{
+impl<'c> Dumpable<'c> for statement::Default<'_> {
   fn dump(
     &self,
     dumper: &mut impl Dumper<'c>,
@@ -432,10 +395,7 @@ impl<'c> Dumpable<'c> for Goto<'_> {
   }
 }
 
-impl<'c, S> Dumpable<'c> for Label<'_, S>
-where
-  S: Dumpable<'c>,
-{
+impl<'c> Dumpable<'c> for Label<'_> {
   fn dump(
     &self,
     dumper: &mut impl Dumper<'c>,
@@ -455,7 +415,7 @@ where
   }
 }
 
-impl<'c> Dumpable<'c> for Break<'_> {
+impl<'c> Dumpable<'c> for Break {
   #[inline]
   fn dump(
     &self,
@@ -468,7 +428,7 @@ impl<'c> Dumpable<'c> for Break<'_> {
   }
 }
 
-impl<'c> Dumpable<'c> for Continue<'_> {
+impl<'c> Dumpable<'c> for Continue {
   #[inline]
   fn dump(
     &self,
@@ -499,7 +459,7 @@ impl<'c> Dumpable<'c> for Expression<'_> {
       ($name:expr, $raw:ident, $newline:literal) => {
         dumper.write($name, &palette.node);
         dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
-        $raw.span.dump(dumper, prefix, is_last, palette);
+        self.span().dump(dumper, prefix, is_last, palette);
         dumper.write_fmt(
           format_args!("'{}' ", self.qualified_type()),
           &palette.meta,
@@ -519,19 +479,19 @@ impl<'c> Dumpable<'c> for Expression<'_> {
       Constant(constant) => {
         dumper.write("ConstantLiteral", &palette.node);
         dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
-        constant.span.dump(dumper, prefix, is_last, palette);
+        self.span().dump(dumper, prefix, is_last, palette);
         dumper.write_fmt(
           format_args!("'{}' ", self.qualified_type()),
           &palette.meta,
         );
         // didnt print RValue.
-        dumper.write_fmt(format_args!("{}\n", constant.inner), &palette.literal)
+        dumper.write_fmt(format_args!("{}\n", constant), &palette.literal)
       },
 
       Variable(variable) => {
         header!("Variable", variable);
         dumper.write_fmt(
-          format_args!(" '{}'\n", variable.symbol.borrow()),
+          format_args!(" '{}'\n", variable.declaration),
           &palette.literal,
         )
       },
@@ -641,8 +601,8 @@ impl<'c> Dumpable<'c> for Expression<'_> {
         cast.expr.dump(dumper, &subprefix, true, palette)
       },
 
-      CompoundLiteral(cl) => {
-        header!("CompoundLiteral", cl, "\n");
+      CompoundLiteral(_cl) => {
+        header!("CompoundLiteral", _cl, "\n");
       },
     }
   }
@@ -668,7 +628,7 @@ impl<'c> Dumpable<'c> for TranslationUnit<'_> {
     });
   }
 }
-impl<'c> Dumpable<'c> for ExternalDeclaration<'_> {
+impl<'c> Dumpable<'c> for ExternalDeclarationRef<'_> {
   fn dump(
     &self,
     dumper: &mut impl Dumper<'c>,
@@ -693,30 +653,42 @@ impl<'c> Dumpable<'c> for VarDef<'_> {
     palette: &Palette,
   ) {
     dumper.print_indent(prefix, is_last);
-    let borrowed = self.symbol.borrow();
+    let decl = self.declaration;
     dumper.write(
-      if borrowed.is_typedef() {
+      if matches!(decl.storage_class(), ::rcc_shared::Storage::Typedef) {
         "Typedef"
       } else {
         "VarDef"
       },
       &palette.node,
     );
-    dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
+    dumper.write_fmt(format_args!(" {:p} ", decl), &palette.dim);
+
+    if let Some(prev) = decl.previous_decl() {
+      dumper.write_fmt(format_args!("prev {:p} ", prev,), &palette.skeleton);
+    }
+    dumper.write_fmt(
+      format_args!("can {:p} ", decl.canonical_decl()),
+      &palette.skeleton,
+    );
+
+    if let Some(def) = decl.definition() {
+      dumper.write_fmt(format_args!("def {:p} ", def,), &palette.skeleton);
+    }
     self.span.dump(dumper, prefix, is_last, palette);
 
     dumper.write("<", &palette.skeleton);
-    dumper.write(borrowed.declkind, &palette.kind);
+    dumper.write(decl.declkind(), &palette.kind);
     dumper.write(">", &palette.skeleton);
 
-    dumper.write_fmt(format_args!(" '{}' ", borrowed.name), &palette.literal);
+    dumper.write_fmt(format_args!(" '{}' ", decl.name()), &palette.literal);
 
     dumper.write("[", &palette.skeleton);
     dumper
-      .write_fmt(format_args!("'{}'", borrowed.qualified_type), &palette.meta);
+      .write_fmt(format_args!("'{}'", decl.qualified_type()), &palette.meta);
 
     dumper.write_fmt(
-      format_args!(" {:p}", borrowed.qualified_type.unqualified_type),
+      format_args!(" {:p}", decl.qualified_type().unqualified_type),
       &palette.skeleton,
     );
     dumper.write("]\n", &palette.skeleton);
@@ -736,27 +708,33 @@ impl<'c> Dumpable<'c> for Function<'_> {
     palette: &Palette,
   ) {
     dumper.print_indent(prefix, is_last);
+    let decl = self.declaration;
+
     dumper.write("Function", &palette.node);
-    dumper.write_fmt(format_args!(" {:p}", self), &palette.dim);
+    dumper.write_fmt(format_args!(" {:p} ", decl), &palette.dim);
+
+    if let Some(prev) = decl.previous_decl() {
+      dumper.write_fmt(format_args!("prev {:p} ", prev), &palette.skeleton);
+    }
+    dumper.write_fmt(
+      format_args!("can {:p} ", decl.canonical_decl()),
+      &palette.skeleton,
+    );
+
+    if let Some(def) = decl.definition() {
+      dumper.write_fmt(format_args!("def {:p} ", def), &palette.skeleton);
+    }
+
     self.span.dump(dumper, prefix, is_last, palette);
 
     dumper.write("<", &palette.skeleton);
-    dumper.write(self.symbol.borrow().declkind, &palette.kind);
+    dumper.write(decl.declkind(), &palette.kind);
     dumper.write(">", &palette.skeleton);
-    dumper.write_fmt(
-      quoted!(" '", self.symbol.borrow().name, "' "),
-      &palette.literal,
-    );
+    dumper.write_fmt(quoted!(" '", decl.name(), "' "), &palette.literal);
     dumper.write("[", &palette.skeleton);
-    dumper.write(
-      quoted!("'" => self.symbol.borrow().qualified_type),
-      &palette.meta,
-    );
+    dumper.write(quoted!("'" => decl.qualified_type()), &palette.meta);
     dumper.write_fmt(
-      format_args!(
-        " {:p}",
-        self.symbol.borrow().qualified_type.unqualified_type
-      ),
+      format_args!(" {:p}", decl.qualified_type().unqualified_type),
       &palette.skeleton,
     );
     dumper.write("]\n", &palette.skeleton);

@@ -40,80 +40,18 @@ pub struct Context<'c> {
   /// it works because my [`TypeInfo::size_bits`] returns 1 instead of 8.
   fake_bool_type: TypeRef<'c>,
 
-  converted_bool: TypeRef<'c>, // shall be `int` according to C standard.
+  converted_bool: TypeRef<'c>, //  `int` according to C standard.
 
   unnamed_str: StrRef<'c>,
-}
-impl<'c> Context<'c> {
-  pub fn new(arena: &'c Arena) -> Self {
-    let void_type = arena.alloc(Primitive::Void.into());
-    let int_type = arena.alloc(Primitive::Int.into());
-    let this = Self {
-      arena,
-      ast_type_interner: Default::default(),
-      str_interner: Default::default(),
-      int_type,
-      float_type: arena.alloc(Primitive::Float.into()),
-      short_type: arena.alloc(Primitive::Short.into()),
-      ptrdiff_type: arena.alloc(Primitive::LongLong.into()),
-      uintptr_type: arena.alloc(Primitive::ULongLong.into()),
-      void_type,
-      char_type: arena.alloc(Primitive::Char.into()),
-      uchar_type: arena.alloc(Primitive::UChar.into()),
-      ushort_type: arena.alloc(Primitive::UShort.into()),
-      uint_type: arena.alloc(Primitive::UInt.into()),
-      ulong_long_type: arena.alloc(Primitive::ULongLong.into()),
-      long_type: arena.alloc(Primitive::Long.into()),
-      ulong_type: arena.alloc(Primitive::ULong.into()),
-
-      nullptr_type: arena.alloc(Primitive::Nullptr.into()),
-      double_type: arena.alloc(Primitive::Double.into()),
-      bool_type: arena.alloc(Primitive::Bool.into()),
-      long_long_type: arena.alloc(Primitive::LongLong.into()),
-      voidptr_type: arena
-        .alloc(Pointer::new(QualifiedType::new_unqualified(void_type)).into()),
-
-      converted_bool: int_type,
-      fake_bool_type: arena.alloc(Primitive::__IRBit.into()),
-
-      unnamed_str: arena.alloc_str("<unnamed>"),
-    };
-    {
-      let mut refmut = this.ast_type_interner.borrow_mut();
-      refmut.insert(this.int_type);
-      refmut.insert(this.float_type);
-      refmut.insert(this.short_type);
-      refmut.insert(this.ptrdiff_type);
-      refmut.insert(this.uint_type);
-      refmut.insert(this.ulong_type);
-      refmut.insert(this.ulong_long_type);
-      refmut.insert(this.char_type);
-      refmut.insert(this.uchar_type);
-      refmut.insert(this.ushort_type);
-      refmut.insert(this.long_type);
-      refmut.insert(this.long_long_type);
-      refmut.insert(this.void_type);
-      refmut.insert(this.nullptr_type);
-      refmut.insert(this.double_type);
-      refmut.insert(this.bool_type);
-      refmut.insert(this.voidptr_type);
-
-      refmut.insert(this.converted_bool); // not needed actually, anyways
-    }
-    this.str_interner.borrow_mut().insert(this.unnamed_str);
-    this
-  }
-
-  pub fn arena(&self) -> &'c Arena {
-    self.arena
-  }
 }
 
 impl<'c> Context<'c> {
   fn do_intern(&self, value: Type<'c>) -> TypeRef<'c> {
     if let Some(&interned) = self.ast_type_interner.borrow().get(&value) {
+      // println!("{} found", value);
       interned
     } else {
+      // println!("{} not found", value);
       let interned = self.arena.alloc(value);
       self.ast_type_interner.borrow_mut().insert(interned);
       interned
@@ -137,14 +75,14 @@ impl<'c> Context<'c> {
     self.do_intern(value.into())
   }
 
-  #[must_use]
-  pub fn alloc_vec<T>(&self, capacity: usize) -> ArenaVec<'c, T> {
-    ArenaVec::with_capacity_in(capacity, self.arena)
-  }
+  // #[must_use]
+  // fn alloc_vec<T>(&self, capacity: usize) -> ArenaVec<'c, T> {
+  //   ArenaVec::with_capacity_in(capacity, self.arena)
+  // }
 
   /// Helper to allocate slices
   #[must_use]
-  pub fn alloc_slice<T: Copy>(&self, values: &[T]) -> &'c [T] {
+  fn alloc_slice<T: Copy>(&self, values: &[T]) -> &'c [T] {
     self.arena.alloc_slice_copy(values)
   }
 
@@ -152,10 +90,10 @@ impl<'c> Context<'c> {
   pub fn make_function_proto(
     &self,
     return_type: QualifiedType<'c>,
-    params: &[QualifiedType<'c>],
+    params: &'c [QualifiedType<'c>],
     is_variadic: bool,
   ) -> TypeRef<'c> {
-    let params = self.alloc_slice(params);
+    // FIXME: canonical typers, re-intern
     self.intern(FunctionProto::new(return_type, params, is_variadic))
   }
 
@@ -274,7 +212,71 @@ impl<'c> Context<'c> {
     self.converted_bool
   }
 }
-use ::rcc_shared::{Arena, ArenaVec, DiagMeta, Severity};
+impl<'c> Context<'c> {
+  pub fn new(arena: &'c Arena) -> Self {
+    let void_type = arena.alloc(Primitive::Void.into());
+    let int_type = arena.alloc(Primitive::Int.into());
+    let this = Self {
+      arena,
+      ast_type_interner: Default::default(),
+      str_interner: Default::default(),
+      int_type,
+      float_type: arena.alloc(Primitive::Float.into()),
+      short_type: arena.alloc(Primitive::Short.into()),
+      ptrdiff_type: arena.alloc(Primitive::LongLong.into()),
+      uintptr_type: arena.alloc(Primitive::ULongLong.into()),
+      void_type,
+      char_type: arena.alloc(Primitive::Char.into()),
+      uchar_type: arena.alloc(Primitive::UChar.into()),
+      ushort_type: arena.alloc(Primitive::UShort.into()),
+      uint_type: arena.alloc(Primitive::UInt.into()),
+      ulong_long_type: arena.alloc(Primitive::ULongLong.into()),
+      long_type: arena.alloc(Primitive::Long.into()),
+      ulong_type: arena.alloc(Primitive::ULong.into()),
+
+      nullptr_type: arena.alloc(Primitive::Nullptr.into()),
+      double_type: arena.alloc(Primitive::Double.into()),
+      bool_type: arena.alloc(Primitive::Bool.into()),
+      long_long_type: arena.alloc(Primitive::LongLong.into()),
+      voidptr_type: arena
+        .alloc(Pointer::new(QualifiedType::new_unqualified(void_type)).into()),
+
+      converted_bool: int_type,
+      fake_bool_type: arena.alloc(Primitive::__IRBit.into()),
+
+      unnamed_str: arena.alloc_str("<unnamed>"),
+    };
+    {
+      let mut refmut = this.ast_type_interner.borrow_mut();
+      refmut.insert(this.int_type);
+      refmut.insert(this.float_type);
+      refmut.insert(this.short_type);
+      refmut.insert(this.ptrdiff_type);
+      refmut.insert(this.uint_type);
+      refmut.insert(this.ulong_type);
+      refmut.insert(this.ulong_long_type);
+      refmut.insert(this.char_type);
+      refmut.insert(this.uchar_type);
+      refmut.insert(this.ushort_type);
+      refmut.insert(this.long_type);
+      refmut.insert(this.long_long_type);
+      refmut.insert(this.void_type);
+      refmut.insert(this.nullptr_type);
+      refmut.insert(this.double_type);
+      refmut.insert(this.bool_type);
+      refmut.insert(this.voidptr_type);
+
+      refmut.insert(this.converted_bool); // not needed actually, anyways
+    }
+    this.str_interner.borrow_mut().insert(this.unnamed_str);
+    this
+  }
+
+  pub fn arena(&self) -> &'c Arena {
+    self.arena
+  }
+}
+use ::rcc_shared::{Arena, DiagMeta, Severity};
 impl<'c> Context<'c> {
   pub fn main_proto_validate(
     &self,

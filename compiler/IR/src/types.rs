@@ -33,10 +33,6 @@ impl<'ir> TypeInfo<'ir> for Type<'ir> {
     }
   }
 
-  fn is_scalar(&self) -> bool {
-    matches!(self, Self::Pointer() | Self::Integer(_))
-  }
-
   fn default_value(&self) -> ::rcc_ast::Constant<'ir> {
     todo!()
   }
@@ -100,9 +96,7 @@ pub struct Struct<'ir> {
   _placeholder: &'ir ::std::marker::PhantomData<i8>,
 }
 use ::rcc_ast::types::TypeInfo;
-use ::rcc_utils::{
-  RefEq, interconvert, make_trio_for, make_trio_for_unit_tuple,
-};
+use ::rcc_utils::{interconvert, make_trio_for, make_trio_for_unit_tuple};
 
 interconvert!(Array, Type, 'ir);
 interconvert!(Function, Type, 'ir);
@@ -118,25 +112,3 @@ make_trio_for!(FloatFormat, Type<'ir>, Floating);
 make_trio_for!(Array, Type, 'ir);
 make_trio_for!(Function, Type, 'ir);
 make_trio_for!(Struct, Type, 'ir);
-
-impl RefEq for TypeRef<'_> {
-  fn ref_eq(lhs: Self, rhs: Self) -> bool
-  where
-    Self: PartialEq + Sized,
-  {
-    let ref_eq = ::std::ptr::eq(lhs, rhs);
-    if const { cfg!(debug_assertions) } {
-      let actual_eq = lhs == rhs;
-      if ref_eq != actual_eq {
-        eprintln!(
-          "INTERNAL ERROR: comparing by pointer address result did not match 
-          the actual result: {:p}: {:?} and {:p}: {:?}
-        ",
-          lhs, lhs, rhs, rhs
-        );
-      }
-      return actual_eq;
-    }
-    ref_eq
-  }
-}

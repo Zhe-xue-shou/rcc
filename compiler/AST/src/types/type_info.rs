@@ -13,15 +13,19 @@ pub const trait TypeInfo<'c> {
   #[must_use]
   fn size_bits(&self) -> usize;
   #[must_use]
-  fn is_scalar(&self) -> bool;
-  #[must_use]
   fn default_value(&self) -> Constant<'c>;
+  #[must_use]
+  fn extent(&self) -> usize;
+  #[inline]
   #[must_use]
   fn is_complete(&self) -> bool {
     self.size() != 0
   }
+  #[inline]
   #[must_use]
-  fn extent(&self) -> usize;
+  fn is_scalar(&self) -> bool {
+    self.extent() == 1
+  }
 }
 
 impl<'c> TypeInfo<'c> for QualifiedType<'c> {
@@ -33,11 +37,6 @@ impl<'c> TypeInfo<'c> for QualifiedType<'c> {
   #[inline(always)]
   fn size_bits(&self) -> usize {
     self.unqualified_type.size_bits()
-  }
-
-  #[inline(always)]
-  fn is_scalar(&self) -> bool {
-    self.unqualified_type.is_scalar()
   }
 
   #[inline(always)]
@@ -65,15 +64,6 @@ impl<'c> TypeInfo<'c> for Type<'c> {
     ::rcc_utils::static_dispatch!(
       self,
       |variant| variant.size_bits() =>
-      Primitive Array Pointer FunctionProto Enum Record Union
-    )
-  }
-
-  #[inline]
-  fn is_scalar(&self) -> bool {
-    ::rcc_utils::static_dispatch!(
-      self,
-      |variant| variant.is_scalar() =>
       Primitive Array Pointer FunctionProto Enum Record Union
     )
   }
@@ -133,11 +123,6 @@ impl<'c> const TypeInfo<'c> for Primitive {
     }
   }
 
-  #[inline(always)]
-  fn is_scalar(&self) -> bool {
-    !matches!(self, Void)
-  }
-
   #[inline]
   fn default_value(&self) -> Constant<'c> {
     match self {
@@ -178,11 +163,6 @@ impl<'c> TypeInfo<'c> for Array<'c> {
     self.size() * 8
   }
 
-  #[inline(always)]
-  fn is_scalar(&self) -> bool {
-    false
-  }
-
   #[inline]
   fn default_value(&self) -> Constant<'c> {
     panic!("default value for non-scalar type should not be requested");
@@ -207,11 +187,6 @@ impl<'c> TypeInfo<'c> for Record<'c> {
   #[inline(always)]
   fn size_bits(&self) -> usize {
     self.size() * 8
-  }
-
-  #[inline(always)]
-  fn is_scalar(&self) -> bool {
-    false
   }
 
   #[inline(always)]
@@ -240,11 +215,6 @@ impl<'c> TypeInfo<'c> for Union<'c> {
   }
 
   #[inline(always)]
-  fn is_scalar(&self) -> bool {
-    false
-  }
-
-  #[inline(always)]
   fn default_value(&self) -> Constant<'c> {
     panic!("default value for non-scalar type should not be requested");
   }
@@ -263,11 +233,6 @@ impl<'c> const TypeInfo<'c> for Pointer<'c> {
   #[inline(always)]
   fn size_bits(&self) -> usize {
     self.size() * 8
-  }
-
-  #[inline(always)]
-  fn is_scalar(&self) -> bool {
-    ULongLong.is_scalar() // shall always be true
   }
 
   #[inline(always)]
@@ -293,11 +258,6 @@ impl<'c> TypeInfo<'c> for FunctionProto<'c> {
   }
 
   #[inline(always)]
-  fn is_scalar(&self) -> bool {
-    false
-  }
-
-  #[inline(always)]
   fn default_value(&self) -> Constant<'c> {
     panic!("default value for non-scalar type should not be requested");
   }
@@ -317,12 +277,6 @@ impl<'c> TypeInfo<'c> for Enum<'c> {
   #[inline(always)]
   fn size_bits(&self) -> usize {
     self.size() * 8
-  }
-
-  #[inline(always)]
-  fn is_scalar(&self) -> bool {
-    assert!(self.underlying_type.is_scalar(), "never fails");
-    true
   }
 
   #[inline(always)]

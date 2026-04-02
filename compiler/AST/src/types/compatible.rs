@@ -1,5 +1,6 @@
 #![allow(unused_variables)]
 
+use ::rcc_shared::{ArenaVec, CollectIn};
 use ::rcc_utils::RefEq;
 
 use super::{
@@ -247,23 +248,24 @@ impl<'c> Compatibility<'c> for FunctionProto<'c> {
       &rhs.return_type,
       context,
     );
-    let mut parameter_types = context.alloc_vec(lhs.parameter_types.len());
-    for (lparam, rparam) in
-      lhs.parameter_types.iter().zip(rhs.parameter_types.iter())
-    {
-      let param_type = QualifiedType::new(
-        // this is actually not strictly correct -
-        // e.g., const decl + non-const def -> var is const, non-const decl + const def -> var is non-const
-        lparam.qualifiers | rparam.qualifiers,
-        Compatibility::composite_unchecked(
-          lparam.unqualified_type,
-          rparam.unqualified_type,
-          context,
+
+    let parameter_types = lhs
+      .parameter_types
+      .iter()
+      .zip(rhs.parameter_types.iter())
+      .map(|(lparam, rparam)| {
+        QualifiedType::new(
+          // this is actually not strictly correct -
+          // e.g., const decl + non-const def -> var is const, non-const decl + const def -> var is non-const
+          lparam.qualifiers | rparam.qualifiers,
+          context.intern(Compatibility::composite_unchecked(
+            lparam.unqualified_type,
+            rparam.unqualified_type,
+            context,
+          )),
         )
-        .lookup(context),
-      );
-      parameter_types.push(param_type);
-    }
+      })
+      .collect_in::<ArenaVec<_>>(context.arena());
     Self::new(
       return_type,
       parameter_types.into_bump_slice(),
@@ -328,13 +330,14 @@ impl<'c> Compatibility<'c> for Type<'c> {
 
 impl<'c> Compatibility<'c> for QualifiedType<'c> {
   fn compatible(lhs: &QualifiedType, rhs: &QualifiedType) -> bool {
-    // 6.2.7.1: Two types are compatible types if they are the same.
-    if RefEq::ref_eq(lhs.unqualified_type, rhs.unqualified_type) {
-      return true;
-    }
     // 6.7.4.1.11: For two qualified types to be compatible, both shall have the identically qualified version of a compatible type.
     if lhs.qualifiers != rhs.qualifiers {
       return false;
+    }
+
+    // 6.2.7.1: Two types are compatible types if they are the same.
+    if RefEq::ref_eq(lhs.unqualified_type, rhs.unqualified_type) {
+      return true;
     }
     Compatibility::compatible(lhs.unqualified_type, rhs.unqualified_type)
   }

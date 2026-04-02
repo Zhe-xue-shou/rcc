@@ -18,7 +18,13 @@ impl Deref for Arena {
   }
 }
 impl Arena {
-  pub fn alloc<T>(&self, val: T) -> &mut T {
+  pub fn alloc<T: ::std::fmt::Debug>(&self, val: T) -> &mut T {
+    fn _print_meta<T: ::std::fmt::Debug>(val: &T) {
+      println!("Alloc for {}:  {:?}", ::std::any::type_name::<T>(), val);
+    }
+
+    // _print_meta(&val);
+
     let ptr = self.bump.alloc(val);
 
     if const { ::std::mem::needs_drop::<T>() } {

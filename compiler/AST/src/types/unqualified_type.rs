@@ -97,25 +97,14 @@ impl<'c> Type<'c> {
 impl RefEq for TypeRef<'_> {
   fn ref_eq(lhs: Self, rhs: Self) -> bool
   where
-    Self: PartialEq + Sized,
+    Self: PartialEq + Sized + ::std::fmt::Debug,
   {
-    {
-      let ref_eq = ::std::ptr::eq(lhs, rhs);
-      if const { cfg!(debug_assertions) } {
-        let actual_eq = lhs == rhs;
-        if ref_eq != actual_eq {
-          eprintln!(
-            "INTERNAL ERROR: comparing by pointer address result did not \
-             match 
-          the actual result: {:p}: {:?} and {:p}: {:?}
-        ",
-            lhs, lhs, rhs, rhs
-          );
-        }
-        return actual_eq;
-      }
-      ref_eq
-    }
+    <Self as RefEq>::ref_eq_impl(
+      &lhs,
+      &rhs,
+      "\nthis is a known bug for TypeRef -- 1. canonical type 2. array of \
+       typeref would compare to false. and needs to be fixed.",
+    )
   }
 }
 mod private {

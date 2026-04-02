@@ -1,77 +1,105 @@
 use ::rcc_ast::{
-  SymbolRef,
-  types::{FunctionSpecifier, QualifiedType, Type},
+  Context,
+  types::{FunctionSpecifier, QualifiedType, Type, TypeRef},
 };
-use ::rcc_shared::SourceSpan;
+use ::rcc_shared::{ArenaVec, CollectIn, SourceSpan};
 use ::rcc_utils::StrRef;
-use ::std::{cell::Ref, collections::HashSet};
 
-use crate::{expression::Expression, statement::Compound};
+pub use crate::declref::DeclRef;
+use crate::{expression::ExprRef, statement::Compound};
 
 #[derive(Debug)]
 pub struct TranslationUnit<'c> {
-  pub declarations: Vec<ExternalDeclaration<'c>>,
+  pub declarations: &'c [ExternalDeclarationRef<'c>],
 }
+
+pub type FunctionRef<'c> = &'c Function<'c>;
+pub type VarDefRef<'c> = &'c VarDef<'c>;
+
 #[derive(Debug)]
-pub enum ExternalDeclaration<'c> {
-  Function(Function<'c>),
-  Variable(VarDef<'c>),
+pub enum ExternalDeclarationRef<'c> {
+  Function(FunctionRef<'c>),
+  Variable(VarDefRef<'c>),
 }
 
 #[derive(Debug)]
 pub struct Function<'c> {
-  /// contains name, storage, definition flag, and full QualifiedType.
-  pub symbol: SymbolRef<'c>, // function type is included in symbol's qualified_type
-  pub parameters: Vec<Parameter<'c>>, // some duplication with symbol's qualified_type, but we need this for param names
+  pub declaration: DeclRef<'c>,
+  pub parameters: &'c [Parameter<'c>],
   pub specifier: FunctionSpecifier,
   pub body: Option<Compound<'c>>,
-  pub labels: HashSet<StrRef<'c>>, // just holds a name
-  pub gotos: HashSet<StrRef<'c>>,  // just holds a name
+  pub labels: &'c [StrRef<'c>],
+  pub gotos: &'c [StrRef<'c>],
   pub span: SourceSpan,
 }
 
 #[derive(Debug)]
 pub struct VarDef<'c> {
-  pub symbol: SymbolRef<'c>,
+  pub declaration: DeclRef<'c>,
   pub initializer: Option<Initializer<'c>>,
   pub span: SourceSpan,
 }
 
 #[derive(Debug)]
 pub struct Parameter<'c> {
-  /// If the parameter is named, point to the symbol; otherwise the name was set to `<unnamed_n>`.
-  pub symbol: SymbolRef<'c>,
+  pub declaration: DeclRef<'c>,
   pub span: SourceSpan,
 }
 
 #[derive(Debug)]
 pub enum Initializer<'c> {
-  /// Simple scalar initialization: `int x = val;`
-  Scalar(Expression<'c>),
-  /// Aggregate initialization: `int arr[] = { 1, 2, 3 };`
-  /// unimplemented: todo.
-  Aggregate(Vec<Initializer<'c>>),
+  Scalar(ExprRef<'c>),
+  Aggregate(&'c [Initializer<'c>]),
 }
+
+::rcc_utils::ensure_is_pod!(Initializer<'_>);
+::rcc_utils::ensure_is_pod!(VarDef<'_>);
+::rcc_utils::ensure_is_pod!(Parameter<'_>);
+::rcc_utils::ensure_is_pod!(Function<'_>);
+::rcc_utils::ensure_is_pod!(ExternalDeclarationRef<'_>);
+::rcc_utils::ensure_is_pod!(TranslationUnit<'_>);
+
 impl<'c> TranslationUnit<'c> {
-  pub fn new(declarations: Vec<ExternalDeclaration<'c>>) -> Self {
+  pub fn new(
+    context: &'c Context<'c>,
+    declarations: impl IntoIterator<Item = ExternalDeclarationRef<'c>>,
+  ) -> Self {
+    let declarations = declarations
+      .into_iter()
+      .collect_in::<ArenaVec<_>>(context.arena())
+      .into_bump_slice();
     Self { declarations }
   }
 }
+
 impl<'c> Function<'c> {
+  pub fn alloc(
+    context: &'c Context<'c>,
+    function: Function<'c>,
+  ) -> FunctionRef<'c> {
+    let function = context.arena().alloc(function);
+    &*function
+  }
+
   pub fn new(
-    symbol: SymbolRef<'c>,
-    parameters: Vec<Parameter<'c>>,
+    context: &'c Context<'c>,
+    declaration: DeclRef<'c>,
+    parameters: impl IntoIterator<Item = Parameter<'c>>,
     specifier: FunctionSpecifier,
     body: Option<Compound<'c>>,
     span: SourceSpan,
   ) -> Self {
+    let parameters = parameters
+      .into_iter()
+      .collect_in::<ArenaVec<_>>(context.arena())
+      .into_bump_slice();
     Self {
-      symbol,
+      declaration,
       parameters,
       specifier,
       body,
-      labels: HashSet::new(),
-      gotos: HashSet::new(),
+      labels: &[],
+      gotos: &[],
       span,
     }
   }
@@ -87,39 +115,38 @@ impl<'c> Function<'c> {
   }
 
   #[inline]
-  pub fn proto(&self) -> Ref<'_, QualifiedType<'_>> {
-    Ref::map(self.symbol.borrow(), |sym| &sym.qualified_type)
+  pub fn proto(&self) -> QualifiedType<'c> {
+    self.declaration.qualified_type()
   }
 
   #[inline]
-  pub fn proto_unqual(&self) -> Ref<'_, Type<'_>> {
-    Ref::map(self.symbol.borrow(), |sym| {
-      sym.qualified_type.unqualified_type
-    })
+  pub fn proto_unqual(&self) -> TypeRef<'c> {
+    self.declaration.qualified_type().unqualified_type
   }
 }
+
 impl<'c> VarDef<'c> {
   pub fn new(
-    symbol: SymbolRef<'c>,
+    context: &'c Context<'c>,
+    declaration: DeclRef<'c>,
     initializer: Option<Initializer<'c>>,
     span: SourceSpan,
-  ) -> Self {
-    Self {
-      symbol,
+  ) -> VarDefRef<'c> {
+    context.arena().alloc(Self {
+      declaration,
       initializer,
       span,
-    }
+    })
   }
 }
 
 impl<'c> Parameter<'c> {
-  pub fn new(symbol: SymbolRef<'c>, span: SourceSpan) -> Self {
-    Self { symbol, span }
+  pub fn new(declaration: DeclRef<'c>, span: SourceSpan) -> Self {
+    Self { declaration, span }
   }
 }
 
 mod fmt {
-
   use ::std::fmt::Display;
 
   use super::*;
@@ -133,7 +160,7 @@ mod fmt {
     }
   }
 
-  impl<'c> Display for ExternalDeclaration<'c> {
+  impl<'c> Display for ExternalDeclarationRef<'c> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
       ::rcc_utils::static_dispatch!(
         self,
@@ -145,15 +172,11 @@ mod fmt {
 
   impl<'c> Display for Function<'c> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-      let sym = self.symbol.borrow();
-
-      // For functions, sym.qualified_type is Type::FunctionProto
-      // We want: return_type name(params)
-      match *sym.qualified_type.unqualified_type {
+      match self.declaration.qualified_type().unqualified_type {
         Type::FunctionProto(proto) => {
-          write!(f, "{} {}(", proto.return_type, sym.name)?;
-          for (i, param) in self.parameters.iter().enumerate() {
-            if i > 0 {
+          write!(f, "{} {}(", proto.return_type, self.declaration.name())?;
+          for (index, param) in self.parameters.iter().enumerate() {
+            if index > 0 {
               write!(f, ", ")?;
             }
             write!(f, "{}", param)?;
@@ -161,8 +184,12 @@ mod fmt {
           write!(f, ")")?;
         },
         _ => {
-          // Fallback for non-function types (shouldn't happen)
-          write!(f, "{} {}", sym.qualified_type, sym.name)?;
+          write!(
+            f,
+            "{} {}",
+            self.declaration.qualified_type(),
+            self.declaration.name()
+          )?;
         },
       }
 
@@ -176,18 +203,19 @@ mod fmt {
 
   impl<'c> Display for Parameter<'c> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-      // Show only the type for brevity; names are optional.
-      write!(f, "{}", self.symbol.borrow().qualified_type)
+      write!(f, "{}", self.declaration.qualified_type())
     }
   }
 
   impl<'c> Display for VarDef<'c> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-      let sym = self.symbol.borrow();
+      let decl = self.declaration;
       write!(
         f,
         "{} {} {}",
-        sym.storage_class, sym.qualified_type, sym.name
+        decl.storage_class(),
+        decl.qualified_type(),
+        decl.name()
       )?;
       if let Some(initializer) = &self.initializer {
         write!(f, " = {}", initializer)?;

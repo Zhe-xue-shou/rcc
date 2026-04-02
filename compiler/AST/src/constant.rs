@@ -1,5 +1,5 @@
 use ::rcc_adt::{FloatFormat, Floating, Integral, Signedness};
-use ::rcc_utils::{RefEq, StrRef, ensure_is_pod};
+use ::rcc_utils::{Opaque, RefEq, StrRef, ensure_is_pod};
 
 /// discrepancy: string literals are not constant values in C `char[N]`
 /// (but in C++, it is, though.)
@@ -11,33 +11,49 @@ pub enum Constant<'c> {
   Integral(Integral),
   Floating(Floating),
   String(StrRef<'c>),
-  /// FIXME: this is mostly wrong but cant fix this until we put AST nodes into arena.
-  Address(StrRef<'c>),
+  Address(Address<'c>),
 }
+
+use ::std::marker::PhantomData;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Address<'c> {
+  inner: Opaque,
+  /// this shall not be [`Address`] again, except is two base is the same: &a[5] - &a[2].
+  offset: Option<ConstantRef<'c>>,
+  nothing: PhantomData<StrRef<'c>>,
+}
+
+impl<'c> Address<'c> {
+  pub fn new(inner: Opaque) -> Self {
+    Self {
+      inner,
+      offset: None,
+      nothing: PhantomData,
+    }
+  }
+
+  pub fn with_offset(inner: Opaque, offset: ConstantRef<'c>) -> Self {
+    Self {
+      inner,
+      offset: Some(offset),
+      nothing: PhantomData,
+    }
+  }
+
+  pub fn has_offset(&self) -> bool {
+    self.offset.is_some()
+  }
+
+  pub fn offset(&self) -> Option<ConstantRef<'c>> {
+    self.offset
+  }
+}
+
 ensure_is_pod!(Constant);
 pub type ConstantRef<'c> = &'c Constant<'c>;
 pub type ConstantRefMut<'c> = &'c mut Constant<'c>;
-impl RefEq for ConstantRef<'_> {
-  fn ref_eq(lhs: Self, rhs: Self) -> bool
-  where
-    Self: PartialEq + Sized,
-  {
-    let ref_eq = ::std::ptr::eq(lhs, rhs);
-    if const { cfg!(debug_assertions) } {
-      let actual_eq = lhs == rhs;
-      if ref_eq != actual_eq {
-        eprintln!(
-          "INTERNAL ERROR: comparing by pointer address result did not match 
-          the actual result: {:p}: {:?} and {:p}: {:?}
-        ",
-          lhs, lhs, rhs, rhs
-        );
-      }
-      return actual_eq;
-    }
-    ref_eq
-  }
-}
+impl RefEq for ConstantRef<'_> {}
 impl<'c> Constant<'c> {
   pub const fn is_char_array(&self) -> bool {
     matches!(self, Self::String(_))
@@ -87,18 +103,15 @@ impl<'c> Constant<'c> {
       _ => unreachable!("handled elsewhere"),
     }
   }
-
-  pub fn is_address(&self) -> bool {
-    matches!(self, Constant::Address(_))
-  }
 }
 ::rcc_utils::interconvert!(Integral, Constant<'c>);
 ::rcc_utils::interconvert!(Floating, Constant<'c>);
 // ::rcc_utils::interconvert!(???, Constant, String);
-// ::rcc_utils::interconvert!(???, Constant, Address);
+::rcc_utils::interconvert!(Address, Constant,'c);
 
 ::rcc_utils::make_trio_for!(Integral, Constant<'c>);
 ::rcc_utils::make_trio_for!(Floating, Constant<'c>);
+::rcc_utils::make_trio_for!(Address, Constant, 'c);
 ::rcc_utils::make_trio_for_unit_tuple!(Nullptr, Constant<'c>);
 
 // ::rcc_utils::make_trio_for!(???, Constant, String);
@@ -110,7 +123,8 @@ impl ::std::fmt::Display for Constant<'_> {
     match self {
       Integral(i) => write!(f, "{i}"),
       Floating(d) => write!(f, "{d}"),
-      String(s) | Address(s) => write!(f, "\"{}\"", s),
+      String(s) => write!(f, "\"{}\"", s),
+      Address(addr) => write!(f, "{}", addr.inner),
       Nullptr() => write!(f, "nullptr"),
     }
   }

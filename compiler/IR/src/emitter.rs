@@ -1,11 +1,11 @@
 use ::rcc_adt::{Integral, Signedness};
 use ::rcc_ast::{
-  Constant, SymbolPtr, UnaryKind,
+  Constant, UnaryKind,
   types::{self as ast, TypeInfo},
 };
 use ::rcc_sema::{declaration as sd, expression as se, statement as ss};
 use ::rcc_shared::{OpDiag, Operator, OperatorCategory, SourceSpan};
-use ::rcc_utils::{RefEq, StrRef, Unbox, contract_violation};
+use ::rcc_utils::{RefEq, StrRef, contract_violation};
 use ::std::collections::HashMap;
 
 use super::{
@@ -44,9 +44,9 @@ pub struct Emitter<'c> {
   pub(super) current_function: ValueID,
   pub(super) ctrlflow_ctx: Vec<ControlFlowContext>,
   pub(super) labels: HashMap<StrRef<'c>, ValueID>,
-  pub(super) locals: HashMap<SymbolPtr<'c>, ValueID>,
+  pub(super) locals: HashMap<sd::DeclRef<'c>, ValueID>,
   /// function name → ValueID for call resolution
-  pub(super) globals: HashMap<SymbolPtr<'c>, ValueID>,
+  pub(super) globals: HashMap<sd::DeclRef<'c>, ValueID>,
   pub(super) module: Module,
 }
 impl<'a> ::std::ops::Deref for Emitter<'a> {
@@ -223,7 +223,7 @@ impl<'c> Emitter<'c> {
     self.module.globals = Vec::with_capacity(declarations.len());
 
     declarations
-      .into_iter()
+      .iter()
       .for_each(|declaration| self.global_decl(declaration));
 
     debug_assert!(self.current_function.is_null());
@@ -234,98 +234,85 @@ impl<'c> Emitter<'c> {
 }
 
 impl<'c> Emitter<'c> {
-  fn global_decl(&mut self, declaration: sd::ExternalDeclaration<'c>) {
+  fn global_decl(&mut self, declaration: &sd::ExternalDeclarationRef<'c>) {
     match declaration {
-      sd::ExternalDeclaration::Function(function) =>
+      sd::ExternalDeclarationRef::Function(function) =>
         match function.is_definition() {
           true => self.global_funcdef(function),
-          false => self.funcdecl(function),
+          false => self.funcdecl(function.declaration),
         },
-      sd::ExternalDeclaration::Variable(variable) => {
+      sd::ExternalDeclarationRef::Variable(variable) => {
         self.global_vardef(variable);
       },
     }
   }
 
-  fn funcdecl(&mut self, function: sd::Function<'c>) {
-    if let Some(&value_id) =
-      self.globals.get(&(function.symbol.as_ptr() as *const _))
-    {
+  fn funcdecl(&mut self, declaration: sd::DeclRef<'c>) {
+    let declaration = declaration.canonical_decl();
+    if let Some(&value_id) = self.globals.get(&declaration) {
       debug_assert!(
         lookup!(self, value_id).data.is_function(),
         "pre-registered value should be a function"
       );
     } else {
-      let sym = function.symbol.borrow();
-      let name = sym.name;
-      let ast_type = sym.qualified_type.unqualified_type;
+      let decl = declaration;
+      let name = decl.name();
+      let ast_type = decl.qualified_type().unqualified_type;
       let is_variadic = ast_type.as_functionproto_unchecked().is_variadic;
-      drop(sym);
 
       let value_id = self.emit(
         module::Function::new_empty(name, Default::default(), is_variadic),
         ast_type,
       );
 
-      self
-        .globals
-        .insert(function.symbol.as_ptr() as *const _, value_id);
+      self.globals.insert(declaration, value_id);
     }
   }
 
-  fn global_funcdef(&mut self, function: sd::Function<'c>) {
+  fn global_funcdef(&mut self, function: sd::FunctionRef<'c>) {
     debug_assert!(function.is_definition());
 
-    let sd::Function {
-      symbol,
-      parameters,
-      body,
-      gotos: _,
-      labels: _,
-      ..
-    } = function;
+    let declaration = function.declaration.canonical_decl();
+    let parameters = function.parameters;
 
-    let function_name = symbol.borrow().name;
-    let ast_type = symbol.borrow().qualified_type.unqualified_type;
+    let function_name = declaration.name();
+    let ast_type = declaration.qualified_type().unqualified_type;
 
-    self.current_function = if let Some(&value_id) =
-      self.globals.get(&(symbol.as_ptr() as *const _))
-    {
-      // should be function and declaration-only
-      debug_assert!(
-        !lookup!(self, value_id).data.as_function().is_some_and(|f| f
-          .is_definition()
-          && RefEq::ref_eq(
+    self.current_function =
+      if let Some(&value_id) = self.globals.get(&declaration) {
+        // should be function and declaration-only
+        debug_assert!(
+          !lookup!(self, value_id).data.as_function().is_some_and(|f| f
+            .is_definition()
+            && RefEq::ref_eq(
+              function_name,
+              lookup!(self, value_id).data.as_function_unchecked().name
+            )
+            && f.is_variadic
+              == ast_type.as_functionproto_unchecked().is_variadic),
+          "pre-registered function should be declaration-only"
+        );
+        value_id
+      } else {
+        let function_id = self.emit(
+          module::Function::new_empty(
             function_name,
-            lookup!(self, value_id).data.as_function_unchecked().name
-          )
-          && f.is_variadic
-            == ast_type.as_functionproto_unchecked().is_variadic),
-        "pre-registered function should be declaration-only"
-      );
-      value_id
-    } else {
-      let function_id = self.emit(
-        module::Function::new_empty(
-          function_name,
-          Default::default(),
-          ast_type.as_functionproto_unchecked().is_variadic,
-        ),
-        ast_type,
-      );
+            Default::default(),
+            ast_type.as_functionproto_unchecked().is_variadic,
+          ),
+          ast_type,
+        );
 
-      self
-        .globals
-        .insert(symbol.as_ptr() as *const _, function_id);
-      debug_assert!(
-        lookup!(self, function_id)
-          .data
-          .as_function()
-          .is_some_and(|f| !f.is_definition()),
-        "pre-registered function should be declaration-only"
-      );
-      function_id
-    };
+        self.globals.insert(declaration, function_id);
+        debug_assert!(
+          lookup!(self, function_id)
+            .data
+            .as_function()
+            .is_some_and(|f| !f.is_definition()),
+          "pre-registered function should be declaration-only"
+        );
+        function_id
+      };
 
     debug_assert!(self.locals.is_empty());
     debug_assert!(self.labels.is_empty());
@@ -356,16 +343,14 @@ impl<'c> Emitter<'c> {
 
     // insert params into the local scope and allocate spaces
     let params = parameters
-      .into_iter()
+      .iter()
       .enumerate()
       .map(|(index, parameter)| {
-        let ast_type =
-          parameter.symbol.borrow().qualified_type.unqualified_type;
+        let declaration = parameter.declaration;
+        let ast_type = declaration.qualified_type().unqualified_type;
         let arg_id = self.emit(Argument::new(index), ast_type);
         let localed_arg_id = self.emit(inst::Alloca::new(), ast_type);
-        self
-          .locals
-          .insert(parameter.symbol.as_ptr(), localed_arg_id);
+        self.locals.insert(declaration, localed_arg_id);
         _ = self.emit(
           inst::Store::new(localed_arg_id, arg_id),
           self.ast().void_type(),
@@ -378,7 +363,12 @@ impl<'c> Emitter<'c> {
       value.data.as_function_mut_unchecked().params = params
     });
 
-    self.compound(body.expect("Precondition: function.is_definition()"));
+    self.compound(
+      function
+        .body
+        .as_ref()
+        .expect("Precondition: function.is_definition()"),
+    );
 
     let (has_inst, has_term) = self.visit(self.current_block, |value| {
       let block = value.data.as_basicblock_unchecked();
@@ -460,52 +450,45 @@ impl<'c> Emitter<'c> {
     self.current_function = ValueID::null();
   }
 
-  fn global_vardef(&mut self, variable: sd::VarDef<'c>) {
-    let sd::VarDef {
-      symbol,
-      initializer,
-      ..
-    } = variable;
-    let initializer = match initializer {
+  fn global_vardef(&mut self, variable: sd::VarDefRef<'c>) {
+    let declaration = variable.declaration.canonical_decl();
+
+    let initializer = match variable.initializer {
       Some(sd::Initializer::Scalar(expr)) => Some(module::Initializer::Scalar(
-        expr.destructure().0.into_constant_unchecked().inner,
+        expr.raw_expr().as_constant_unchecked().clone(),
       )),
       Some(sd::Initializer::Aggregate(_)) => todo!(),
       None => None,
     };
     let value_id = self.emit(
       module::Variable::new(
-        symbol.borrow().name,
+        declaration.name(),
         initializer, // TODO: handle initializers
       ),
-      symbol.borrow().qualified_type.unqualified_type,
+      declaration.qualified_type().unqualified_type,
     );
-    self.globals.insert(symbol.as_ptr(), value_id);
+    self.globals.insert(declaration, value_id);
   }
 
-  fn local_decl(&mut self, external_declaration: sd::ExternalDeclaration<'c>) {
+  fn local_decl(&mut self, declaration: &sd::ExternalDeclarationRef<'c>) {
     debug_assert!(!self.current_block.is_null());
-    match external_declaration {
-      sd::ExternalDeclaration::Function(function) => {
-        debug_assert!(function.is_declaration());
-        self.funcdecl(function);
+    match declaration {
+      sd::ExternalDeclarationRef::Function(function_decl) => {
+        self.funcdecl(function_decl.declaration);
       },
-      sd::ExternalDeclaration::Variable(var_def) => self.local_vardef(var_def),
+      sd::ExternalDeclarationRef::Variable(var_def) =>
+        self.local_vardef(var_def),
     }
   }
 
-  fn local_vardef(&mut self, var_def: sd::VarDef<'c>) {
-    let sd::VarDef {
-      symbol,
-      initializer,
-      ..
-    } = var_def;
+  fn local_vardef(&mut self, var_def: sd::VarDefRef<'c>) {
+    let declaration = var_def.declaration;
     let value_id = self.emit(
       inst::Alloca::new(),
-      symbol.borrow().qualified_type.unqualified_type,
+      declaration.qualified_type().unqualified_type,
     );
 
-    match initializer {
+    match var_def.initializer {
       Some(sd::Initializer::Scalar(expr)) => {
         let init_value_id = self.expression(expr);
         _ = self.emit(
@@ -516,14 +499,14 @@ impl<'c> Emitter<'c> {
       Some(sd::Initializer::Aggregate(_)) => todo!(),
       None => (),
     };
-    self.locals.insert(symbol.as_ptr(), value_id);
+    self.locals.insert(declaration, value_id);
   }
 }
 
 impl<'c> Emitter<'c> {
-  fn statement(&mut self, statement: impl Unbox<Output = ss::Statement<'c>>) {
+  fn statement(&mut self, statement: ss::StmtRef<'c>) {
     use ss::Statement::*;
-    match statement.unbox() {
+    match statement {
       Empty(_) => (),
       Return(return_stmt) => self.return_stmt(return_stmt),
       Expression(expression) => self.exprstmt(expression),
@@ -542,11 +525,11 @@ impl<'c> Emitter<'c> {
   }
 
   #[inline]
-  fn exprstmt(&mut self, expression: se::Expression<'c>) {
+  fn exprstmt(&mut self, expression: se::ExprRef<'c>) {
     self.expression(expression);
   }
 
-  fn return_stmt(&mut self, return_stmt: ss::Return<'c>) {
+  fn return_stmt(&mut self, return_stmt: &ss::Return<'c>) {
     let ss::Return { expression, .. } = return_stmt;
     // let ast_type = expression
     //   .as_ref()
@@ -559,14 +542,14 @@ impl<'c> Emitter<'c> {
     let _should_be_now = self.push_block(immediate_block_id);
   }
 
-  fn compound(&mut self, compound: ss::Compound<'c>) {
+  fn compound(&mut self, compound: &ss::Compound<'c>) {
     let ss::Compound { statements, .. } = compound;
     statements
-      .into_iter()
+      .iter()
       .for_each(|statement| self.statement(statement));
   }
 
-  fn if_stmt(&mut self, if_stmt: ss::If<'c>) {
+  fn if_stmt(&mut self, if_stmt: &ss::If<'c>) {
     let ss::If {
       condition,
       then_branch,
@@ -635,7 +618,7 @@ impl<'c> Emitter<'c> {
       .or_else(|| self.refill_jump(then_block_terminator, else_block_id));
   }
 
-  fn while_stmt(&mut self, while_stmt: ss::While<'c>) {
+  fn while_stmt(&mut self, while_stmt: &ss::While<'c>) {
     let ss::While {
       condition, body, ..
     } = while_stmt;
@@ -688,7 +671,7 @@ impl<'c> Emitter<'c> {
     );
   }
 
-  fn do_while(&mut self, do_while: ss::DoWhile<'c>) {
+  fn do_while(&mut self, do_while: &ss::DoWhile<'c>) {
     let ss::DoWhile {
       condition,
       body,
@@ -744,7 +727,7 @@ impl<'c> Emitter<'c> {
     );
   }
 
-  fn for_stmt(&mut self, for_stmt: ss::For<'c>) {
+  fn for_stmt(&mut self, for_stmt: &ss::For<'c>) {
     let ss::For {
       initializer,
       condition,
@@ -816,19 +799,19 @@ impl<'c> Emitter<'c> {
     );
   }
 
-  fn switch(&self, switch: ss::Switch<'c>) {
+  fn switch(&self, switch: &ss::Switch<'c>) {
     todo!("{switch:#?}")
   }
 
-  fn goto(&self, goto: ss::Goto<'c>) {
+  fn goto(&self, goto: &ss::Goto<'c>) {
     todo!("{goto:#?}")
   }
 
-  fn label(&mut self, label: ss::Label<'c>) {
+  fn label(&mut self, label: &ss::Label<'c>) {
     todo!("{label:#?}")
   }
 
-  fn break_stmt(&mut self, break_stmt: ss::Break<'c>) {
+  fn break_stmt(&mut self, break_stmt: &ss::Break) {
     let ss::Break { .. } = break_stmt;
 
     let target_block_id = self
@@ -850,7 +833,7 @@ impl<'c> Emitter<'c> {
     debug_assert_eq!(now_block_id, _should_be_now);
   }
 
-  fn continue_stmt(&mut self, continue_stmt: ss::Continue<'c>) {
+  fn continue_stmt(&mut self, continue_stmt: &ss::Continue) {
     let ss::Continue { .. } = continue_stmt;
 
     let target_block_id = self
@@ -874,70 +857,62 @@ impl<'c> Emitter<'c> {
   }
 }
 impl<'c> Emitter<'c> {
-  fn expression(
-    &mut self,
-    expression: impl Unbox<Output = se::Expression<'c>>,
-  ) -> ValueID {
+  fn expression(&mut self, expression: se::ExprRef<'c>) -> ValueID {
     // the fold here contains partial fold. e.g. `3 + 6 + func(4 + 5)` would be folded to `9 + func(9)`.
-    let (
-      raw_expr,
-      ast::QualifiedType {
-        unqualified_type, ..
-      },
-      ..,
-    ) = expression
-      .unbox()
-      .fold(&self.session().as_ast_session())
-      .take()
-      .destructure();
+    let expression = expression.fold(&self.session().as_ast_session()).take();
+    let unqualified_type = expression.unqualified_type();
+    let span = expression.span();
     use se::RawExpr::*;
-    match raw_expr {
+    match expression.raw_expr() {
       Empty(_) => contract_violation!(
         "empty expr is used in sema for error recovery. shouldnt reach here."
       ),
-      Constant(constant) => self.constant(constant, unqualified_type),
-      Unary(unary) => self.unary(unary, unqualified_type),
-      Binary(binary) => self.binary(binary, unqualified_type),
-      Call(call) => self.call(call, unqualified_type),
-      Paren(paren) => self.paren(paren),
+      Constant(constant) => self.constant(constant, unqualified_type, span),
+      Unary(unary) => self.unary(unary, unqualified_type, span),
+      Binary(binary) => self.binary(binary, unqualified_type, span),
+      Call(call) => self.call(call, unqualified_type, span),
+      Paren(paren) => self.paren(paren, span),
       MemberAccess(member_access) =>
-        self.member_access(member_access, unqualified_type),
-      Ternary(ternary) => self.ternary(ternary, unqualified_type),
-      SizeOf(size_of) => self.sizeof(size_of, unqualified_type),
+        self.member_access(member_access, unqualified_type, span),
+      Ternary(ternary) => self.ternary(ternary, unqualified_type, span),
+      SizeOf(size_of) => self.sizeof(size_of, unqualified_type, span),
       CStyleCast(cstyle_cast) =>
-        self.cstyle_cast(cstyle_cast, unqualified_type),
+        self.cstyle_cast(cstyle_cast, unqualified_type, span),
       ArraySubscript(array_subscript) =>
-        self.array_subscript(array_subscript, unqualified_type),
+        self.array_subscript(array_subscript, unqualified_type, span),
       CompoundLiteral(compound_literal) =>
-        self.compound_literal(compound_literal, unqualified_type),
-      Variable(variable) => self.variable(variable, unqualified_type),
+        self.compound_literal(compound_literal, unqualified_type, span),
+      Variable(variable) => self.variable(variable, unqualified_type, span),
       ImplicitCast(implicit_cast) =>
-        self.implicit_cast(implicit_cast, unqualified_type),
+        self.implicit_cast(implicit_cast, unqualified_type, span),
       CompoundAssign(compound_assign) =>
-        self.compound_assign(compound_assign, unqualified_type),
+        self.compound_assign(compound_assign, unqualified_type, span),
     }
   }
 
   fn constant(
     &mut self,
-    constant: se::Constant<'c>,
+    constant: &se::Constant<'c>,
     ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
   ) -> ValueID {
-    self.emit(constant.inner, ast_type)
+    self.emit(constant.clone(), ast_type)
   }
 
   fn member_access(
     &mut self,
-    _member_access: se::MemberAccess<'c>,
+    _member_access: &se::MemberAccess<'c>,
     _ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
   ) -> ValueID {
     todo!()
   }
 
   fn ternary(
     &mut self,
-    ternary: se::Ternary<'c>,
+    ternary: &se::Ternary<'c>,
     ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
   ) -> ValueID {
     let se::Ternary {
       condition,
@@ -945,7 +920,7 @@ impl<'c> Emitter<'c> {
       else_expr,
       ..
     } = ternary;
-    let then_expr = then_expr.expect("unimplemened for ?:");
+    let then_expr = (*then_expr).expect("unimplemened for ?:");
     debug_assert_eq!(then_expr.qualified_type(), else_expr.qualified_type());
     // type res; if (cond) { res = then; } else { res = else; }
 
@@ -1004,8 +979,9 @@ impl<'c> Emitter<'c> {
 
   fn sizeof(
     &mut self,
-    size_of: se::SizeOf<'c>,
+    size_of: &se::SizeOf<'c>,
     ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
   ) -> ValueID {
     let se::SizeOf { sizeof, .. } = size_of;
     match sizeof {
@@ -1022,16 +998,18 @@ impl<'c> Emitter<'c> {
 
   fn cstyle_cast(
     &mut self,
-    _cstyle_cast: se::CStyleCast<'c>,
+    _cstyle_cast: &se::CStyleCast<'c>,
     _ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
   ) -> ValueID {
     todo!()
   }
 
   fn array_subscript(
     &mut self,
-    array_subscript: se::ArraySubscript<'c>,
+    array_subscript: &se::ArraySubscript<'c>,
     _ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
   ) -> ValueID {
     let se::ArraySubscript { array, index, .. } = array_subscript;
     debug_assert!(
@@ -1061,24 +1039,24 @@ impl<'c> Emitter<'c> {
 
   fn compound_literal(
     &mut self,
-    _compound_literal: se::CompoundLiteral,
+    _compound_literal: &se::CompoundLiteral,
     _ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
   ) -> ValueID {
     todo!()
   }
 
   fn variable(
     &self,
-    variable: se::Variable<'c>,
+    variable: &se::Variable<'c>,
     _ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
   ) -> ValueID {
-    let name = variable.symbol.borrow().name;
-    if let Some(&vid) = self.locals.get(&(variable.symbol.as_ptr() as *const _))
-    {
+    let declaration = variable.declaration.canonical_decl();
+    let name = declaration.name();
+    if let Some(&vid) = self.locals.get(&declaration) {
       vid
-    } else if let Some(&vid) =
-      self.globals.get(&(variable.symbol.as_ptr() as *const _))
-    {
+    } else if let Some(&vid) = self.globals.get(&declaration) {
       vid
     } else {
       panic!("undefined variable: {name}")
@@ -1087,8 +1065,9 @@ impl<'c> Emitter<'c> {
 
   fn call(
     &mut self,
-    call: se::Call<'c>,
+    call: &se::Call<'c>,
     ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
   ) -> ValueID {
     let se::Call {
       callee, arguments, ..
@@ -1098,7 +1077,8 @@ impl<'c> Emitter<'c> {
 
     operands.extend(
       arguments
-        .into_iter()
+        .iter()
+        .copied()
         .map(|arg| self.expression(arg))
         .collect::<Vec<_>>(),
     );
@@ -1107,28 +1087,30 @@ impl<'c> Emitter<'c> {
   }
 
   #[inline]
-  fn paren(&mut self, paren: se::Paren<'c>) -> ValueID {
+  fn paren(&mut self, paren: &se::Paren<'c>, _span: SourceSpan) -> ValueID {
     self.expression(paren.expr)
   }
 
   fn implicit_cast(
     &mut self,
-    implicit_cast: se::ImplicitCast<'c>,
+    implicit_cast: &se::ImplicitCast<'c>,
     ast_type: ast::TypeRef<'c>,
+    _span: SourceSpan,
   ) -> ValueID {
     let se::ImplicitCast {
       cast_type, expr, ..
     } = implicit_cast;
 
     let operand = self.expression(expr);
-    self.do_cast(operand, cast_type, ast_type)
+    self.do_cast(operand, *cast_type, ast_type)
   }
 
   // gush. this is the most fluffing part of the whole codegen.
   fn compound_assign(
     &mut self,
-    compound_assign: se::CompoundAssign<'c>,
+    compound_assign: &se::CompoundAssign<'c>,
     ast_type: ast::TypeRef<'c>,
+    span: SourceSpan,
   ) -> ValueID {
     let se::CompoundAssign {
       operator,
@@ -1136,7 +1118,6 @@ impl<'c> Emitter<'c> {
       right,
       intermediate_left_type,
       intermediate_result_type,
-      span,
     } = compound_assign;
     let left_ty = left.unqualified_type();
     debug_assert!(
@@ -1151,25 +1132,25 @@ impl<'c> Emitter<'c> {
     let rvalued_lhs =
       self.do_cast(evaluated_lhs, ast::CastType::LValueToRValue, left_ty);
     let lhs_compute_cast =
-      se::Expression::get_cast_type(left_ty, &intermediate_left_type);
+      se::Expression::get_cast_type(left_ty, intermediate_left_type);
     let lhs_id =
-      self.do_cast(rvalued_lhs, lhs_compute_cast, &intermediate_left_type);
+      self.do_cast(rvalued_lhs, lhs_compute_cast, intermediate_left_type);
 
     let right_ty = right.unqualified_type();
     let evaluated_rhs = self.expression(right);
     let rhs_comute_cast =
-      se::Expression::get_cast_type(right_ty, &intermediate_result_type);
+      se::Expression::get_cast_type(right_ty, intermediate_result_type);
     let rhs_id =
-      self.do_cast(evaluated_rhs, rhs_comute_cast, &intermediate_result_type);
+      self.do_cast(evaluated_rhs, rhs_comute_cast, intermediate_result_type);
 
     let assoc_op = operator.associated_operator().expect(
       "precond: sema ensures the validity of the op is valid compound operator",
     );
 
     let bin_id =
-      self.do_binary(assoc_op, lhs_id, rhs_id, &intermediate_result_type, span);
+      self.do_binary(assoc_op, lhs_id, rhs_id, intermediate_result_type, span);
     let cast_me_back =
-      se::Expression::get_cast_type(&intermediate_result_type, ast_type);
+      se::Expression::get_cast_type(intermediate_result_type, ast_type);
     let casted_back = self.do_cast(bin_id, cast_me_back, ast_type);
 
     let _store = self.emit(
@@ -1425,25 +1406,25 @@ impl<'c> Emitter<'c> {
 impl<'c> Emitter<'c> {
   fn binary(
     &mut self,
-    binary: se::Binary<'c>,
+    binary: &se::Binary<'c>,
     ast_type: ast::TypeRef<'c>,
+    span: SourceSpan,
   ) -> ValueID {
     let se::Binary {
       left,
       operator,
       right,
-      span,
     } = binary;
 
     match operator {
       Operator::LogicalAnd =>
-        self.logical_and(operator, left, right, ast_type, span),
+        self.logical_and(*operator, left, right, ast_type, span),
       Operator::LogicalOr =>
-        self.logical_or(operator, left, right, ast_type, span),
+        self.logical_or(*operator, left, right, ast_type, span),
       _ => {
         let left = self.expression(left);
         let right = self.expression(right);
-        self.do_binary(operator, left, right, ast_type, span)
+        self.do_binary(*operator, left, right, ast_type, span)
       },
     }
   }
@@ -1508,8 +1489,8 @@ impl<'c> Emitter<'c> {
   fn logical_and(
     &mut self,
     operator: Operator,
-    left: impl Unbox<Output = se::Expression<'c>>,
-    right: impl Unbox<Output = se::Expression<'c>>,
+    left: se::ExprRef<'c>,
+    right: se::ExprRef<'c>,
     ast_type: ast::TypeRef<'c>,
     _span: SourceSpan,
   ) -> ValueID {
@@ -1555,8 +1536,8 @@ impl<'c> Emitter<'c> {
   fn logical_or(
     &mut self,
     operator: Operator,
-    left: impl Unbox<Output = se::Expression<'c>>,
-    right: impl Unbox<Output = se::Expression<'c>>,
+    left: se::ExprRef<'c>,
+    right: se::ExprRef<'c>,
     ast_type: ast::TypeRef<'c>,
     _span: SourceSpan,
   ) -> ValueID {
@@ -1912,18 +1893,18 @@ impl<'c> Emitter<'c> {
 impl<'c> Emitter<'c> {
   fn unary(
     &mut self,
-    unary: se::Unary<'c>,
+    unary: &se::Unary<'c>,
     ast_type: ast::TypeRef<'c>,
+    span: SourceSpan,
   ) -> ValueID {
     let se::Unary {
       kind,
       operand,
       operator,
-      span,
     } = unary;
     let operand = self.expression(operand);
 
-    self.do_unary(operator, operand, kind, ast_type, span)
+    self.do_unary(*operator, operand, *kind, ast_type, span)
   }
 
   fn do_unary(

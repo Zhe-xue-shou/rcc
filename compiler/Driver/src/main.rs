@@ -143,7 +143,6 @@ fn pipeline(manager: SourceManager, stage: Stage, pretty_print: bool) -> i32 {
   let builder = IREmitter::new(&session);
 
   let m = builder.build(translation_unit);
-  println!("{m:#?}");
   render_ir(&m, &session).unwrap();
   0
 }

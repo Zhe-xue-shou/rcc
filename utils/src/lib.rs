@@ -5,23 +5,16 @@
 #![feature(const_destruct)]
 #![feature(const_cmp)]
 #![feature(const_ops)]
+#![feature(const_type_name)]
 #![feature(const_eval_select)]
 mod macros;
 mod num_traits;
 
-use ::std::{
-  cell::RefCell,
-  rc::{Rc, Weak},
-};
+use ::std::{cell::RefCell, rc::Rc};
 
 pub use self::num_traits::*;
 
 pub type SmallString = ::compact_str::CompactString;
-/// as someone who came from C++, I'd more prefer to call it shared_ptr rather than Rc/RefCell or whatever. :p
-#[allow(non_camel_case_types)]
-pub type shared_ptr<T> = Rc<RefCell<T>>;
-#[allow(non_camel_case_types)]
-pub type weak_ptr<T> = Weak<RefCell<T>>;
 
 /// A handy trait for converting between types with additional context.
 pub trait IntoWith<With, To> {
@@ -56,7 +49,7 @@ pub trait Dummy {
   fn dummy() -> Self;
 }
 #[cfg(debug_assertions)]
-impl<T: Dummy> Dummy for shared_ptr<T> {
+impl<T: Dummy> Dummy for Rc<RefCell<T>> {
   fn dummy() -> Self {
     Rc::new(RefCell::new(T::dummy()))
   }
@@ -78,17 +71,20 @@ impl Dummy for usize {
 }
 
 pub type StrRef<'c> = &'c str;
+impl RefEq for StrRef<'_> {}
 
 pub trait RefEq {
+  #[inline]
+  #[must_use]
   fn ref_eq(lhs: Self, rhs: Self) -> bool
   where
-    Self: PartialEq + Sized;
-}
-
-impl RefEq for StrRef<'_> {
-  fn ref_eq(lhs: Self, rhs: Self) -> bool
+    Self: PartialEq + Sized + ::std::fmt::Debug,
+  {
+    Self::ref_eq_impl(&lhs, &rhs, "")
+  }
+  fn ref_eq_impl(lhs: &Self, rhs: &Self, msg: &'static str) -> bool
   where
-    Self: PartialEq + Sized,
+    Self: PartialEq + Sized + ::std::fmt::Debug,
   {
     let ref_eq = ::std::ptr::eq(lhs, rhs);
     if const { cfg!(debug_assertions) } {
@@ -96,9 +92,9 @@ impl RefEq for StrRef<'_> {
       if ref_eq != actual_eq {
         eprintln!(
           "INTERNAL ERROR: comparing by pointer address result did not match 
-          the actual result: {:p}: {:?} and {:p}: {:?}
+          the actual result: {:p}: {:?} and {:p}: {:?}. {}
         ",
-          lhs, lhs, rhs, rhs
+          lhs, lhs, rhs, rhs, msg
         );
       }
       return actual_eq;
@@ -171,26 +167,6 @@ impl<T: [const] PartialEq + [const] Destruct + Debug> const Add<(T, T, &str)>
     const_assert_eq!(lhs, rhs, msg)
   }
 }
-// #[allow(non_camel_case_types)]
-// pub struct pre;
-// impl Add<(bool, String)> for pre {
-//   type Output = ();
 
-//   fn add(self, (cond, msg): (bool, String)) -> Self::Output {
-//     debug_assert!(cond, "{}", msg)
-//   }
-// }
-// impl<T: PartialEq + Destruct + Debug> Add<(T, T)> for pre {
-//   type Output = ();
-
-//   fn add(self, (lhs, rhs): (T, T)) {
-//     debug_assert_eq!(lhs, rhs)
-//   }
-// }
-// impl<T: PartialEq + Debug> Add<(T, T, String)> for pre {
-//   type Output = ();
-
-//   fn add(self, (lhs, rhs, msg): (T, T, String)) {
-//     debug_assert_eq!(lhs, rhs, "{}", msg)
-//   }
-// }
+mod opaque;
+pub use opaque::Opaque;

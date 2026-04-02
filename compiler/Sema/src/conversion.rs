@@ -10,17 +10,17 @@ use ::rcc_ast::{
 use ::rcc_shared::{Diag, DiagData::*, DiagMeta, Severity, SourceSpan};
 use ::rcc_utils::{IntoWith, RefEq};
 
-use super::expression::{Expression, ImplicitCast};
+use super::expression::{ExprRef, Expression, ImplicitCast};
 
 impl<'c> Expression<'c> {
   /// 6.3.1.8 Usual arithmetic conversions, applied implicitly where arithmetic conversions are required
   #[must_use]
   #[inline]
   pub fn usual_arithmetic_conversion(
-    lhs: Self,
-    rhs: Self,
-    context: &Context<'c>,
-  ) -> Result<(Self, Self, QualifiedType<'c>), Diag<'c>> {
+    lhs: ExprRef<'c>,
+    rhs: ExprRef<'c>,
+    context: &'c Context<'c>,
+  ) -> Result<(ExprRef<'c>, ExprRef<'c>, QualifiedType<'c>), Diag<'c>> {
     assert!(
       !lhs.is_lvalue() && !rhs.is_lvalue(),
       "perform lvalue conversion first"
@@ -41,9 +41,9 @@ impl<'c> Expression<'c> {
   #[must_use]
   #[inline]
   pub fn usual_arithmetic_conversion_unary(
-    self,
-    context: &Context<'c>,
-  ) -> Result<Self, Diag<'c>> {
+    self: ExprRef<'c>,
+    context: &'c Context<'c>,
+  ) -> Result<ExprRef<'c>, Diag<'c>> {
     assert!(!self.is_lvalue(), "perform lvalue conversion first");
     assert!(
       !matches!(
@@ -75,9 +75,9 @@ impl<'c> Expression<'c> {
   #[must_use]
   #[inline]
   pub fn boolean_conversion(
-    self,
-    context: &'c Context,
-  ) -> Result<Self, Diag<'c>> {
+    self: ExprRef<'c>,
+    context: &'c Context<'c>,
+  ) -> Result<ExprRef<'c>, Diag<'c>> {
     assert!(
       !matches!(
         self.unqualified_type(),
@@ -90,7 +90,9 @@ impl<'c> Expression<'c> {
 
   #[must_use]
   #[inline]
-  pub fn is_contextually_convertible_to_bool(self) -> Result<Self, Diag<'c>> {
+  pub fn is_contextually_convertible_to_bool(
+    self: ExprRef<'c>,
+  ) -> Result<ExprRef<'c>, Diag<'c>> {
     assert!(
       !self.is_lvalue(),
       "perform lvalue_conversion() first; an lvalue is not contextually \
@@ -115,14 +117,20 @@ impl<'c> Expression<'c> {
   /// unary.
   #[must_use]
   #[inline]
-  pub fn void_conversion(self, context: &'c Context) -> Self {
+  pub fn void_conversion(
+    self: ExprRef<'c>,
+    context: &'c Context<'c>,
+  ) -> ExprRef<'c> {
     match self.unqualified_type().is_void() {
       true => self,
       false => {
         let span = self.span();
+
         Self::new_rvalue(
-          ImplicitCast::new(self.into(), CastType::ToVoid, span),
+          context,
+          ImplicitCast::new(self, CastType::ToVoid),
           context.void_type().into(),
+          span,
         )
       },
     }
@@ -132,9 +140,10 @@ impl<'c> Expression<'c> {
   #[must_use]
   #[inline]
   pub fn assignment_conversion(
-    self,
+    self: ExprRef<'c>,
+    context: &'c Context<'c>,
     target_type: &QualifiedType<'c>,
-  ) -> Result<Self, Diag<'c>> {
+  ) -> Result<ExprRef<'c>, Diag<'c>> {
     assert!(
       !matches!(
         self.unqualified_type(),
@@ -142,7 +151,7 @@ impl<'c> Expression<'c> {
       ),
       "perform decay first"
     );
-    Self::assignment_conversion_unchecked(self, target_type)
+    Self::assignment_conversion_unchecked(self, target_type, context)
   }
 
   /// 6.3.2.1 Lvalues, arrays, and function designators
@@ -152,7 +161,10 @@ impl<'c> Expression<'c> {
   ///     lvalue that does not have array type is converted to the value stored in the designated object (and is
   ///     no longer an lvalue); this is called lvalue conversion.
   #[must_use]
-  pub fn lvalue_conversion(self) -> Self {
+  pub fn lvalue_conversion(
+    self: ExprRef<'c>,
+    context: &'c Context<'c>,
+  ) -> ExprRef<'c> {
     if self.unqualified_type().is_array()
       || self.unqualified_type().is_functionproto()
     {
@@ -162,9 +174,12 @@ impl<'c> Expression<'c> {
       // If the lvalue has qualified type, the value has the unqualified version of the type of the lvalue. perform cast from lvalue to rvalue
       let old_unqual_type = self.unqualified_type();
       let span = self.span();
+
       Self::new_rvalue(
-        ImplicitCast::new(self.into(), CastType::LValueToRValue, span),
+        context,
+        ImplicitCast::new(self, CastType::LValueToRValue),
         old_unqual_type.into(),
+        span,
       )
     } else {
       self
@@ -173,7 +188,7 @@ impl<'c> Expression<'c> {
 
   #[must_use]
   #[inline]
-  pub fn decay(self, context: &Context<'c>) -> Self {
+  pub fn decay(self: ExprRef<'c>, context: &'c Context<'c>) -> ExprRef<'c> {
     match self.unqualified_type() {
       Type::Array(_) => self.array_to_pointer_decay(context),
       Type::FunctionProto(_) => self.function_to_pointer_decay(context),
@@ -186,7 +201,10 @@ impl<'c> Expression<'c> {
   ///     "function returning type" is converted to an expression that has type "pointer to function returning
   ///     type"
   #[must_use]
-  pub fn function_to_pointer_decay(self, context: &Context<'c>) -> Self {
+  pub fn function_to_pointer_decay(
+    self: ExprRef<'c>,
+    context: &'c Context<'c>,
+  ) -> ExprRef<'c> {
     assert!(
       self.qualifiers().is_empty(),
       "function type should not have qualifiers: {:?}",
@@ -195,10 +213,13 @@ impl<'c> Expression<'c> {
     let pointer_type =
       Type::Pointer(Pointer::new(*self.qualified_type())).lookup(context);
     let span = self.span();
+
     Self::new_rvalue(
-      ImplicitCast::new(self.into(), CastType::FunctionToPointerDecay, span),
+      context,
+      ImplicitCast::new(self, CastType::FunctionToPointerDecay),
       // The pointer itself is never qualified
       pointer_type.into(),
+      span,
     )
   }
 
@@ -207,7 +228,10 @@ impl<'c> Expression<'c> {
   ///       to an expression with type `pointer to type` that points to the initial element of the array object and
   ///       is not an lvalue.
   #[must_use]
-  pub fn array_to_pointer_decay(self, context: &Context<'c>) -> Self {
+  pub fn array_to_pointer_decay(
+    self: ExprRef<'c>,
+    context: &'c Context<'c>,
+  ) -> ExprRef<'c> {
     let array_type = match self.unqualified_type() {
       Type::Array(a) => a,
       _ => unreachable!(),
@@ -223,9 +247,11 @@ impl<'c> Expression<'c> {
     ));
     let span = self.span();
     Self::new_rvalue(
-      ImplicitCast::new(self.into(), CastType::ArrayToPointerDecay, span),
+      context,
+      ImplicitCast::new(self, CastType::ArrayToPointerDecay),
       // The pointer itself is never qualified
       pointer_type.lookup(context).into(),
+      span,
     )
   }
 
@@ -233,9 +259,9 @@ impl<'c> Expression<'c> {
   #[must_use]
   #[inline]
   pub fn uintptr_conversion(
-    self,
-    context: &'c Context,
-  ) -> Result<Self, Diag<'c>> {
+    self: ExprRef<'c>,
+    context: &'c Context<'c>,
+  ) -> Result<ExprRef<'c>, Diag<'c>> {
     debug_assert!(!self.is_lvalue(), "perform lvalue conversion first");
     debug_assert!(
       !matches!(
@@ -260,9 +286,9 @@ impl<'c> Expression<'c> {
   #[must_use]
   #[inline]
   pub fn ptrdiff_conversion(
-    self,
-    context: &'c Context,
-  ) -> Result<Self, Diag<'c>> {
+    self: ExprRef<'c>,
+    context: &'c Context<'c>,
+  ) -> Result<ExprRef<'c>, Diag<'c>> {
     debug_assert!(!self.is_lvalue(), "perform lvalue conversion first");
     debug_assert!(
       !matches!(
@@ -288,9 +314,10 @@ impl<'c> Expression<'c> {
 impl<'c> Expression<'c> {
   #[must_use]
   fn assignment_conversion_unchecked(
-    self,
+    self: ExprRef<'c>,
     target_type: &QualifiedType<'c>,
-  ) -> Result<Self, Diag<'c>> {
+    context: &'c Context<'c>,
+  ) -> Result<ExprRef<'c>, Diag<'c>> {
     let span = self.span();
 
     match (target_type.unqualified_type, self.unqualified_type()) {
@@ -302,7 +329,7 @@ impl<'c> Expression<'c> {
           self.unqualified_type(),
           target_type.unqualified_type,
         );
-        Ok(Self::maybe_cast(self, cast_type, target_type))
+        Ok(Self::maybe_cast(self, cast_type, target_type, context))
       },
       // the left operand has [...] of a structure or union type compatible with the type of the right operand;
       (Type::Record(_), Type::Record(_)) | (Type::Union(_), Type::Union(_)) => {
@@ -357,22 +384,28 @@ impl<'c> Expression<'c> {
       // the left operand is an atomic, qualified, or unqualified pointer, and the right operand is a null pointer constant or its type is nullptr_t;
       (Type::Pointer(_), Type::Primitive(Primitive::Nullptr)) =>
         Ok(Self::new_rvalue(
-          ImplicitCast::new(self.into(), CastType::NullptrToPointer, span),
+          context,
+          ImplicitCast::new(self, CastType::NullptrToPointer),
           *target_type,
+          span,
         )),
 
       // the left operand has atomic, qualified, or unqualified bool, and the right operand is a pointer or its type is nullptr_t.
       (Type::Primitive(Primitive::Bool), Type::Pointer(_)) =>
         Ok(Self::new_rvalue(
-          ImplicitCast::new(self.into(), CastType::PointerToBoolean, span),
+          context,
+          ImplicitCast::new(self, CastType::PointerToBoolean),
           *target_type,
+          span,
         )),
       (
         Type::Primitive(Primitive::Bool),
         Type::Primitive(Primitive::Nullptr),
       ) => Ok(Self::new_rvalue(
-        ImplicitCast::new(self.into(), CastType::BitCast, span),
+        context,
+        ImplicitCast::new(self, CastType::BitCast),
         *target_type,
+        span,
       )),
       _ => Err(
         InvalidConversion(format!(
@@ -388,19 +421,27 @@ impl<'c> Expression<'c> {
 
   #[must_use]
   fn boolean_conversion_unchecked(
-    self,
-    context: &'c Context,
-  ) -> Result<Self, Diag<'c>> {
+    self: ExprRef<'c>,
+    context: &'c Context<'c>,
+  ) -> Result<ExprRef<'c>, Diag<'c>> {
     let span = self.span();
 
     match self.unqualified_type() {
-      Type::Primitive(Primitive::Bool) =>
-        Ok(Self::cast_if_needed(self, &context.i8_bool_type().into())),
-      Type::Primitive(p) if p.is_integer() =>
-        Ok(Self::cast_if_needed(self, &context.i8_bool_type().into())),
+      Type::Primitive(Primitive::Bool) => Ok(Self::cast_if_needed(
+        self,
+        &context.i8_bool_type().into(),
+        context,
+      )),
+      Type::Primitive(p) if p.is_integer() => Ok(Self::cast_if_needed(
+        self,
+        &context.i8_bool_type().into(),
+        context,
+      )),
       Type::Primitive(p) if p.is_floating_point() => Ok(Self::new_rvalue(
-        ImplicitCast::new(self.into(), CastType::FloatingToIntegral, span),
+        context,
+        ImplicitCast::new(self, CastType::FloatingToIntegral),
         context.i8_bool_type().into(),
+        span,
       )),
       Type::Primitive(Primitive::Nullptr) => Err(
         InvalidConversion(
@@ -426,8 +467,10 @@ impl<'c> Expression<'c> {
       ),
       // compare with nullptr
       Type::Pointer(_) => Ok(Self::new_rvalue(
-        ImplicitCast::new(self.into(), CastType::PointerToIntegral, span),
+        context,
+        ImplicitCast::new(self, CastType::PointerToIntegral),
         context.i8_bool_type().into(),
+        span,
       )),
 
       Type::Array(array) => panic!(
@@ -450,10 +493,10 @@ impl<'c> Expression<'c> {
 
   #[must_use]
   fn usual_arithmetic_conversion_unchecked(
-    lhs: Self,
-    rhs: Self,
-    context: &Context<'c>,
-  ) -> Result<(Self, Self, QualifiedType<'c>), Diag<'c>> {
+    lhs: ExprRef<'c>,
+    rhs: ExprRef<'c>,
+    context: &'c Context<'c>,
+  ) -> Result<(ExprRef<'c>, ExprRef<'c>, QualifiedType<'c>), Diag<'c>> {
     let lhs = lhs.promote(context);
     let rhs = rhs.promote(context);
 
@@ -478,17 +521,17 @@ impl<'c> Expression<'c> {
       };
 
     let common_qtype = Type::Primitive(common_type).lookup(context).into();
-    let lhs = Self::maybe_cast(lhs, lhs_cast, &common_qtype);
-    let rhs = Self::maybe_cast(rhs, rhs_cast, &common_qtype);
+    let lhs = Self::maybe_cast(lhs, lhs_cast, &common_qtype, context);
+    let rhs = Self::maybe_cast(rhs, rhs_cast, &common_qtype, context);
     Ok((lhs, rhs, common_qtype))
   }
 
   /// used for unary `~`, `+` and `-`
   #[must_use]
   pub(super) fn usual_arithmetic_conversion_unary_unchecked(
-    self,
-    context: &Context<'c>,
-  ) -> Result<Self, Diag<'c>> {
+    self: ExprRef<'c>,
+    context: &'c Context<'c>,
+  ) -> Result<ExprRef<'c>, Diag<'c>> {
     let promoted = self.promote(context);
     match promoted.unqualified_type() {
       Type::Primitive(p) if p.is_arithmetic() => Ok(promoted),
@@ -505,25 +548,25 @@ impl<'c> Expression<'c> {
 
   #[must_use]
   pub(super) fn uintptr_conversion_unchecked(
-    self,
-    context: &'c Context,
-  ) -> Self {
+    self: ExprRef<'c>,
+    context: &'c Context<'c>,
+  ) -> ExprRef<'c> {
     let cast_type =
       Self::get_cast_type(self.unqualified_type(), context.uintptr_type());
-    Self::maybe_cast(self, cast_type, &context.uintptr_type().into())
+    Self::maybe_cast(self, cast_type, &context.uintptr_type().into(), context)
   }
 
   #[must_use]
   pub(super) fn ptrdiff_conversion_unchecked(
-    self,
-    context: &'c Context,
-  ) -> Self {
+    self: ExprRef<'c>,
+    context: &'c Context<'c>,
+  ) -> ExprRef<'c> {
     debug_assert!(self.unqualified_type().is_integer());
     let cast_type = Self::get_cast_type(
       self.unqualified_type(),
       Context::ptrdiff_type(context),
     );
-    Self::maybe_cast(self, cast_type, &context.ptrdiff_type().into())
+    Self::maybe_cast(self, cast_type, &context.ptrdiff_type().into(), context)
   }
 }
 
@@ -565,41 +608,51 @@ impl<'c> Expression<'c> {
   /// if noop -> itself; else perform cast
   #[must_use]
   fn maybe_cast(
-    self,
+    self: ExprRef<'c>,
     cast_type: CastType,
     target_type: &QualifiedType<'c>,
-  ) -> Self {
+    context: &'c Context<'c>,
+  ) -> ExprRef<'c> {
     match cast_type {
       CastType::Noop => self,
       _ => {
         let span = self.span();
         Expression::new_rvalue(
-          ImplicitCast::new(self.into(), cast_type, span),
+          context,
+          ImplicitCast::new(self, cast_type),
           *target_type,
+          span,
         )
       },
     }
   }
 
   #[must_use]
-  fn cast_if_needed(self, target_type: &QualifiedType<'c>) -> Self {
+  fn cast_if_needed(
+    self: ExprRef<'c>,
+    target_type: &QualifiedType<'c>,
+    context: &'c Context<'c>,
+  ) -> ExprRef<'c> {
     let cast_type = Self::get_cast_type(
       self.unqualified_type(),
       target_type.unqualified_type,
     );
-    self.maybe_cast(cast_type, target_type)
+    self.maybe_cast(cast_type, target_type, context)
   }
 
   #[must_use]
-  pub fn promote(self, context: &Context<'c>) -> Self {
+  pub fn promote(self: ExprRef<'c>, context: &'c Context<'c>) -> ExprRef<'c> {
     let (promoted_type, cast_type) = self.unqualified_type().clone().promote();
     match cast_type {
       CastType::Noop => self,
       cast_type => {
         let span = self.span();
+
         Self::new_rvalue(
-          ImplicitCast::new(self.into(), cast_type, span),
+          context,
+          ImplicitCast::new(self, cast_type),
           promoted_type.lookup(context).into(),
+          span,
         )
       },
     }

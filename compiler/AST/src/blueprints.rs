@@ -1,9 +1,11 @@
+//! TODO: integrate this into parser crate, since the sema AST migration is completed.
+
 mod rawdecl;
 mod rawexpr;
 mod rawstmt;
 
 pub use self::{
-  // rawdecl::*,
+  rawdecl::VarDeclKind,
   rawexpr::{
     RawArraySubscript, RawBinary, RawCStyleCast, RawCall, RawCompoundLiteral,
     RawConstant, RawMemberAccess, RawParen, RawSizeOf, RawSizeOfKind,
@@ -16,21 +18,20 @@ pub use self::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ::strum_macros::Display)]
+#[strum(serialize_all = "lowercase")]
 pub enum UnaryKind {
-  #[strum(to_string = "prefix")]
   Prefix,
-  #[strum(serialize = "postfix")]
   Postfix,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Placeholder;
 
-impl From<Placeholder> for () {
+impl const From<Placeholder> for () {
   #[inline(always)]
   fn from(_: Placeholder) -> Self {}
 }
-impl From<()> for Placeholder {
+impl const From<()> for Placeholder {
   #[inline(always)]
   fn from(_: ()) -> Self {
     Self

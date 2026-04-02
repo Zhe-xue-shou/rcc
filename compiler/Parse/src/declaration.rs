@@ -182,24 +182,83 @@ pub struct ArrayModifier<'c> {
 }
 /// function-declarator:
 ///     - direct-declarator ( parameter-type-list_opt )
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FunctionSignature<'c> {
   pub parameters: Vec<Parameter<'c>>,
   pub is_variadic: bool,
 }
+/// braced-initializer:
+///     - { }
+///     - { initializer-list   }
+///     - { initializer-list , }
+///
+/// initializer:
+///     - assignment-expression
+///     - braced-initializer
 #[derive(Debug)]
 pub enum Initializer<'c> {
-  Expression(Box<Expression<'c>>),
-  List(Vec<InitializerListEntry<'c>>),
+  Expression(Expression<'c>),
+  InitializerList(InitializerList<'c>),
+}
+/// initializer-list:
+///     - designation_opt initializer
+///     - initializer-list , designation_opt initializer
+#[derive(Debug)]
+pub struct InitializerList<'c> {
+  pub entries: Vec<InitializerListEntry<'c>>,
+  pub span: SourceSpan,
+}
+
+::rcc_utils::interconvert!(Expression, Initializer, 'c);
+::rcc_utils::interconvert!(InitializerList, Initializer, 'c);
+
+impl<'c> InitializerList<'c> {
+  pub fn new(entries: Vec<InitializerListEntry<'c>>, span: SourceSpan) -> Self {
+    Self { entries, span }
+  }
 }
 #[derive(Debug)]
-pub struct InitializerListEntry<'c> {
-  pub designators: Vec<Designator<'c>>,
-  pub value: Box<Initializer<'c>>,
+pub enum InitializerListEntry<'c> {
+  Designated(Designated<'c>),
+  Initializer(Initializer<'c>),
 }
+
+::rcc_utils::interconvert!(Designated, InitializerListEntry, 'c);
+::rcc_utils::interconvert!(Initializer, InitializerListEntry, 'c);
+/// designation:
+///     - designator-list =
+///
+/// designator-list:
+///     - designator
+///     - designator-list designator
+#[derive(Debug)]
+pub struct Designated<'c> {
+  pub designators: Vec<Designator<'c>>,
+  pub initializer: Initializer<'c>,
+  /// from `.` or `[` to `=`.
+  pub designator_sloc: SourceSpan,
+}
+
+impl<'c> Designated<'c> {
+  pub fn new(
+    designators: Vec<Designator<'c>>,
+    initializer: Initializer<'c>,
+    designator_sloc: SourceSpan,
+  ) -> Self {
+    Self {
+      designators,
+      initializer,
+      designator_sloc,
+    }
+  }
+}
+
+/// designator:
+///     - \[ constant-expression \]
+///     - . identifier
 #[derive(Debug)]
 pub enum Designator<'c> {
-  Member(StrRef<'c>),
+  Field(StrRef<'c>),
   Index(Expression<'c>),
 }
 #[derive(Debug)]
@@ -260,15 +319,6 @@ impl<'c> FunctionSignature<'c> {
     Self {
       parameters,
       is_variadic,
-    }
-  }
-}
-#[allow(clippy::derivable_impls)]
-impl<'c> ::core::default::Default for FunctionSignature<'c> {
-  fn default() -> Self {
-    Self {
-      parameters: Vec::default(),
-      is_variadic: false,
     }
   }
 }
@@ -399,8 +449,9 @@ mod fmt {
   use ::std::fmt::Display;
 
   use super::{
-    ArrayModifier, DeclSpecs, Declaration, Declarator, EnumSpecifier, Function,
-    FunctionSignature, Modifier, Program, Struct, TypeSpecifier, VarDef,
+    ArrayModifier, DeclSpecs, Declaration, Declarator, Designated, Designator,
+    EnumSpecifier, Function, FunctionSignature, Initializer, InitializerList,
+    InitializerListEntry, Modifier, Program, Struct, TypeSpecifier, VarDef,
   };
 
   impl<'c> Display for Declaration<'c> {
@@ -542,10 +593,13 @@ mod fmt {
   impl<'c> Display for VarDef<'c> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
       write!(f, "{} {}", self.declspecs, self.declarator)?;
-      if self.initializer.is_some() {
-        write!(f, " = <initializer>")?;
+      match self.initializer {
+        Some(ref initializer) => {
+          write!(f, " = ")?;
+          initializer.fmt(f)
+        },
+        None => Ok(()),
       }
-      Ok(())
     }
   }
   impl<'c> Display for DeclSpecs<'c> {
@@ -630,6 +684,52 @@ mod fmt {
           None => "(unnamed)",
         }
       )
+    }
+  }
+
+  impl<'c> Display for Initializer<'c> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      ::rcc_utils::static_dispatch!(
+        self,
+        |variant| variant.fmt(f) =>
+        Expression InitializerList
+      )
+    }
+  }
+  impl<'c> Display for InitializerList<'c> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      write!(f, "{{ ")?;
+      for (i, entry) in self.entries.iter().enumerate() {
+        if i > 0 {
+          write!(f, ", ")?;
+        }
+        entry.fmt(f)?;
+      }
+      write!(f, " }}")
+    }
+  }
+  impl<'c> Display for InitializerListEntry<'c> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      ::rcc_utils::static_dispatch!(
+        self,
+        |variant| variant.fmt(f) =>
+        Designated Initializer
+      )
+    }
+  }
+  impl<'c> Display for Designated<'c> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      self.designators.iter().try_for_each(|d| d.fmt(f))?;
+      write!(f, " = ")?;
+      self.initializer.fmt(f)
+    }
+  }
+  impl<'c> Display for Designator<'c> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      match self {
+        Designator::Field(name) => write!(f, ".{}", name),
+        Designator::Index(expr) => write!(f, "[{}]", expr),
+      }
     }
   }
 }

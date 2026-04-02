@@ -136,7 +136,7 @@ impl<'c> Lexer<'c> {
 
   /// this is random access, fast.
   #[inline(always)]
-  fn slice(&self, start: usize, end: usize) -> &str {
+  fn slice(&self, start: usize, end: usize) -> &'c str {
     &self.source[start..end]
   }
 
@@ -166,11 +166,11 @@ impl<'c> Lexer<'c> {
       '0'..='9' => Some(self.number(start, false)),
 
       // strings
-      '"' => self.string(start),
+      '"' => self.string(start + 1),
 
       // dot (operator/floating point)
       '.' =>
-        if self.peek().is_ascii_hexdigit() {
+        if self.peek().is_ascii_digit() {
           Some(self.number(start, true))
         } else {
           self.lex_compound_operator(start, Dot, &[("...", Ellipsis)])
@@ -588,13 +588,12 @@ impl<'c> Lexer<'c> {
     let end = self.cursor;
     self.advance(); // consume closing quote
 
-    let text = self.slice(start, end);
-    Some(Token::string(self.ast().intern_str(text), self.span(start)))
+    Some(Token::string(self.slice(start, end), self.span(start)))
   }
 
   fn skip_block_comment(&mut self) {
     while !self.is_at_end() {
-      if self.peek() == (&'*') && self.peek_next() == ('/') {
+      if self.peek() == &'*' && self.peek_next() == '/' {
         self.advance_n(2); // consume '*/'
         break;
       } else {

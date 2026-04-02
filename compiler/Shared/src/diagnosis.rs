@@ -48,6 +48,7 @@ mod data {
   impl<'c> Add<SourceSpan> for Meta<'c> {
     type Output = Diag<'c>;
 
+    #[inline]
     fn add(self, rhs: SourceSpan) -> Self::Output {
       self.into_with(rhs)
     }
@@ -333,6 +334,7 @@ mod data {
   impl<'c> Add<Severity> for Data<'c> {
     type Output = Meta<'c>;
 
+    #[inline]
     fn add(self, rhs: Severity) -> Self::Output {
       self.into_with(rhs)
     }

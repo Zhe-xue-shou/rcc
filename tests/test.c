@@ -1,32 +1,16 @@
-int getchar();
-int getchar(void);
-
-int main() {
-  auto ptr = getchar;
-  auto bool a = false;
-
-  // {
-  //   int *a;
-  //   int x;
-  //   x = getchar();
-  //   int b = a[2];
-  //   int c = *(a + 3);
-
-  //   // int d = *c;
-  //   {
-  //     if (a)
-  //       0;
-  //     int a = 0;
-  //     a += 3;
-  //     float b = 0;
-  //     if (a >= 3)
-  //       b += c;
-  //   }
-  // }
-
-  // short c = 1;
-  // int a[10][100][1000];
-  // __auto_type ptr = a;
-  // __auto_type b = a[1][2][3];
-  // __auto_type d = b && c;
+constexpr auto P = 1;
+void f(void) {
+  int p = 0;
+  int a[2] = {
+      1,
+      2,
+      3,
+  };
+  int b[*] = {[0] = p, [4] = 8, [P] = 3, 23};
 }
+
+// struct A {
+//   int b;
+//   int c;
+// };
+// struct A d = {.b = 10, 10};

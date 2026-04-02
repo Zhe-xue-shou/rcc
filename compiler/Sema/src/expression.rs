@@ -1,5 +1,5 @@
 use ::rcc_ast::{
-  Constant as AstConstant, Context,
+  Context,
   blueprints::Placeholder,
   types::{CastType, Primitive, QualifiedType, Qualifiers, Type, TypeRef},
 };
@@ -13,7 +13,7 @@ pub(super) type UnaryKind = ::rcc_ast::blueprints::UnaryKind;
 pub type ExprRef<'c> = &'c Expression<'c>;
 
 pub type Empty = Placeholder;
-pub type Constant<'c> = AstConstant<'c>;
+pub use ::rcc_ast::Constant;
 
 #[derive(Debug, Clone)]
 pub enum RawExpr<'c> {

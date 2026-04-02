@@ -880,7 +880,7 @@ impl<'c> Sema<'c> {
   ) -> Option<sd::Initializer<'c>> {
     match initializer {
       pd::Initializer::Expression(expression) => self
-        .expression(*expression)
+        .expression(expression)
         .map(|expr| {
           let decayed =
             expr.lvalue_conversion(self.context()).decay(self.context());
@@ -915,7 +915,7 @@ impl<'c> Sema<'c> {
           self.add_diag(e);
           None
         }),
-      pd::Initializer::List(_) => {
+      pd::Initializer::InitializerList(_) => {
         not_implemented_feature!("initializer list");
       },
     }

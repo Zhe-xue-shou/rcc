@@ -14,7 +14,8 @@ use ::rcc_utils::{IntoWith, StrRef, contract_assert, not_implemented_feature};
 use crate::{
   declaration::{
     ArrayModifier, DeclSpecs, Declaration, Declarator, DeclaratorType,
-    Function, FunctionSignature, Initializer, Modifier, Parameter, Program,
+    Designated, Designator, Function, FunctionSignature, Initializer,
+    InitializerList, InitializerListEntry, Modifier, Parameter, Program,
     TypeSpecifier, VarDef,
   },
   expression::{
@@ -708,6 +709,77 @@ impl<'c> Parser<'c> {
 }
 /// declarations
 impl<'c> Parser<'c> {
+  fn next_initializer(&mut self) -> Initializer<'c> {
+    match self.peek_lit() {
+      Literal::Operator(LeftBrace) => self.next_initializer_list().into(),
+      _ => self.next_expression(Operator::EXCOMMA).into(),
+    }
+  }
+
+  fn next_initializer_list(&mut self) -> InitializerList<'c> {
+    let location = *self.peek_loc();
+    self.must_get_op::<{ LeftBrace }>();
+    let mut entries = Vec::default();
+    while dbg!(self.peek_lit()) != RightBrace {
+      entries.push(self.next_initializer_list_entry());
+      if self.peek_lit() != RightBrace {
+        self.recoverable_get::<{ Comma }>();
+      }
+    }
+    self.silent_get_if::<{ Comma }>();
+    self.must_get_op::<{ RightBrace }>();
+
+    InitializerList::new(entries, self.eloc(location))
+  }
+
+  fn next_initializer_list_entry(&mut self) -> InitializerListEntry<'c> {
+    let mut designators = Vec::default();
+
+    let location = *self.peek_loc();
+    loop {
+      match self.peek_lit() {
+        Literal::Operator(Dot) =>
+          designators.push(self.next_field_designator()),
+        Literal::Operator(LeftBracket) =>
+          designators.push(self.next_index_designator()),
+        _ => break,
+      }
+    }
+    if !designators.is_empty() {
+      self.recoverable_get::<{ Assign }>();
+    }
+    let designator_sloc = self.eloc(location);
+
+    let initializer = self.next_initializer();
+    if designators.is_empty() {
+      initializer.into()
+    } else {
+      Designated::new(designators, initializer, designator_sloc).into()
+    }
+  }
+
+  fn next_field_designator(&mut self) -> Designator<'c> {
+    self.must_get_op::<{ Dot }>();
+    let ident = if let Literal::Identifier(ident) = *self.peek_lit() {
+      self.get();
+      ident
+    } else {
+      // todo: fix here shall not give it a 'static str
+      while self.peek_lit() != Assign {
+        self.get();
+      }
+      "unnamed"
+    };
+    Designator::Field(ident)
+  }
+
+  fn next_index_designator(&mut self) -> Designator<'c> {
+    self.must_get_op::<{ LeftBracket }>();
+    let expression = self.next_expression(Operator::DEFAULT);
+    self.recoverable_get::<{ RightBracket }>();
+    Designator::Index(expression)
+  }
+
   fn next_vardef(
     &mut self,
     declspecs: DeclSpecs<'c>,
@@ -721,18 +793,8 @@ impl<'c> Parser<'c> {
       },
       Literal::Operator(Assign) => {
         self.must_get_op::<{ Assign }>();
-        let initializer = self.next_expression(Operator::DEFAULT);
-        // assert_eq!(*self.peek_lit(), Literal::Operator(Semicolon));
-        if *self.peek_lit() != Semicolon {
-          eprintln!(
-            "invariant: shall be ';' here. found: {:?}",
-            self.peek_lit()
-          );
-          while self.peek_lit() != Semicolon && !self.is_at_end() {
-            self.get();
-          }
-        }
-        self.must_get_op::<{ Semicolon }>();
+        let initializer = self.next_initializer();
+        self.recoverable_get::<{ Semicolon }>();
         Some(initializer)
       },
       _ => {
@@ -744,12 +806,7 @@ impl<'c> Parser<'c> {
         None
       },
     };
-    VarDef::new(
-      declspecs,
-      declarator,
-      initializer.map(|init_expr| Initializer::Expression(init_expr.into())),
-      self.eloc(location),
-    )
+    VarDef::new(declspecs, declarator, initializer, self.eloc(location))
   }
 
   fn next_declaration(&mut self) -> Declaration<'c> {

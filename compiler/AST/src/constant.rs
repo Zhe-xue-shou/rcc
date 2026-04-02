@@ -53,7 +53,7 @@ impl<'c> Address<'c> {
 ensure_is_pod!(Constant);
 pub type ConstantRef<'c> = &'c Constant<'c>;
 pub type ConstantRefMut<'c> = &'c mut Constant<'c>;
-impl RefEq for ConstantRef<'_> {}
+impl RefEq for Constant<'_> {}
 impl<'c> Constant<'c> {
   pub const fn is_char_array(&self) -> bool {
     matches!(self, Self::String(_))

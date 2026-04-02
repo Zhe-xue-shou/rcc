@@ -4,8 +4,8 @@ int getchar(void);
 int main() {
   {
     int *a;
-    // int x;
-    // x = getchar();
+    int x;
+    x = getchar();
     int b = a[2];
     int c = *(a + 3);
 

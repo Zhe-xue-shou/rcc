@@ -285,8 +285,8 @@ impl<'c> Emitter<'c> {
           !lookup!(self, value_id).data.as_function().is_some_and(|f| f
             .is_definition()
             && RefEq::ref_eq(
-              function_name,
-              lookup!(self, value_id).data.as_function_unchecked().name
+              &function_name,
+              &lookup!(self, value_id).data.as_function_unchecked().name
             )
             && f.is_variadic
               == ast_type.as_functionproto_unchecked().is_variadic),

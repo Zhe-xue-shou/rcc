@@ -94,14 +94,14 @@ impl<'c> Type<'c> {
     context.intern(self)
   }
 }
-impl RefEq for TypeRef<'_> {
-  fn ref_eq(lhs: Self, rhs: Self) -> bool
+impl RefEq for Type<'_> {
+  fn ref_eq(lhs: &Self, rhs: &Self) -> bool
   where
     Self: PartialEq + Sized + ::std::fmt::Debug,
   {
-    <Self as RefEq>::ref_eq_impl(
-      &lhs,
-      &rhs,
+    Self::ref_eq_impl(
+      lhs,
+      rhs,
       "\nthis is a known bug for TypeRef -- 1. canonical type 2. array of \
        typeref would compare to false. and needs to be fixed.",
     )

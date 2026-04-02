@@ -73,18 +73,40 @@ impl Dummy for usize {
 pub type StrRef<'c> = &'c str;
 impl RefEq for StrRef<'_> {}
 
+/// Intern helper trait to both use [`::std::ptr::eq`] but also [`debug_assert`]
+/// the actual equality of the two values in debug mode, to catch potential bugs
+/// where two different instances with the same content are compared by pointer address.
+///
+/// # Important Note
+/// Should never impl this [`RefEq`] w.r.t. ref-type, such as `&'a MyRef`,
+/// otherwise it would cause double reference problem:
+/// i.e., comparing `&&MyRef` which probably resides on the stack;
+/// even if both points the same object,
+/// the temporary variable would always have different address.
+///
+/// For example, if you found two addresses are exactly 8 bytes apart,
+/// which is the size of a pointer on a 64-bit architecture -- this prob means
+/// you are accidentally comparing the stack addresses of the local variables.
+///
+/// ### [`&str`](StrRef) is an exception
+/// since it's a fat pointer and comparing by pointer address is actually
+/// comparing the content of the string, and thus is (probably) safe.
+///
+/// ### Negative impls for `&T` and `&mut T` has not yet finished
+/// Rust's template specialization and negative impls are fairly limited
+/// and incomplete, i havent devise up an method to combine them all.
 pub trait RefEq {
   #[inline]
   #[must_use]
-  fn ref_eq(lhs: Self, rhs: Self) -> bool
+  fn ref_eq(lhs: &Self, rhs: &Self) -> bool
   where
-    Self: PartialEq + Sized + ::std::fmt::Debug,
+    Self: PartialEq + ::std::fmt::Debug,
   {
-    Self::ref_eq_impl(&lhs, &rhs, "")
+    Self::ref_eq_impl(lhs, rhs, "")
   }
   fn ref_eq_impl(lhs: &Self, rhs: &Self, msg: &'static str) -> bool
   where
-    Self: PartialEq + Sized + ::std::fmt::Debug,
+    Self: PartialEq + ::std::fmt::Debug,
   {
     let ref_eq = ::std::ptr::eq(lhs, rhs);
     if const { cfg!(debug_assertions) } {
@@ -92,7 +114,9 @@ pub trait RefEq {
       if ref_eq != actual_eq {
         eprintln!(
           "INTERNAL ERROR: comparing by pointer address result did not match 
-          the actual result: {:p}: {:?} and {:p}: {:?}. {}
+          the actual result: {:p}: {:?} and {:p}: {:?}. {}\n If you find the \
+           actual addresses are offseted by n * sizeof(void*) -- then see \
+           docs of `RefEq` for more information.
         ",
           lhs, lhs, rhs, rhs, msg
         );
@@ -102,45 +126,16 @@ pub trait RefEq {
     ref_eq
   }
 }
-
-pub trait Unbox {
-  type Output;
-  #[must_use]
-  fn unbox(self) -> Self::Output
-  where
-    Self::Output: Unbox<Output = Self::Output>;
-}
-// impl<T> Unbox for T {
-//   default type Output = T;
-
-//   #[inline(always)]
-//   default fn unbox(self) -> Self::Output {
-//     self
-//     // unsafe {
-//     //   let result = ::std::ptr::read
-//     //     (&self as *const _ as *const Self::Output);
-//     //   ::std::mem::forget(self);
-//     //   result
-//     // }
-//   }
-// }
-impl<T> Unbox for Box<T> {
-  type Output = T;
-
-  #[inline(always)]
-  fn unbox(self) -> Self::Output
-  where
-    Self::Output: Unbox<Output = Self::Output>,
-  {
-    *self
-  }
-}
+// impl<T: ?Sized> !RefEq for &T {}
+impl<T: ?Sized> !RefEq for &mut T {}
 
 #[track_caller]
+#[inline]
 pub const fn static_assert(cond: bool, _: &str) {
   assert!(cond, "static assertion failed");
 }
 #[track_caller]
+#[inline]
 pub fn debug_assertion(cond: bool, msg: &str) {
   debug_assert!(cond, "debug assertion failed: {}", msg);
 }

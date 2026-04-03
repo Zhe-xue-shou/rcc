@@ -278,41 +278,43 @@ impl<'c> Emitter<'c> {
     let function_name = declaration.name();
     let ast_type = declaration.qualified_type().unqualified_type;
 
-    self.current_function =
-      if let Some(&value_id) = self.globals.get(&declaration) {
-        // should be function and declaration-only
-        debug_assert!(
+    self.current_function = if let Some(&value_id) =
+      self.globals.get(&declaration)
+    {
+      // should be function and declaration-only
+      debug_assert!(
           !lookup!(self, value_id).data.as_function().is_some_and(|f| f
             .is_definition()
-            && RefEq::ref_eq(
-              &function_name,
-              &lookup!(self, value_id).data.as_function_unchecked().name
-            )
+            && function_name == self.visit(value_id, |value|value.data.as_function_unchecked().name)
+            // RefEq::ref_eq(
+            //   &function_name,
+            //   &lookup!(self, value_id).data.as_function_unchecked().name
+            // )
             && f.is_variadic
               == ast_type.as_functionproto_unchecked().is_variadic),
           "pre-registered function should be declaration-only"
         );
-        value_id
-      } else {
-        let function_id = self.emit(
-          module::Function::new_empty(
-            function_name,
-            Default::default(),
-            ast_type.as_functionproto_unchecked().is_variadic,
-          ),
-          ast_type,
-        );
+      value_id
+    } else {
+      let function_id = self.emit(
+        module::Function::new_empty(
+          function_name,
+          Default::default(),
+          ast_type.as_functionproto_unchecked().is_variadic,
+        ),
+        ast_type,
+      );
 
-        self.globals.insert(declaration, function_id);
-        debug_assert!(
-          lookup!(self, function_id)
-            .data
-            .as_function()
-            .is_some_and(|f| !f.is_definition()),
-          "pre-registered function should be declaration-only"
-        );
-        function_id
-      };
+      self.globals.insert(declaration, function_id);
+      debug_assert!(
+        lookup!(self, function_id)
+          .data
+          .as_function()
+          .is_some_and(|f| !f.is_definition()),
+        "pre-registered function should be declaration-only"
+      );
+      function_id
+    };
 
     debug_assert!(self.locals.is_empty());
     debug_assert!(self.labels.is_empty());
@@ -457,7 +459,7 @@ impl<'c> Emitter<'c> {
       Some(sd::Initializer::Scalar(expr)) => Some(module::Initializer::Scalar(
         expr.raw_expr().as_constant_unchecked().clone(),
       )),
-      Some(sd::Initializer::Aggregate(_)) => todo!(),
+      Some(sd::Initializer::List(_)) => todo!(),
       None => None,
     };
     let value_id = self.emit(
@@ -496,7 +498,7 @@ impl<'c> Emitter<'c> {
           self.ast().void_type(),
         );
       },
-      Some(sd::Initializer::Aggregate(_)) => todo!(),
+      Some(sd::Initializer::List(_)) => todo!(),
       None => (),
     };
     self.locals.insert(declaration, value_id);

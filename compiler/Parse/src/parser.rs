@@ -19,7 +19,7 @@ use crate::{
     TypeSpecifier, VarDef,
   },
   expression::{
-    ArraySubscript, Binary, Call, ConstantLiteral, Expression, Paren,
+    ArraySubscript, Binary, Call, ConstantLiteral as CL, Expression, Paren,
     SizeOfKind, Ternary, Unary, UnprocessedType, Variable,
   },
   statement::{
@@ -238,7 +238,9 @@ impl<'c> Parser<'c> {
 /// opt checks
 impl<'c> Parser<'c> {
   fn ios_c_strict_check_for_decl(&self, statement: &Statement) {
-    if matches!(statement, Statement::Declaration(_)) {
+    if self.ast().langopts() < 23
+      && matches!(statement, Statement::Declaration(_))
+    {
       self.add_warning(DeprecatedStmtDeclCvt, *self.peek_loc());
     }
   }
@@ -415,21 +417,16 @@ impl<'c> Parser<'c> {
       (inner_declarator.name, inner_declarator.modifiers)
     } else {
       let name = if TYPE != DeclaratorType::Abstract {
-        if let Literal::Identifier(_) = self.peek_lit() {
-          let name_idx = self.get(); // consume the ident
-          Some(
-            self
-              .session
-              .ast()
-              .intern_str(&self.tokens[name_idx].to_owned_string()),
-          )
+        if let Literal::Identifier(ident) = *self.peek_lit() {
+          self.get(); // consume the ident
+          Some(ident)
         } else {
           if TYPE == DeclaratorType::Named {
             self.add_error(
               MissingIdentifier("Expect identifier in declarator".to_string()),
               self.eloc(location),
             );
-            if AGGRESSIVE {
+            if const { AGGRESSIVE } {
               self.get();
             }
           }
@@ -720,7 +717,7 @@ impl<'c> Parser<'c> {
     let location = *self.peek_loc();
     self.must_get_op::<{ LeftBrace }>();
     let mut entries = Vec::default();
-    while dbg!(self.peek_lit()) != RightBrace {
+    while self.peek_lit() != RightBrace {
       entries.push(self.next_initializer_list_entry());
       if self.peek_lit() != RightBrace {
         self.recoverable_get::<{ Comma }>();
@@ -748,13 +745,13 @@ impl<'c> Parser<'c> {
     if !designators.is_empty() {
       self.recoverable_get::<{ Assign }>();
     }
-    let designator_sloc = self.eloc(location);
 
     let initializer = self.next_initializer();
+
     if designators.is_empty() {
       initializer.into()
     } else {
-      Designated::new(designators, initializer, designator_sloc).into()
+      Designated::new(designators, initializer, self.eloc(location)).into()
     }
   }
 
@@ -1167,86 +1164,91 @@ impl<'c> Parser<'c> {
 }
 /// expressions
 impl<'c> Parser<'c> {
-  fn next_factor(&mut self) -> Expression<'c> {
-    let location = *self.peek_loc();
-    match self.peek_lit().clone() {
-      Literal::Operator(op) if op.unary() => {
-        self.get();
+  fn next_keyword_expr(
+    &mut self,
+    keyword: Keyword,
+    location: SourceSpan,
+  ) -> Expression<'c> {
+    match keyword {
+      Keyword::Sizeof => {
+        self.cursor -= 1;
+        self.next_sizeof()
+      },
+
+      kw @ (Keyword::Alignof | Keyword::Alignas | Keyword::Generic) =>
+        not_implemented_feature!("not implemented: {kw:#?}"),
+
+      bool_constant @ (Keyword::True | Keyword::False) => Expression::Constant(
+        CL::Integral(if self.ast().langopts() >= 17 {
+          Integral::from_unsigned(
+            bool_constant == Keyword::True,
+            self.ast().i8_bool_type().size_bits() as u8,
+          )
+        } else {
+          Integral::from_signed(
+            bool_constant == Keyword::True,
+            self.ast().int_type().size_bits() as u8,
+          )
+        }) + self.eloc(location),
+      ),
+      Keyword::Nullptr => (CL::Nullptr() + self.eloc(location)).into(),
+      _ => {
+        self.add_error(
+          UnexpectedCharacter((keyword.to_string(), None).into()),
+          self.eloc(location),
+        );
+        (CL::Integral(Integral::default()) + self.eloc(location)).into()
+      },
+    }
+  }
+
+  fn next_operator_expr(
+    &mut self,
+    operator: Operator,
+    location: SourceSpan,
+  ) -> Expression<'c> {
+    match operator {
+      op if op.unary() => {
         let (.., r_bp) = op.prefix_binding_power();
         let rhs = self.next_expression(r_bp);
         Unary::prefix(op, rhs, self.eloc(location)).into()
       },
-      Literal::Operator(LeftParen) => {
-        self.must_get_op::<{ LeftParen }>();
+      LeftParen => {
+        // self.cursor -= 1;
+        // self.must_get_op::<{ LeftParen }>();
         let expr = self.next_expression(Operator::DEFAULT);
         self.recoverable_get::<{ RightParen }>();
         Paren::new(expr, self.eloc(location)).into()
       },
-      Literal::Number(num) => {
-        self.get();
-        Expression::Constant(num.into_with(self.eloc(location)))
-      },
-      Literal::String(str) => {
-        self.get();
-        Expression::Constant(
-          ConstantLiteral::String(str).into_with(self.eloc(location)),
-        )
-      },
-      Literal::Identifier(ident) => {
-        self.get();
-        Variable::new(ident, self.eloc(location)).into()
-      },
-      Literal::Keyword(keyword) => {
-        self.get();
-        match keyword {
-          Keyword::Sizeof => {
-            self.cursor -= 1;
-            self.next_sizeof()
-          },
-          Keyword::Alignof | Keyword::Alignas => not_implemented_feature!(
-            "alignof/alignas operator are currently not implemented!"
-          ),
-          bool_constant @ (Keyword::True | Keyword::False) =>
-            Expression::Constant(
-              ConstantLiteral::Integral(if self.ast().langopts() >= 17 {
-                Integral::from_unsigned(
-                  bool_constant == Keyword::True,
-                  self.ast().i8_bool_type().size_bits() as u8,
-                )
-              } else {
-                Integral::from_signed(
-                  bool_constant == Keyword::True,
-                  self.ast().int_type().size_bits() as u8,
-                )
-              })
-              .into_with(self.eloc(location)),
-            ),
-          Keyword::Nullptr => Expression::Constant(
-            ConstantLiteral::Nullptr().into_with(self.eloc(location)),
-          ),
-          _ => {
-            self.add_error(
-              UnexpectedCharacter((keyword.to_string(), None).into()),
-              self.eloc(location),
-            );
-            Expression::Constant(
-              ConstantLiteral::Integral(Integral::default())
-                .into_with(self.eloc(location)),
-            )
-          },
-        }
-      },
-      Literal::Operator(op) => {
+      op => {
         self.add_error(
           UnexpectedCharacter((op.to_string(), None).into()),
           self.eloc(location),
         );
-        self.get();
-        Expression::Constant(
-          ConstantLiteral::Integral(Integral::default())
-            .into_with(self.eloc(location)),
-        )
+
+        (CL::Integral(Integral::default()) + self.eloc(location)).into()
       },
+    }
+  }
+
+  /// primary-expression:
+  ///     - identifier
+  ///     - constant
+  ///     - string-literal
+  ///     - ( expression )
+  ///     - generic-selection
+  fn next_factor(&mut self) -> Expression<'c> {
+    let location = *self.peek_loc();
+    let literal = self.peek_lit().clone();
+    self.get();
+    match literal {
+      Literal::Operator(operator) =>
+        self.next_operator_expr(operator, location),
+      Literal::Number(num) => (num.into_with(self.eloc(location))).into(),
+      Literal::String(str) => (CL::String(str) + self.eloc(location)).into(),
+      Literal::Identifier(ident) =>
+        Variable::new(ident, self.eloc(location)).into(),
+      Literal::Keyword(keyword) => self.next_keyword_expr(keyword, location),
     }
   }
 

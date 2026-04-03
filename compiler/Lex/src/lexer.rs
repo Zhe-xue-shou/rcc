@@ -321,8 +321,7 @@ impl<'c> Lexer<'c> {
     match Keyword::from_str(text) {
       Ok(keyword) =>
         Token::keyword(keyword, self.span(start)).transform_alternative(),
-      Err(_) =>
-        Token::identifier(self.ast().intern_str(text), self.span(start)),
+      Err(_) => Token::identifier(text, self.span(start)),
     }
   }
 

@@ -4,7 +4,9 @@ use ::rcc_ast::types::{
 };
 use ::rcc_sema::{
   declaration::{
-    ExternalDeclarationRef, Function, Initializer, TranslationUnit, VarDef,
+    Designated, ExternalDeclarationRef, Function, Initializer,
+    InitializerEntry, InitializerList, InitializerListEntry, TranslationUnit,
+    VarDef,
   },
   expression::{Empty, Expression},
   statement::{
@@ -754,13 +756,73 @@ impl<'c> Dumpable<'c> for Initializer<'_> {
     is_last: bool,
     palette: &Palette,
   ) {
-    // dumper.print_indent(prefix, is_last);
-    // dumper.write("Initializer", &palette.node);
     match self {
       Self::Scalar(expression) =>
         expression.dump(dumper, prefix, is_last, palette),
-      Self::Aggregate(_) => todo!(),
+      Self::List(list) => list.dump(dumper, prefix, is_last, palette),
     }
+  }
+}
+
+impl<'c> Dumpable<'c> for InitializerList<'_> {
+  fn dump(
+    &self,
+    dumper: &mut impl Dumper<'c>,
+    prefix: &str,
+    is_last: bool,
+    palette: &Palette,
+  ) {
+    dumper.print_indent(prefix, is_last);
+
+    dumper.write("InitializerList", &palette.node);
+    dumper.write_fmt(format_args!(" {:p}\n", self), &palette.dim);
+
+    if !self.entries.is_empty() {
+      let subprefix = dumper.child_prefix(prefix, is_last);
+      self.entries.iter().enumerate().for_each(|(i, entry)| {
+        entry.dump(dumper, &subprefix, i == self.entries.len() - 1, palette)
+      });
+    }
+  }
+}
+
+impl<'c> Dumpable<'c> for InitializerListEntry<'_> {
+  fn dump(
+    &self,
+    dumper: &mut impl Dumper<'c>,
+    prefix: &str,
+    is_last: bool,
+    palette: &Palette,
+  ) {
+    ::rcc_utils::static_dispatch!(
+      self,
+      |variant| variant.dump(dumper, prefix, is_last, palette) =>
+      Designated InitializerEntry
+    )
+  }
+}
+#[allow(unused)]
+impl<'c> Dumpable<'c> for Designated<'_> {
+  fn dump(
+    &self,
+    dumper: &mut impl Dumper<'c>,
+    prefix: &str,
+    is_last: bool,
+    palette: &Palette,
+  ) {
+    todo!()
+  }
+}
+
+impl<'c> Dumpable<'c> for InitializerEntry<'_> {
+  fn dump(
+    &self,
+    dumper: &mut impl Dumper<'c>,
+    prefix: &str,
+    is_last: bool,
+    palette: &Palette,
+  ) {
+    self.initializer.dump(dumper, prefix, is_last, palette);
   }
 }
 

@@ -756,7 +756,7 @@ impl<'c> Sema<'c> {
       let qualified_type =
         match unsafe { initializer.as_ref().unwrap_unchecked() } {
           sd::Initializer::Scalar(expression) => *expression.qualified_type(),
-          sd::Initializer::Aggregate(_) => todo!(),
+          sd::Initializer::List(_) => todo!(),
         };
       (storage, qualified_type, initializer)
     } else {
@@ -772,7 +772,7 @@ impl<'c> Sema<'c> {
       let initializer = initializer.and_then(|initializer| {
         self.initializer(
           initializer,
-          Some(&qualified_type),
+          Some(qualified_type),
           self.environment.is_global()
             || matches!(
               storage,
@@ -872,51 +872,209 @@ impl<'c> Sema<'c> {
     Ok(vardef)
   }
 
-  fn initializer(
+  fn scalar_initializer(
+    &self,
+    expression: pe::Expression<'c>,
+    target_type: Option<QualifiedType<'c>>,
+    requires_folding: bool,
+  ) -> Option<se::ExprRef<'c>> {
+    self
+      .expression(expression)
+      .map(|expr| {
+        let decayed =
+          expr.lvalue_conversion(self.context()).decay(self.context());
+        target_type
+          .map(|t| {
+            decayed
+              .assignment_conversion(self.context(), &t)
+              .handle_with(self, decayed)
+          })
+          .unwrap_or(decayed)
+      })
+      .map(|expr| {
+        let expression = if !requires_folding {
+          expr
+        } else {
+          expr
+            .fold(self.session)
+            .inspect_error(|e| {
+              self.add_error(
+                ExprNotConstant(format!(
+                  "Expression {e} cannot be evaluated to a constant value"
+                )),
+                e.span(),
+              );
+            })
+            .take()
+        };
+
+        Some(expression)
+      })
+      .unwrap_or_else(|e| {
+        self.add_diag(e);
+        None
+      })
+  }
+
+  fn _scalar_initializer(
+    &self,
+    expression: pe::Expression<'c>,
+    target_type: QualifiedType<'c>,
+    requires_folding: bool,
+  ) -> Option<se::ExprRef<'c>> {
+    self
+      .expression(expression)
+      .map(|expr| {
+        expr
+          .lvalue_conversion(self.context())
+          .decay(self.context())
+          .assignment_conversion(self.context(), &target_type)
+          .handle_with(self, self.__empty_expr)
+      })
+      .map(|expr| {
+        let expression = if !requires_folding {
+          expr
+        } else {
+          expr
+            .fold(self.session)
+            .inspect_error(|e| {
+              self.add_error(
+                ExprNotConstant(format!(
+                  "Expression {e} cannot be evaluated to a constant value"
+                )),
+                e.span(),
+              );
+            })
+            .take()
+        };
+
+        Some(expression)
+      })
+      .unwrap_or_else(|e| {
+        self.add_diag(e);
+        None
+      })
+  }
+
+  fn list_initializer(
+    &self,
+    list: pd::InitializerList<'c>,
+    target_type: QualifiedType<'c>,
+    requires_folding: bool,
+  ) -> Option<sd::InitializerList<'c>> {
+    let mut current_index: usize = 0;
+
+    let pd::InitializerList { entries, span } = list;
+
+    let element_type = if target_type.is_scalar() {
+      target_type
+    } else {
+      target_type
+        .as_array()
+        .expect("unimplemented for record-like ilist...")
+        .element_type
+    };
+    let mut analyzed_entries = ArenaVec::new_in(self.ast().arena());
+    for entry in entries.into_iter() {
+      let analyzed_entry = match entry {
+        pd::InitializerListEntry::Designated(designated) => {
+          let out =
+            self.designated_init(designated, element_type, requires_folding);
+          current_index = out.1;
+          out.0.into()
+        },
+        pd::InitializerListEntry::Initializer(initializer) => {
+          let i =
+            self._initializer(initializer, element_type, requires_folding)?;
+          let idx = sd::Designator::Array(current_index);
+          sd::InitializerEntry::new(idx, i).into()
+        },
+      };
+      current_index += 1;
+      analyzed_entries.push(analyzed_entry);
+    }
+    // check: excess init
+
+    Some(sd::InitializerList::new(
+      analyzed_entries.into_bump_slice(),
+      span,
+    ))
+  }
+
+  #[allow(unused)]
+  fn designated_init(
+    &self,
+    designated: pd::Designated<'c>,
+    element_type: QualifiedType<'c>,
+    requires_folding: bool,
+  ) -> (sd::Designated<'c>, usize) {
+    // current_index = self
+    //   .expression(
+    //     designated
+    //       .designators
+    //       .first()
+    //       .unwrap()
+    //       .into_index()
+    //       .expect("only for arrays implemented!"),
+    //   )
+    //   .ok()?
+    //   .fold(self.session)
+    //   .take()
+    //   .raw_expr()
+    //   .as_constant()
+    //   .and_then(|c| c.as_integral())
+    //   .or_else(|| {
+    //     self.add_error(
+    //       Custom(format!(
+    //         "expression {} cannot evaluate to a constant integer"
+    //       )),
+    //       designated.span,
+    //     )
+    //   })?
+    //   .to_builtin();
+    todo!()
+  }
+
+  fn _initializer(
     &self,
     initializer: pd::Initializer<'c>,
-    target_type: Option<&QualifiedType<'c>>,
+    target_type: QualifiedType<'c>,
     requires_folding: bool,
   ) -> Option<sd::Initializer<'c>> {
     match initializer {
       pd::Initializer::Expression(expression) => self
-        .expression(expression)
-        .map(|expr| {
-          let decayed =
-            expr.lvalue_conversion(self.context()).decay(self.context());
-          if let Some(t) = target_type {
-            decayed
-              .assignment_conversion(self.context(), t)
-              .handle_with(self, decayed)
-          } else {
-            decayed
-          }
-        })
-        .map(|expr| {
-          let expression = if !requires_folding {
-            expr
-          } else {
-            expr
-              .fold(self.session)
-              .inspect_error(|e| {
-                self.add_error(
-                  ExprNotConstant(format!(
-                    "Expression {e} cannot be evaluated to a constant value"
-                  )),
-                  e.span(),
-                );
-              })
-              .take()
-          };
+        ._scalar_initializer(expression, target_type, requires_folding)
+        .map(sd::Initializer::Scalar),
+      pd::Initializer::InitializerList(list) => self
+        .list_initializer(list, target_type, requires_folding)
+        .map(sd::Initializer::List),
+    }
+  }
 
-          Some(sd::Initializer::Scalar(expression))
-        })
-        .unwrap_or_else(|e| {
-          self.add_diag(e);
+  fn initializer(
+    &self,
+    initializer: pd::Initializer<'c>,
+    target_type: Option<QualifiedType<'c>>,
+    requires_folding: bool,
+  ) -> Option<sd::Initializer<'c>> {
+    match initializer {
+      pd::Initializer::Expression(expression) => self
+        .scalar_initializer(expression, target_type, requires_folding)
+        .map(sd::Initializer::Scalar),
+      pd::Initializer::InitializerList(list) => {
+        let target_type = target_type.or_else(|| {
+          self.add_error(
+            Custom(
+              "auto cannot be used with initializer list in C".to_string(),
+            ),
+            list.span,
+          );
           None
-        }),
-      pd::Initializer::InitializerList(_) => {
-        not_implemented_feature!("initializer list");
+        })?;
+
+        self
+          .list_initializer(list, target_type, requires_folding)
+          .map(sd::Initializer::List)
       },
     }
   }
@@ -1212,7 +1370,7 @@ impl<'c> Sema<'c> {
     } = constant;
     let unqualified_type = constant.unqualified_type(self.context());
     let value_category = if constant.is_char_array() {
-      // a string literal has static storage duration.
+      // 6.5.2p5: A string literal is [...] an lvalue [...].
       se::ValueCategory::LValue
     } else {
       se::ValueCategory::RValue

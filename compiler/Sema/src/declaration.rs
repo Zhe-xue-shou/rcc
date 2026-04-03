@@ -48,8 +48,59 @@ pub struct Parameter<'c> {
 
 #[derive(Debug)]
 pub enum Initializer<'c> {
+  /// fixme: dont do [`ExprRef`] here but store a real expr so that we have cache locality.
   Scalar(ExprRef<'c>),
-  Aggregate(&'c [Initializer<'c>]),
+  List(InitializerList<'c>),
+}
+#[derive(Debug)]
+pub struct InitializerList<'c> {
+  /// Explicitly initialized. using an [`Option`] won't hurt size thanks to the niche optimization.
+  ///
+  /// [`None`] indicates empty initialization.
+  ///
+  /// ^^^ removed
+  pub entries: &'c [InitializerListEntry<'c>],
+  pub span: SourceSpan,
+}
+
+#[derive(Debug)]
+pub enum InitializerListEntry<'c> {
+  Designated(Designated<'c>),
+  /// the designator is implicit, not very much meaning for IR, btu for AST dump maybe.
+  InitializerEntry(InitializerEntry<'c>),
+}
+::rcc_utils::interconvert!(Designated, InitializerListEntry, 'c);
+::rcc_utils::interconvert!(InitializerEntry, InitializerListEntry, 'c);
+::rcc_utils::make_trio_for!(Designated, InitializerListEntry, 'c);
+::rcc_utils::make_trio_for!(InitializerEntry, InitializerListEntry, 'c);
+#[derive(Debug)]
+pub struct Designated<'c> {
+  pub designators: &'c [Designator<'c>],
+  pub initializer: Initializer<'c>,
+  pub span: SourceSpan,
+}
+
+#[derive(Debug)]
+pub struct InitializerEntry<'c> {
+  pub designator: Designator<'c>,
+  pub initializer: Initializer<'c>,
+}
+
+impl<'c> InitializerEntry<'c> {
+  pub fn new(designator: Designator<'c>, initializer: Initializer<'c>) -> Self {
+    Self {
+      designator,
+      initializer,
+    }
+  }
+}
+
+#[derive(Debug)]
+pub enum Designator<'c> {
+  Array(usize),
+  Field(
+    /* Field iterator or so.. */ ::std::marker::PhantomData<&'c u8>,
+  ),
 }
 
 ::rcc_utils::ensure_is_pod!(Initializer<'_>);
@@ -64,11 +115,12 @@ impl<'c> TranslationUnit<'c> {
     context: &'c Context<'c>,
     declarations: impl IntoIterator<Item = ExternalDeclarationRef<'c>>,
   ) -> Self {
-    let declarations = declarations
-      .into_iter()
-      .collect_in::<ArenaVec<_>>(context.arena())
-      .into_bump_slice();
-    Self { declarations }
+    Self {
+      declarations: declarations
+        .into_iter()
+        .collect_in::<ArenaVec<_>>(context.arena())
+        .into_bump_slice(),
+    }
   }
 }
 
@@ -144,7 +196,40 @@ impl<'c> Parameter<'c> {
     Self { declaration, span }
   }
 }
+impl<'c> Initializer<'c> {
+  pub fn span(&self) -> SourceSpan {
+    ::rcc_utils::static_dispatch!(
+      self,
+      |variant| variant.span() =>
+      Scalar List
+    )
+  }
+}
+impl<'c> InitializerList<'c> {
+  pub fn new(
+    entries: &'c [InitializerListEntry<'c>],
+    span: SourceSpan,
+  ) -> Self {
+    Self { entries, span }
+  }
 
+  fn span(&self) -> SourceSpan {
+    self.span
+  }
+}
+impl<'c> Designated<'c> {
+  pub fn new(
+    designators: &'c [Designator<'c>],
+    initializer: Initializer<'c>,
+    span: SourceSpan,
+  ) -> Self {
+    Self {
+      designators,
+      initializer,
+      span,
+    }
+  }
+}
 mod fmt {
   use ::std::fmt::Display;
 
@@ -225,11 +310,17 @@ mod fmt {
 
   impl<'c> Display for Initializer<'c> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-      use Initializer::*;
-      match self {
-        Scalar(expr) => write!(f, "{}", expr),
-        Aggregate(_) => todo!(),
-      }
+      ::rcc_utils::static_dispatch!(
+        self,
+        |variant| variant.fmt(f) =>
+        Scalar List
+      )
+    }
+  }
+
+  impl<'c> Display for InitializerList<'c> {
+    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      todo!()
     }
   }
 }

@@ -53,6 +53,9 @@ impl Opaque {
   /// Usually this is not the preferred way to retrieve the data, and [`Self::get_ref`] or [`Self::get_ref_mut`] should be used instead.
   ///
   /// ```rust
+  /// use ::rcc_utils::Opaque;
+  ///
+  /// let value = 42;
   /// let opaque = Opaque::new(&value);
   /// let ptr = opaque.get_ptr::<i32>();
   /// let value_ref = unsafe { &*ptr };

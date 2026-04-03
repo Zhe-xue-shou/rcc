@@ -49,7 +49,7 @@ macro_rules! type_alias_expr {
     pub type MemberAccess<'c> = $crate::blueprints::RawMemberAccess<'c, $exprty>;
     pub type Ternary<'c> = $crate::blueprints::RawTernary<$exprty>;
     pub type SizeOf<'c> = $crate::blueprints::RawSizeOf<$exprty, $typety>;
-    pub type CStyleCast<'c> = $crate::blueprints::RawCStyleCast<$exprty>;
+    pub type CStyleCast<'c> = $crate::blueprints::RawCStyleCast<$exprty, $typety>;
     pub type ArraySubscript<'c> = $crate::blueprints::RawArraySubscript<$exprty>;
     pub type CompoundLiteral = $crate::blueprints::RawCompoundLiteral;
 
@@ -206,11 +206,12 @@ pub struct RawSizeOf<ExprTy, TypeTy> {
 }
 
 #[derive(Debug, Clone)]
-pub struct RawCStyleCast<ExprTy> {
-  // pub target_type: Box<QualifiedType>,
+pub struct RawCStyleCast<ExprTy, TypeTy> {
+  pub target_type: Box<TypeTy>,
   pub expr: Box<ExprTy>,
   pub span: SourceSpan,
 }
+
 #[derive(Debug, Clone)]
 pub struct RawArraySubscript<ExprTy> {
   pub array: Box<ExprTy>,
@@ -244,6 +245,15 @@ impl<'c> ::std::ops::Deref for RawConstant<'c> {
 impl<'c> IntoWith<SourceSpan, RawConstant<'c>> for Constant<'c> {
   fn into_with(self, span: SourceSpan) -> RawConstant<'c> {
     RawConstant::new(self, span)
+  }
+}
+
+impl<'c> ::std::ops::Add<SourceSpan> for Constant<'c> {
+  type Output = RawConstant<'c>;
+
+  #[inline]
+  fn add(self, rhs: SourceSpan) -> Self::Output {
+    self.into_with(rhs)
   }
 }
 
@@ -386,6 +396,19 @@ impl<ExprTy, TypeTy> IntoWith<SourceSpan, RawSizeOf<ExprTy, TypeTy>>
     RawSizeOf::new(self, span)
   }
 }
+impl<ExprTy, TypeTy> RawCStyleCast<ExprTy, TypeTy> {
+  pub fn new(
+    target_type: Box<TypeTy>,
+    expr: Box<ExprTy>,
+    span: SourceSpan,
+  ) -> Self {
+    Self {
+      target_type,
+      expr,
+      span,
+    }
+  }
+}
 impl<ExprTy> RawCall<ExprTy> {
   pub fn new(callee: ExprTy, arguments: Vec<ExprTy>, span: SourceSpan) -> Self {
     Self {
@@ -484,7 +507,7 @@ mod fmt {
       write!(f, "<compound literal - not implemented>")
     }
   }
-  impl<ExprTy: Display> Display for RawCStyleCast<ExprTy> {
+  impl<ExprTy: Display, TypeTy> Display for RawCStyleCast<ExprTy, TypeTy> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       write!(f, "<C-style cast - not implemented>")
     }

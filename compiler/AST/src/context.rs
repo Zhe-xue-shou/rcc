@@ -10,8 +10,7 @@ type Interner<T> = RefCell<HashSet<T>>;
 pub struct Context<'c> {
   arena: &'c Arena,
   ast_type_interner: Interner<TypeRef<'c>>,
-  str_interner: Interner<StrRef<'c>>,
-
+  // str_interner: Interner<StrRef<'c>>,
   nullptr_type: TypeRef<'c>,
   void_type: TypeRef<'c>,
   bool_type: TypeRef<'c>,
@@ -60,17 +59,17 @@ impl<'c> Context<'c> {
     }
   }
 
-  #[must_use]
-  pub fn intern_str(&self, value: &str) -> StrRef<'c> {
-    if let Some(&interned) = self.str_interner.borrow().get(value) {
-      interned
-    } else {
-      let interned = self.arena.alloc_str(value);
-      self.str_interner.borrow_mut().insert(interned);
-      // ... weird syntax to make &mut str into &str
-      &*interned
-    }
-  }
+  // #[must_use]
+  // pub fn intern_str(&self, value: &str) -> StrRef<'c> {
+  //   if let Some(&interned) = self.str_interner.borrow().get(value) {
+  //     interned
+  //   } else {
+  //     let interned = self.arena.alloc_str(value);
+  //     self.str_interner.borrow_mut().insert(interned);
+  //     // ... weird syntax to make &mut str into &str
+  //     &*interned
+  //   }
+  // }
 
   #[must_use]
   pub fn intern<T: Into<Type<'c>>>(&self, value: T) -> TypeRef<'c> {
@@ -226,7 +225,7 @@ impl<'c> Context<'c> {
     let this = Self {
       arena,
       ast_type_interner: Default::default(),
-      str_interner: Default::default(),
+      // str_interner: Default::default(),
       int_type,
       float_type: arena.alloc(Primitive::Float.into()),
       short_type: arena.alloc(Primitive::Short.into()),
@@ -276,7 +275,7 @@ impl<'c> Context<'c> {
 
       refmut.insert(this.converted_bool); // not needed actually, anyways
     }
-    this.str_interner.borrow_mut().insert(this.unnamed_str);
+    // this.str_interner.borrow_mut().insert(this.unnamed_str);
     this
   }
 

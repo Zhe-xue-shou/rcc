@@ -7,6 +7,7 @@
   Default,
   ::strum_macros::Display,
   ::strum_macros::EnumString,
+  ::strum_macros::IntoStaticStr,
   ::std::marker::ConstParamTy,
 )]
 pub enum Operator {
@@ -132,9 +133,9 @@ pub enum Operator {
 }
 use Operator::*;
 impl Operator {
-  /// default precedence level when parsing expressions
+  /// default precedence level when parsing expressions. Comma operator `,` is considered a binary operator.
   pub const DEFAULT: u8 = 0x00;
-  /// when parsing function call arguments or functiondecl, use this to stop at ',' or ')'
+  /// when parsing function call arguments or functiondecl, use this to stop at `,` or `)`
   pub const EXCOMMA: u8 = 0x04;
   /// default binding power for postfix operators.
   ///
@@ -339,6 +340,7 @@ impl Operator {
     }
   }
 
+  #[inline]
   pub const fn assignment(&self) -> bool {
     matches!(self.category(), Assignment)
   }

@@ -1,5 +1,4 @@
-use ::rcc_utils::{SmallString, StrRef, ensure_is_pod, interconvert};
-use ::std::{fmt::Debug, str::FromStr};
+use ::rcc_utils::{StrRef, ensure_is_pod, interconvert};
 
 use super::{
   Keyword::{self, *},
@@ -67,15 +66,6 @@ impl<'c> Token<'c> {
     Self {
       literal: Literal::Operator(operator),
       location,
-    }
-  }
-
-  pub fn to_owned_string(&self) -> SmallString {
-    match &self.literal {
-      Literal::Identifier(str) | Literal::String(str) =>
-        SmallString::from_str(str).expect("never fails"),
-      Literal::Keyword(kw) => kw.to_string().into(),
-      _ => panic!("should not call this: {:?}", self.literal),
     }
   }
 

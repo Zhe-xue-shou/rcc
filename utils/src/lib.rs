@@ -79,7 +79,7 @@ impl Dummy for usize {
 }
 
 pub type StrRef<'c> = &'c str;
-impl RefEq for StrRef<'_> {}
+// impl RefEq for StrRef<'_> {}
 
 /// Intern helper trait to both use [`::std::ptr::eq`] but also [`debug_assert`]
 /// the actual equality of the two values in debug mode, to catch potential bugs
@@ -134,7 +134,7 @@ pub trait RefEq {
     ref_eq
   }
 }
-// impl<T: ?Sized> !RefEq for &T {}
+impl<T: ?Sized> !RefEq for &T {}
 impl<T: ?Sized> !RefEq for &mut T {}
 
 #[track_caller]
@@ -157,6 +157,7 @@ impl<T: [const] PartialEq + [const] Destruct + Debug> const Add<(T, T)>
 {
   type Output = ();
 
+  #[inline(always)]
   fn add(self, (lhs, rhs): (T, T)) {
     const_assert_eq!(lhs, rhs)
   }
@@ -166,6 +167,7 @@ impl<T: [const] PartialEq + [const] Destruct + Debug> const Add<(T, T, &str)>
 {
   type Output = ();
 
+  #[inline(always)]
   fn add(self, (lhs, rhs, msg): (T, T, &str)) {
     const_assert_eq!(lhs, rhs, msg)
   }

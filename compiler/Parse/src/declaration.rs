@@ -225,30 +225,52 @@ pub enum InitializerListEntry<'c> {
 
 ::rcc_utils::interconvert!(Designated, InitializerListEntry, 'c);
 ::rcc_utils::interconvert!(Initializer, InitializerListEntry, 'c);
+::rcc_utils::make_trio_for!(Designated, InitializerListEntry, 'c);
+::rcc_utils::make_trio_for!(Initializer, InitializerListEntry, 'c);
 /// designation:
 ///     - designator-list =
 ///
 /// designator-list:
 ///     - designator
 ///     - designator-list designator
+///
+/// ```c
+/// struct Foo {
+///   int x;
+///   int y;
+/// };
+///
+/// struct Bar {
+///  struct Foo f;
+///  int z;
+/// };
+///
+/// struct Bar b = {
+///   .f.x = 1,
+///   .z = 2,
+/// };
+///
+/// struct Foo foos[2] = {
+///   [0].x = 1, // this is still valid too.
+/// };
+/// ```
 #[derive(Debug)]
 pub struct Designated<'c> {
   pub designators: Vec<Designator<'c>>,
   pub initializer: Initializer<'c>,
-  /// from `.` or `[` to `=`.
-  pub designator_sloc: SourceSpan,
+  pub span: SourceSpan,
 }
 
 impl<'c> Designated<'c> {
   pub fn new(
     designators: Vec<Designator<'c>>,
     initializer: Initializer<'c>,
-    designator_sloc: SourceSpan,
+    span: SourceSpan,
   ) -> Self {
     Self {
       designators,
       initializer,
-      designator_sloc,
+      span,
     }
   }
 }
@@ -261,6 +283,10 @@ pub enum Designator<'c> {
   Field(StrRef<'c>),
   Index(Expression<'c>),
 }
+::rcc_utils::interconvert!(Expression, Designator, 'c, Index);
+::rcc_utils::interconvert!(StrRef, Designator, 'c, Field);
+::rcc_utils::make_trio_for!(Expression, Designator, 'c, Index);
+::rcc_utils::make_trio_for!(StrRef, Designator, 'c, Field);
 #[derive(Debug)]
 pub struct EnumSpecifier<'c> {
   pub name: Option<StrRef<'c>>,

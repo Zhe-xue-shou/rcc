@@ -33,26 +33,7 @@ impl Span {
     }
   }
 }
-#[cfg(debug_assertions)]
-use ::rcc_utils::Dummy;
-#[cfg(debug_assertions)]
-impl Dummy for Span {
-  #[inline(always)]
-  #[track_caller]
-  fn dummy() -> Self {
-    if !cfg!(test) {
-      eprintln!(
-        "Dummy Span created from caller {}",
-        ::std::panic::Location::caller(),
-      );
-    }
-    Self {
-      file_index: Id::dummy(),
-      start: Index::dummy(),
-      end: Index::dummy(),
-    }
-  }
-}
+
 ensure_is_pod!(Span);
 
 #[derive(Debug, Clone, Copy, Default)]

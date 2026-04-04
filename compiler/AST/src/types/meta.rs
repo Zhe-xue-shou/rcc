@@ -90,6 +90,15 @@ impl<'c> Array<'c> {
     Self { element_type, size }
   }
 }
+impl ArraySize {
+  pub fn size(self) -> usize {
+    match self {
+      Self::Constant(c) => c,
+      Self::Incomplete => 0,
+      Self::Variable(_) => 0,
+    }
+  }
+}
 impl<'c> FunctionProto<'c> {
   pub fn new(
     return_type: QualifiedType<'c>,

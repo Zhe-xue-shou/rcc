@@ -12,17 +12,11 @@ mod macros;
 mod num_traits;
 mod opaque;
 
-use ::std::{cell::RefCell, rc::Rc};
-
 mod fwd {
   pub use ::paste::paste;
   pub type SmallString = ::compact_str::CompactString;
 }
-pub use self::{
-  fwd::{SmallString, paste},
-  num_traits::*,
-  opaque::Opaque,
-};
+pub use self::{fwd::*, num_traits::*, opaque::Opaque};
 
 /// A handy trait for converting between types with additional context.
 pub trait IntoWith<With, To> {
@@ -38,45 +32,6 @@ pub trait TryFromWith<With, From>: Sized {
   type Error;
   fn try_from_with(from: From, with: With) -> Result<Self, Self::Error>;
 }
-/// A trait for creating dummy instances of types during testing.
-///
-/// This is useful for situations where a placeholder value is needed,
-/// such as during testing or when initializing data structures,
-/// but their actual values do not matter.
-///
-/// The difference between this and the [`Default`] trait is that Dummy
-/// instances are often invalid or nonsensical in a real context,
-/// whereas [`Default`] instances are expected to be valid and meaningful.
-///
-/// In other words, [`Dummy`] targets for ppl who read and write the code.
-///
-/// Why not use [`Option<T>`] or [`Result<T, E>`]? -- there's no point
-/// to wrap every single type in Option or Result just cater for unittest.
-#[cfg(debug_assertions)]
-pub trait Dummy {
-  fn dummy() -> Self;
-}
-#[cfg(debug_assertions)]
-impl<T: Dummy> Dummy for Rc<RefCell<T>> {
-  fn dummy() -> Self {
-    Rc::new(RefCell::new(T::dummy()))
-  }
-}
-
-#[cfg(debug_assertions)]
-impl Dummy for u32 {
-  #[inline]
-  fn dummy() -> Self {
-    u32::MAX
-  }
-}
-#[cfg(debug_assertions)]
-impl Dummy for usize {
-  #[inline]
-  fn dummy() -> Self {
-    usize::MAX
-  }
-}
 
 pub type StrRef<'c> = &'c str;
 // impl RefEq for StrRef<'_> {}
@@ -85,7 +40,7 @@ pub type StrRef<'c> = &'c str;
 /// the actual equality of the two values in debug mode, to catch potential bugs
 /// where two different instances with the same content are compared by pointer address.
 ///
-/// # Important Note
+/// ### Important Note
 /// Should never impl this [`RefEq`] w.r.t. ref-type, such as `&'a MyRef`,
 /// otherwise it would cause double reference problem:
 /// i.e., comparing `&&MyRef` which probably resides on the stack;

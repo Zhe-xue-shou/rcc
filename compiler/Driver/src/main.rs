@@ -103,6 +103,9 @@ fn pipeline(manager: SourceManager, stage: Stage, pretty_print: bool) -> i32 {
 
   let mut analyzer = Sema::new(program, &ast_session);
   let translation_unit = analyzer.analyze();
+
+  render_ast(&translation_unit, &ast_session).unwrap();
+
   if ast_session.diag().has_errors() {
     eprintln!("Analyzer errors:");
     ast_session
@@ -128,7 +131,6 @@ fn pipeline(manager: SourceManager, stage: Stage, pretty_print: bool) -> i32 {
       .iter()
       .for_each(|e| eprintln!("{}", e.display_with(ast_session.src())));
   }
-  render_ast(&translation_unit, &ast_session).unwrap();
   if let Stage::Analyze = stage {
     return 0;
   }

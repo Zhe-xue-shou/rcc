@@ -18,6 +18,7 @@ use ::rcc_utils::{
 use ::std::collections::{HashMap, HashSet};
 
 use super::{declaration as sd, declref, expression as se, statement as ss};
+use crate::initialization::Initialization;
 
 pub(crate) enum ScopeContext {
   Function,
@@ -77,10 +78,10 @@ pub struct Sema<'c> {
   current_labels: HashSet<StrRef<'c>>,
   current_gotos: HashSet<StrRef<'c>>,
   scope_context: Vec<ScopeContext>,
-  session: SessionRef<'c, OpDiag<'c>>,
+  pub(crate) session: SessionRef<'c, OpDiag<'c>>,
 
-  __empty_expr: se::ExprRef<'c>,
-  __empty_stmt: ss::StmtRef<'c>,
+  pub(crate) __empty_expr: se::ExprRef<'c>,
+  pub(crate) __empty_stmt: ss::StmtRef<'c>,
 }
 impl<'a> ::std::ops::Deref for Sema<'a> {
   type Target = Session<'a, OpDiag<'a>>;
@@ -872,211 +873,13 @@ impl<'c> Sema<'c> {
     Ok(vardef)
   }
 
-  fn scalar_initializer(
-    &self,
-    expression: pe::Expression<'c>,
-    target_type: Option<QualifiedType<'c>>,
-    requires_folding: bool,
-  ) -> Option<se::ExprRef<'c>> {
-    self
-      .expression(expression)
-      .map(|expr| {
-        let decayed =
-          expr.lvalue_conversion(self.context()).decay(self.context());
-        target_type
-          .map(|t| {
-            decayed
-              .assignment_conversion(self.context(), &t)
-              .handle_with(self, decayed)
-          })
-          .unwrap_or(decayed)
-      })
-      .map(|expr| {
-        let expression = if !requires_folding {
-          expr
-        } else {
-          expr
-            .fold(self.session)
-            .inspect_error(|e| {
-              self.add_error(
-                ExprNotConstant(format!(
-                  "Expression {e} cannot be evaluated to a constant value"
-                )),
-                e.span(),
-              );
-            })
-            .take()
-        };
-
-        Some(expression)
-      })
-      .unwrap_or_else(|e| {
-        self.add_diag(e);
-        None
-      })
-  }
-
-  fn _scalar_initializer(
-    &self,
-    expression: pe::Expression<'c>,
-    target_type: QualifiedType<'c>,
-    requires_folding: bool,
-  ) -> Option<se::ExprRef<'c>> {
-    self
-      .expression(expression)
-      .map(|expr| {
-        expr
-          .lvalue_conversion(self.context())
-          .decay(self.context())
-          .assignment_conversion(self.context(), &target_type)
-          .handle_with(self, self.__empty_expr)
-      })
-      .map(|expr| {
-        let expression = if !requires_folding {
-          expr
-        } else {
-          expr
-            .fold(self.session)
-            .inspect_error(|e| {
-              self.add_error(
-                ExprNotConstant(format!(
-                  "Expression {e} cannot be evaluated to a constant value"
-                )),
-                e.span(),
-              );
-            })
-            .take()
-        };
-
-        Some(expression)
-      })
-      .unwrap_or_else(|e| {
-        self.add_diag(e);
-        None
-      })
-  }
-
-  fn list_initializer(
-    &self,
-    list: pd::InitializerList<'c>,
-    target_type: QualifiedType<'c>,
-    requires_folding: bool,
-  ) -> Option<sd::InitializerList<'c>> {
-    let mut current_index: usize = 0;
-
-    let pd::InitializerList { entries, span } = list;
-
-    let element_type = if target_type.is_scalar() {
-      target_type
-    } else {
-      target_type
-        .as_array()
-        .expect("unimplemented for record-like ilist...")
-        .element_type
-    };
-    let mut analyzed_entries = ArenaVec::new_in(self.ast().arena());
-    for entry in entries.into_iter() {
-      let analyzed_entry = match entry {
-        pd::InitializerListEntry::Designated(designated) => {
-          let out =
-            self.designated_init(designated, element_type, requires_folding);
-          current_index = out.1;
-          out.0.into()
-        },
-        pd::InitializerListEntry::Initializer(initializer) => {
-          let i =
-            self._initializer(initializer, element_type, requires_folding)?;
-          let idx = sd::Designator::Array(current_index);
-          sd::InitializerEntry::new(idx, i).into()
-        },
-      };
-      current_index += 1;
-      analyzed_entries.push(analyzed_entry);
-    }
-    // check: excess init
-
-    Some(sd::InitializerList::new(
-      analyzed_entries.into_bump_slice(),
-      span,
-    ))
-  }
-
-  #[allow(unused)]
-  fn designated_init(
-    &self,
-    designated: pd::Designated<'c>,
-    element_type: QualifiedType<'c>,
-    requires_folding: bool,
-  ) -> (sd::Designated<'c>, usize) {
-    // current_index = self
-    //   .expression(
-    //     designated
-    //       .designators
-    //       .first()
-    //       .unwrap()
-    //       .into_index()
-    //       .expect("only for arrays implemented!"),
-    //   )
-    //   .ok()?
-    //   .fold(self.session)
-    //   .take()
-    //   .raw_expr()
-    //   .as_constant()
-    //   .and_then(|c| c.as_integral())
-    //   .or_else(|| {
-    //     self.add_error(
-    //       Custom(format!(
-    //         "expression {} cannot evaluate to a constant integer"
-    //       )),
-    //       designated.span,
-    //     )
-    //   })?
-    //   .to_builtin();
-    todo!()
-  }
-
-  fn _initializer(
-    &self,
-    initializer: pd::Initializer<'c>,
-    target_type: QualifiedType<'c>,
-    requires_folding: bool,
-  ) -> Option<sd::Initializer<'c>> {
-    match initializer {
-      pd::Initializer::Expression(expression) => self
-        ._scalar_initializer(expression, target_type, requires_folding)
-        .map(sd::Initializer::Scalar),
-      pd::Initializer::InitializerList(list) => self
-        .list_initializer(list, target_type, requires_folding)
-        .map(sd::Initializer::List),
-    }
-  }
-
-  fn initializer(
+  pub fn initializer(
     &self,
     initializer: pd::Initializer<'c>,
     target_type: Option<QualifiedType<'c>>,
     requires_folding: bool,
   ) -> Option<sd::Initializer<'c>> {
-    match initializer {
-      pd::Initializer::Expression(expression) => self
-        .scalar_initializer(expression, target_type, requires_folding)
-        .map(sd::Initializer::Scalar),
-      pd::Initializer::InitializerList(list) => {
-        let target_type = target_type.or_else(|| {
-          self.add_error(
-            Custom(
-              "auto cannot be used with initializer list in C".to_string(),
-            ),
-            list.span,
-          );
-          None
-        })?;
-
-        self
-          .list_initializer(list, target_type, requires_folding)
-          .map(sd::Initializer::List)
-      },
-    }
+    Initialization::new(self, requires_folding).doit(initializer, target_type)
   }
 
   fn global_vardef(
@@ -1194,7 +997,7 @@ impl<'c> Sema<'c> {
 }
 
 impl<'c> Sema<'c> {
-  fn expression(
+  pub(crate) fn expression(
     &self,
     expression: pe::Expression<'c>,
   ) -> Result<se::ExprRef<'c>, Diag<'c>> {
@@ -2074,6 +1877,8 @@ impl<'c> Sema<'c> {
 
   /// at least one of the operand is pointer, and the operand can only be `+` or `-`.
   ///
+  /// This is specified more detailed in C++ Standard [over.built].
+  ///
   /// - left and right are both pointer of type `T`, the operator is `-` -- return type is `ptrdiff_t`.
   /// - left and right are both pointer of type `T`, the operator is `+` -- error.
   /// - left is a pointer to type `T`, right is an integer, the operator is `+` -- right converts to `ptrdiff_t`(my implementation), return type is `*T`
@@ -2081,6 +1886,7 @@ impl<'c> Sema<'c> {
   /// - left is an integer, right is a pointer to type `T`, the operator is `+` -- same as above.
   /// - left is an integer, right is a pointer to type `T`, the operator is `-` -- error.
   /// - left and right are pointers to incompatible type -- error.
+  ///
   ///
   /// | Left         |    Op    | Right         | Result Type                 |
   /// | ------------ | -------- | ------------- | --------------------------- |
@@ -2755,7 +2561,7 @@ fn shall_ok_failed(msg: &str, location: &std::panic::Location) -> ! {
   );
 }
 
-trait ImplHelper<T> {
+pub(crate) trait ImplHelper<T> {
   /// Glorified `expect` for `Result`, use this to indicate a `program error/invariant`
   ///
   /// - `.expect("some message")` -> (prob) for user side error(although rarely use this way)
@@ -2788,7 +2594,7 @@ impl<T> ImplHelper<T> for Option<T> {
   }
 }
 
-trait ImplHelper2<T, Listener> {
+pub(crate) trait ImplHelper2<T, Listener> {
   fn handle_with(self, context: &Listener, default: T) -> T;
 }
 

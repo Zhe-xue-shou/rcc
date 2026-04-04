@@ -52,6 +52,8 @@ pub enum Initializer<'c> {
   Scalar(ExprRef<'c>),
   List(InitializerList<'c>),
 }
+::rcc_utils::interconvert!(ExprRef, Initializer, 'c, Scalar);
+::rcc_utils::interconvert!(InitializerList, Initializer, 'c, List);
 #[derive(Debug)]
 pub struct InitializerList<'c> {
   /// Explicitly initialized. using an [`Option`] won't hurt size thanks to the niche optimization.

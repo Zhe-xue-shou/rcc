@@ -4,7 +4,7 @@ use ::rcc_ast::types::{
 };
 use ::rcc_sema::{
   declaration::{
-    Designated, ExternalDeclarationRef, Function, Initializer,
+    Designated, Designator, ExternalDeclarationRef, Function, Initializer,
     InitializerEntry, InitializerList, InitializerListEntry, TranslationUnit,
     VarDef,
   },
@@ -476,7 +476,19 @@ impl<'c> Dumpable<'c> for Expression<'_> {
     let subprefix = dumper.child_prefix(prefix, is_last);
 
     match self.raw_expr() {
-      Empty(_) => dumper.write("<<<Recovery/Invalid>>>\n", &palette.error),
+      Empty(_) => {
+        dumper.write("Recovery", &palette.error);
+        dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
+        self.span().dump(dumper, prefix, is_last, palette);
+        dumper.write_fmt(
+          format_args!("'{}' ", self.qualified_type()),
+          &palette.meta,
+        );
+        dumper.write_fmt(
+          format_args!("{}\n", self.value_category()),
+          &palette.info,
+        );
+      },
 
       Constant(constant) => {
         dumper.write("ConstantLiteral", &palette.node);
@@ -522,7 +534,7 @@ impl<'c> Dumpable<'c> for Expression<'_> {
       Ternary(ternary) => {
         header!("Ternary", ternary, "\n");
         ternary.condition.dump(dumper, &subprefix, false, palette);
-        if let Some(ref then_expr) = ternary.then_expr {
+        if let Some(then_expr) = ternary.then_expr {
           then_expr.dump(dumper, &subprefix, false, palette);
         }
         ternary.else_expr.dump(dumper, &subprefix, true, palette)
@@ -775,9 +787,13 @@ impl<'c> Dumpable<'c> for InitializerList<'_> {
     dumper.print_indent(prefix, is_last);
 
     dumper.write("InitializerList", &palette.node);
-    dumper.write_fmt(format_args!(" {:p}\n", self), &palette.dim);
+    dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
+    self.span.dump(dumper, prefix, is_last, palette);
 
-    if !self.entries.is_empty() {
+    if self.entries.is_empty() {
+      dumper.write("zeroinit\n", &palette.info);
+    } else {
+      dumper.newline();
       let subprefix = dumper.child_prefix(prefix, is_last);
       self.entries.iter().enumerate().for_each(|(i, entry)| {
         entry.dump(dumper, &subprefix, i == self.entries.len() - 1, palette)
@@ -822,7 +838,36 @@ impl<'c> Dumpable<'c> for InitializerEntry<'_> {
     is_last: bool,
     palette: &Palette,
   ) {
+    self.designator.dump(dumper, prefix, true, palette);
     self.initializer.dump(dumper, prefix, is_last, palette);
+  }
+}
+
+#[allow(unused)]
+impl<'c> Dumpable<'c> for Designator<'_> {
+  fn dump(
+    &self,
+    dumper: &mut impl Dumper<'c>,
+    prefix: &str,
+    implicit: bool,
+    palette: &Palette,
+  ) {
+    dumper.print_indent(prefix, false);
+    dumper.write("Designator", &palette.skeleton);
+    dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
+
+    match self {
+      Self::Array(index) => {
+        dumper.write("index ", &palette.skeleton);
+        dumper.write(index, &palette.meta)
+      },
+      Self::Field(_) => todo!(),
+    }
+
+    if implicit {
+      dumper.write(" implicit", &palette.skeleton);
+    }
+    dumper.newline();
   }
 }
 

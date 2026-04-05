@@ -4,9 +4,8 @@ use ::rcc_ast::types::{
 };
 use ::rcc_sema::{
   declaration::{
-    Designated, Designator, ExternalDeclarationRef, Function, Initializer,
-    InitializerEntry, InitializerList, InitializerListEntry, TranslationUnit,
-    VarDef,
+    Designator, ExternalDeclarationRef, Function, Initializer, InitializerList,
+    InitializerListEntry, TranslationUnit, VarDef,
   },
   expression::{Empty, Expression},
   statement::{
@@ -810,42 +809,34 @@ impl<'c> Dumpable<'c> for InitializerListEntry<'_> {
     is_last: bool,
     palette: &Palette,
   ) {
-    ::rcc_utils::static_dispatch!(
-      self,
-      |variant| variant.dump(dumper, prefix, is_last, palette) =>
-      Designated InitializerEntry
-    )
-  }
-}
-#[allow(unused)]
-impl<'c> Dumpable<'c> for Designated<'_> {
-  fn dump(
-    &self,
-    dumper: &mut impl Dumper<'c>,
-    prefix: &str,
-    is_last: bool,
-    palette: &Palette,
-  ) {
-    todo!()
+    let old = palette;
+    let palette = if self.is_implicit {
+      &Palette::dimmed()
+    } else {
+      palette
+    };
+
+    dumper.print_indent(prefix, is_last);
+    dumper.write("Designated", &palette.node);
+    dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
+    if self.is_implicit {
+      dumper.write("implicit", &palette.info);
+    }
+    dumper.newline();
+
+    let subprefix = dumper.child_prefix(prefix, is_last);
+    self.designators.iter().for_each(|designator| {
+      designator.dump(
+        dumper,
+        &subprefix,
+        /* is_implicit = */ self.is_implicit,
+        palette,
+      )
+    });
+    self.initializer.dump(dumper, &subprefix, true, old);
   }
 }
 
-impl<'c> Dumpable<'c> for InitializerEntry<'_> {
-  fn dump(
-    &self,
-    dumper: &mut impl Dumper<'c>,
-    prefix: &str,
-    is_last: bool,
-    palette: &Palette,
-  ) {
-    self
-      .designator
-      .dump(dumper, prefix, /* is_implicit */ true, palette);
-    self.initializer.dump(dumper, prefix, is_last, palette);
-  }
-}
-
-#[allow(unused)]
 impl<'c> Dumpable<'c> for Designator<'_> {
   fn dump(
     &self,
@@ -872,9 +863,6 @@ impl<'c> Dumpable<'c> for Designator<'_> {
       Self::Field(_) => todo!(),
     }
 
-    if is_implicit {
-      dumper.write(" implicit", &palette.skeleton);
-    }
     dumper.newline();
   }
 }

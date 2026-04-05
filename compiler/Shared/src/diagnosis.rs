@@ -247,6 +247,27 @@ mod data {
       "Invalid comparison between types '{0}' and '{1}' with operator '{2}'"
     )]
     InvalidComparison(QualTyStr, QualTyStr, Operator),
+    #[error("array has incomplete element type '{0}'")]
+    ArrayHasIncompleteType(QualTyStr),
+    #[error(
+      "Definition of variable '{0}' has incomplete array type '{1}' and does \
+       not have an explicit initializer"
+    )]
+    IncompleteArrayDefNoInit(String, QualTyStr),
+    #[error("incomplete type '{1}' used in declaration of '{0}'")]
+    DeclarationTyIncomplete(String, QualTyStr),
+    #[error("auto type cannot be used with ilist in C.")]
+    DeducedTypeWithBracedInitializer,
+    #[error("initializer for {0} overrides a previous initializer")]
+    DuplicateInitializer(String),
+    #[error(
+      "Initialization of non-aggregate type '{0}' with a designated ilist"
+    )]
+    DesignatorForNonAggregate(QualTyStr),
+    #[error("array designator index '{0}' exceeds array bound '{1}'")]
+    DesignatorIndexOutOfBound(usize, usize),
+    #[error("array designator index '{0}' cannot be negative")]
+    DesignatorIndexNegative(usize),
     #[error("{0}")]
     Placeholder(CustomMessage),
     #[error("{0}")]
@@ -314,6 +335,8 @@ mod data {
     WhitespaceAfterLineEscape,
     #[error("Invalid escape sequence '{0}' in character literal")]
     InvalidEscapeSequence(String),
+    #[error("excess elements in array initializer")]
+    ExcessElemInInitializer,
     #[error("Typedef defines nothing")]
     EmptyTypedef,
     #[error("Empty statement")]

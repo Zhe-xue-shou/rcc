@@ -13,7 +13,8 @@ use ::rcc_utils::{IntoWith, StrRef, contract_assert, not_implemented_feature};
 
 use crate::{
   declaration::{
-    ArrayModifier, DeclSpecs, Declaration, Declarator, DeclaratorType,
+    ArrayModifier, DeclSpecs, Declaration, Declarator,
+    DeclaratorType::{self, *},
     Designated, Designator, Function, FunctionSignature, Initializer,
     InitializerList, InitializerListEntry, Modifier, Parameter, Program,
     TypeSpecifier, VarDef,
@@ -389,9 +390,9 @@ impl<'c> Parser<'c> {
 
   /// `TYPE`: [`DeclaratorType`]
   ///
-  /// - Named: normal declarator, must have a name;
-  /// - Maybe: may have a name;
-  /// - Abstract: abstract-declarator, no name.
+  /// - [`Named`]: normal declarator, must have a name;
+  /// - [`Maybe`]: may have a name;
+  /// - [`Abstract`]: abstract-declarator, no name.
   ///
   /// `AGGRESSIVE`: [`bool`] if true, will try to recover from missing identifier by consuming the next token.
   fn parse_declarator<const TYPE: DeclaratorType, const AGGRESSIVE: bool>(
@@ -416,12 +417,12 @@ impl<'c> Parser<'c> {
       self.recoverable_get::<{ RightParen }>();
       (inner_declarator.name, inner_declarator.modifiers)
     } else {
-      let name = if TYPE != DeclaratorType::Abstract {
+      let name = if TYPE != Abstract {
         if let Literal::Identifier(ident) = *self.peek_lit() {
           self.get(); // consume the ident
           Some(ident)
         } else {
-          if TYPE == DeclaratorType::Named {
+          if TYPE == Named {
             self.add_error(
               MissingIdentifier("Expect identifier in declarator".to_string()),
               self.eloc(location),
@@ -536,8 +537,7 @@ impl<'c> Parser<'c> {
       loop {
         let location = *self.peek_loc();
         let mut declspecs = self.parse_declspecs();
-        let declarator =
-          self.parse_declarator::<{ DeclaratorType::Maybe }, false>();
+        let declarator = self.parse_declarator::<{ Maybe }, false>();
         if let Some(storage) = &declspecs.storage_class
           && storage != Storage::Register
         {
@@ -834,7 +834,7 @@ impl<'c> Parser<'c> {
     }
 
     let declspecs = self.parse_declspecs();
-    let declarator = self.parse_declarator::<{ DeclaratorType::Maybe }, true>();
+    let declarator = self.parse_declarator::<{ Maybe }, true>();
 
     if matches!(declspecs.storage_class, Some(Storage::Typedef)) {
       if let Some(name) = declarator.name {
@@ -1263,8 +1263,7 @@ impl<'c> Parser<'c> {
         Some(_) => {
           // type
           let declspecs = self.parse_declspecs();
-          let declarator =
-            self.parse_declarator::<{ DeclaratorType::Abstract }, false>();
+          let declarator = self.parse_declarator::<{ Abstract }, false>();
           self.recoverable_get::<{ RightParen }>();
           Expression::SizeOf(
             SizeOfKind::Type(

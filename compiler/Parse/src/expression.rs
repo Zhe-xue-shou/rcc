@@ -63,7 +63,25 @@ pub struct Variable<'c> {
   pub name: StrRef<'c>,
   pub span: SourceSpan,
 }
-
+impl Expression<'_> {
+  pub fn span(&self) -> SourceSpan {
+    match self {
+      Self::Empty(_) => SourceSpan::default(),
+      Self::Constant(constant) => constant.span,
+      Self::Unary(unary) => unary.span,
+      Self::Binary(binary) => binary.span,
+      Self::Variable(variable) => variable.span,
+      Self::Call(call) => call.span,
+      Self::Paren(paren) => paren.span,
+      Self::MemberAccess(member_access) => member_access.span,
+      Self::Ternary(ternary) => ternary.span,
+      Self::SizeOf(sizeof) => sizeof.span,
+      Self::CStyleCast(cast) => cast.span,
+      Self::ArraySubscript(array_subscript) => array_subscript.span,
+      Self::CompoundLiteral(compound_literal) => compound_literal.span,
+    }
+  }
+}
 mod fmt {
   use ::std::fmt::Display;
 

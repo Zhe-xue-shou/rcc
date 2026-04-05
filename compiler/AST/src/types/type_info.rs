@@ -16,12 +16,12 @@ pub const trait TypeInfo<'c> {
   fn default_value(&self) -> Constant<'c>;
   #[must_use]
   fn extent(&self) -> usize;
-  #[inline]
+  #[inline(always)]
   #[must_use]
   fn is_complete(&self) -> bool {
     self.size() != 0
   }
-  #[inline]
+  #[inline(always)]
   #[must_use]
   fn is_scalar(&self) -> bool {
     self.extent() == 1
@@ -154,7 +154,7 @@ impl<'c> TypeInfo<'c> for Array<'c> {
     match &self.size {
       ArraySize::Constant(sz) => sz * self.element_type.unqualified_type.size(),
       ArraySize::Incomplete => 0,
-      ArraySize::Variable(_id) => todo!(), // ignore for now
+      ArraySize::Variable(_id) => todo!("VLA"), // ignore for now
     }
   }
 

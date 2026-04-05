@@ -200,6 +200,15 @@ pub enum Initializer<'c> {
   Expression(Expression<'c>),
   InitializerList(InitializerList<'c>),
 }
+
+impl<'c> Initializer<'c> {
+  pub fn span(&self) -> SourceSpan {
+    match self {
+      Initializer::Expression(expr) => expr.span(),
+      Initializer::InitializerList(list) => list.span,
+    }
+  }
+}
 /// initializer-list:
 ///     - designation_opt initializer
 ///     - initializer-list , designation_opt initializer

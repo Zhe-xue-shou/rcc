@@ -277,14 +277,14 @@ impl Integral {
   /// This performs truncation or extension as appropriate.
   pub const fn cast(self, new_width: u8, new_signedness: Signedness) -> Self {
     let new_bits = if new_width >= self.width {
-      // Extension
+      // extension
       if self.is_signed() && self.sign_bit() {
-        // Sign extension
+        // signed
         let extension_mask =
           Self::max_unsigned(new_width) ^ Self::max_unsigned(self.width);
         self.bits | extension_mask
       } else {
-        // zero extension
+        // zero
         self.bits
       }
     } else {
@@ -679,6 +679,8 @@ mod cvt {
   impl_from_integral!(usize, usize::BITS, Unsigned);
 }
 
+/// Actually running the tests here is not required, since they are `consteval`ed.
+/// The success of compilation implies that every single tests are guranteed to pass.
 #[cfg(test)]
 #[allow(clippy::unnecessary_cast)]
 #[allow(non_upper_case_globals)]

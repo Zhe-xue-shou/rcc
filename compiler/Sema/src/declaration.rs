@@ -56,43 +56,27 @@ pub enum Initializer<'c> {
 ::rcc_utils::interconvert!(InitializerList, Initializer, 'c, List);
 #[derive(Debug)]
 pub struct InitializerList<'c> {
-  /// Explicitly initialized. using an [`Option`] won't hurt size thanks to the niche optimization.
-  ///
-  /// [`None`] indicates empty initialization.
-  ///
-  /// ^^^ removed
   pub entries: &'c [InitializerListEntry<'c>],
   pub span: SourceSpan,
 }
 
 #[derive(Debug)]
-pub enum InitializerListEntry<'c> {
-  Designated(Designated<'c>),
-  /// the designator is implicit, not very much meaning for IR, btu for AST dump maybe.
-  InitializerEntry(InitializerEntry<'c>),
-}
-::rcc_utils::interconvert!(Designated, InitializerListEntry, 'c);
-::rcc_utils::interconvert!(InitializerEntry, InitializerListEntry, 'c);
-::rcc_utils::make_trio_for!(Designated, InitializerListEntry, 'c);
-::rcc_utils::make_trio_for!(InitializerEntry, InitializerListEntry, 'c);
-#[derive(Debug)]
-pub struct Designated<'c> {
+pub struct InitializerListEntry<'c> {
   pub designators: &'c [Designator<'c>],
   pub initializer: Initializer<'c>,
-  pub span: SourceSpan,
+  pub is_implicit: bool,
 }
 
-#[derive(Debug)]
-pub struct InitializerEntry<'c> {
-  pub designator: Designator<'c>,
-  pub initializer: Initializer<'c>,
-}
-
-impl<'c> InitializerEntry<'c> {
-  pub fn new(designator: Designator<'c>, initializer: Initializer<'c>) -> Self {
+impl<'c> InitializerListEntry<'c> {
+  pub fn new(
+    designators: &'c [Designator<'c>],
+    initializer: Initializer<'c>,
+    is_implicit: bool,
+  ) -> Self {
     Self {
-      designator,
+      designators,
       initializer,
+      is_implicit,
     }
   }
 }
@@ -103,6 +87,22 @@ pub enum Designator<'c> {
   Field(
     /* Field iterator or so.. */ ::std::marker::PhantomData<&'c u8>,
   ),
+}
+
+impl Designator<'_> {
+  /// as error node. you can't use [`usize::MAX`] in subscript
+  /// since it would require the array has [`usize::MAX`] + 1 length, which is impossible.
+  /// Also nobody in SANE would allocate such a huge array...
+  ///
+  /// error node that:
+  ///   1. ignore overrides once there's at least one [`Self::SENTINAL`] in [`Designator`]s.
+  ///   2. during AST Dump, put the index as recovery/invalid.
+  ///   3. which means every calc w.r.t. [`Designator`] shall use [`usize::saturating_add`]-like calc,
+  ///      or checking whether the current operand is [`usize::MAX`].
+  #[allow(non_upper_case_globals)]
+  pub const npos: usize = usize::MAX;
+  // #[allow(non_upper_case_globals)]
+  // pub const nofield...
 }
 
 ::rcc_utils::ensure_is_pod!(Initializer<'_>);
@@ -219,19 +219,7 @@ impl<'c> InitializerList<'c> {
     self.span
   }
 }
-impl<'c> Designated<'c> {
-  pub fn new(
-    designators: &'c [Designator<'c>],
-    initializer: Initializer<'c>,
-    span: SourceSpan,
-  ) -> Self {
-    Self {
-      designators,
-      initializer,
-      span,
-    }
-  }
-}
+
 mod fmt {
   use ::std::fmt::Display;
 
@@ -321,8 +309,30 @@ mod fmt {
   }
 
   impl<'c> Display for InitializerList<'c> {
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      todo!()
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      write!(f, "{{")?;
+      if !self.entries.is_empty() {
+        write!(f, " ")?;
+      }
+
+      for (i, entry) in self.entries.iter().enumerate() {
+        if i > 0 {
+          write!(f, ", ")?;
+        }
+
+        for designator in entry.designators.iter() {
+          match designator {
+            Designator::Array(index) => write!(f, "[{}]", index)?,
+            Designator::Field(_) => write!(f, ".<field>")?,
+          }
+        }
+        write!(f, " = {}", entry.initializer)?;
+      }
+
+      if !self.entries.is_empty() {
+        write!(f, " ")?;
+      }
+      write!(f, "}}")
     }
   }
 }

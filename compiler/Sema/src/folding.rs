@@ -730,15 +730,20 @@ impl<'c> Folding<'c, ImplicitCast<'c>> for Expression<'c> {
             target_type.unqualified_type.as_primitive_unchecked();
           let expr_primitive =
             expr_type.unqualified_type.as_primitive_unchecked();
-          if target_primitive.size() < expr_primitive.size()
-            && !target_primitive.is_void()
-            && !target_primitive.is_bool()
-          {
-            session.diag().add_warning(
-              CastDown(expr_type.to_string(), target_type.to_string()),
-              expression.span(),
-            )
-          }
+
+          // fixme: this is too noisy. should only produce diags if the value is not in range.
+          _ = expr_primitive;
+          _ = expr_type;
+
+          // if target_primitive.size() < expr_primitive.size()
+          //   && !target_primitive.is_void()
+          //   && !target_primitive.is_bool()
+          // {
+          //   session.diag().add_warning(
+          //     CastDown(expr_type.to_string(), target_type.to_string()),
+          //     expression.span(),
+          //   )
+          // }
           Success(alloc_constant(
             c.as_integral_unchecked()
               .cast(

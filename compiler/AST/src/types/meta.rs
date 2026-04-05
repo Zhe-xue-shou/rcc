@@ -17,12 +17,12 @@ pub struct ExpressionId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ::strum_macros::Display)]
 pub enum ArraySize {
   Constant(usize),
-  /// unspecified size
-  Incomplete,
   /// unsupported dynamic size, but i kept it here for the `full` type category
   ///
   /// TODO: if this holds an expression -- it's a cyclic reference of mod `type` and mod `analyzer::expression`. may use `ExpressionId` as a workaround.
   Variable(ExpressionId),
+  /// unspecified size
+  Incomplete,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -94,8 +94,16 @@ impl ArraySize {
   pub fn size(self) -> usize {
     match self {
       Self::Constant(c) => c,
-      Self::Incomplete => 0,
       Self::Variable(_) => 0,
+      Self::Incomplete => 0,
+    }
+  }
+
+  pub fn size_opt(self) -> Option<usize> {
+    match self {
+      Self::Constant(c) => Some(c),
+      Self::Variable(_) => None,
+      Self::Incomplete => None,
     }
   }
 }

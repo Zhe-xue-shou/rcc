@@ -66,7 +66,7 @@ impl<'c> DeclEnvironment<'c> {
     self
       .scopes
       .last_mut()
-      .expect("No scope to declare symbol")
+      .shall_ok("No scope to declare symbol")
       .insert(name, declaration);
   }
 }
@@ -168,14 +168,14 @@ impl<'c> Sema<'c> {
               );
 
               if analyzed_expr.qualified_type().is_scalar() {
+                use super::folding::FoldingResult::*;
                 match analyzed_expr.fold(self.session) {
-                  super::folding::FoldingResult::Success(v) =>
+                  Success(v) =>
                     if v.is_integer_constant() {
                       ArraySize::Constant(
                         match v.raw_expr().as_constant_unchecked() {
                           se::Constant::Integral(integral) =>
                             integral.to_builtin(),
-                          se::Constant::Nullptr() => 0,
                           _ => unreachable!(),
                         },
                       )
@@ -186,8 +186,8 @@ impl<'c> Sema<'c> {
                       );
                       ArraySize::Constant(0)
                     },
-                  super::folding::FoldingResult::Failure(_) => {
-                    todo!("VLA")
+                  Failure(_) => {
+                    todo!("VLA not supported")
                   },
                 }
               } else {
@@ -199,6 +199,12 @@ impl<'c> Sema<'c> {
               }
             },
           };
+          if !qualified_type.is_complete() {
+            self.add_error(
+              ArrayHasIncompleteType(qualified_type.to_string()),
+              array_modifier.span,
+            );
+          }
           qualified_type = Type::Array(Array::new(qualified_type, size))
             .lookup(self.context())
             .into();
@@ -699,7 +705,7 @@ impl<'c> Sema<'c> {
     self.current_labels.clear();
     self.current_gotos.clear();
     let function =
-      std::mem::take(&mut self.current_function).expect("never fails");
+      std::mem::take(&mut self.current_function).shall_ok("never fails");
     Ok(sd::Function::alloc(self.context(), function))
   }
 
@@ -736,7 +742,7 @@ impl<'c> Sema<'c> {
         "variable cannot have function specifier; this should be handled in \
          parser"
       );
-      let initializer = initializer.and_then(|initializer| {
+      let out = initializer.map(|initializer| {
         self.initializer(
           initializer,
           None,
@@ -747,33 +753,29 @@ impl<'c> Sema<'c> {
             ),
         )
       });
-      if initializer.is_none() {
+      if let Some((initializer, qualified_type)) = out {
+        (storage, qualified_type, Some(initializer))
+      } else {
         Err(
           DeducedTypeWithNoInitializer(name.to_string())
             + Severity::Error
             + span,
         )?
       }
-      let qualified_type =
-        match unsafe { initializer.as_ref().unwrap_unchecked() } {
-          sd::Initializer::Scalar(expression) => *expression.qualified_type(),
-          sd::Initializer::List(_) => todo!(),
-        };
-      (storage, qualified_type, initializer)
     } else {
-      let (function_specifier, storage, qualified_type) =
+      let (function_specifier, storage, raw_qualified_type) =
         self.parse_declspecs(declspecs).shall_ok("vardef");
       contract_assert!(
         function_specifier.is_empty(),
         "variable cannot have function specifier; this should be handled in \
          parser"
       );
-      let qualified_type =
-        self.apply_modifiers_for_varty(qualified_type, modifiers);
-      let initializer = initializer.and_then(|initializer| {
+      let raw_qualified_type =
+        self.apply_modifiers_for_varty(raw_qualified_type, modifiers);
+      let out = initializer.map(|initializer| {
         self.initializer(
           initializer,
-          Some(qualified_type),
+          Some(raw_qualified_type),
           self.environment.is_global()
             || matches!(
               storage,
@@ -781,8 +783,20 @@ impl<'c> Sema<'c> {
             ),
         )
       });
-      (storage, qualified_type, initializer)
+      if let Some((initializer, qualified_type)) = out {
+        (storage, qualified_type, Some(initializer))
+      } else {
+        (storage, raw_qualified_type, None)
+      }
     };
+    // arr can have 1st extend incomplete, handled downstream at init
+    if !qualified_type.is_complete() && !qualified_type.is_array() {
+      Err(
+        DeclarationTyIncomplete(name.into(), qualified_type.to_string())
+          + Severity::Error
+          + span,
+      )?;
+    }
 
     let previous_decl = self.environment.shallow_find(name);
 
@@ -878,7 +892,7 @@ impl<'c> Sema<'c> {
     initializer: pd::Initializer<'c>,
     target_type: Option<QualifiedType<'c>>,
     requires_folding: bool,
-  ) -> Option<sd::Initializer<'c>> {
+  ) -> (sd::Initializer<'c>, QualifiedType<'c>) {
     Initialization::new(self, requires_folding).doit(initializer, target_type)
   }
 
@@ -979,6 +993,16 @@ impl<'c> Sema<'c> {
   ) -> Result<sd::VarDefRef<'c>, Diag<'c>> {
     if storage == Storage::Extern && initializer.is_some() {
       self.add_error(LocalExternVarWithInitializer(name.to_string()), span);
+    }
+    if (qualified_type
+      .as_array()
+      .is_some_and(|array| !array.is_complete()))
+      && initializer.is_none()
+    {
+      self.add_error(
+        IncompleteArrayDefNoInit(name.into(), qualified_type.to_string()),
+        span,
+      );
     }
     let declaration = declref::DeclNode::def(
       self.context(),
@@ -2561,7 +2585,7 @@ fn shall_ok_failed(msg: &str, location: &std::panic::Location) -> ! {
   );
 }
 
-pub(crate) trait ImplHelper<T> {
+pub(crate) trait ShallOk<T> {
   /// Glorified `expect` for `Result`, use this to indicate a `program error/invariant`
   ///
   /// - `.expect("some message")` -> (prob) for user side error(although rarely use this way)
@@ -2569,7 +2593,7 @@ pub(crate) trait ImplHelper<T> {
   fn shall_ok<M: Into<Option<&'static str>>>(self, msg: M) -> T;
 }
 
-impl<'c, T> ImplHelper<T> for Result<T, Diag<'c>> {
+impl<'c, T> ShallOk<T> for Result<T, Diag<'c>> {
   #[track_caller]
   fn shall_ok<M: Into<Option<&'static str>>>(self, msg: M) -> T {
     match self {
@@ -2581,7 +2605,7 @@ impl<'c, T> ImplHelper<T> for Result<T, Diag<'c>> {
     }
   }
 }
-impl<T> ImplHelper<T> for Option<T> {
+impl<T> ShallOk<T> for Option<T> {
   #[track_caller]
   fn shall_ok<M: Into<Option<&'static str>>>(self, msg: M) -> T {
     match self {
@@ -2594,17 +2618,17 @@ impl<T> ImplHelper<T> for Option<T> {
   }
 }
 
-pub(crate) trait ImplHelper2<T, Listener> {
-  fn handle_with(self, context: &Listener, default: T) -> T;
+pub(crate) trait HandleWith<T, Listener> {
+  fn handle_with(self, listener: &Listener, default: T) -> T;
 }
 
-impl<'c, T> ImplHelper2<T, Sema<'c>> for Result<T, Diag<'c>> {
+impl<'c, T> HandleWith<T, Sema<'c>> for Result<T, Diag<'c>> {
   /// if it's error, log it, and return a default value (means error)
-  fn handle_with(self, context: &Sema<'c>, default: T) -> T {
+  fn handle_with(self, listener: &Sema<'c>, default: T) -> T {
     match self {
       Ok(t) => t,
       Err(e) => {
-        context.add_diag(e);
+        listener.add_diag(e);
         default
       },
     }

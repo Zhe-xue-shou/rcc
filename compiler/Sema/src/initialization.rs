@@ -27,8 +27,6 @@ where
   sema: &'i Sema<'c>,
   /// Gloabl decl or local static decl
   requires_folding: bool,
-  /// Run in recovery mode when the declaration type itself is already ill-formed.
-  all_recovery: bool,
 }
 impl<'i, 'c> Deref for Initialization<'i, 'c> {
   type Target = Sema<'c>;
@@ -179,15 +177,10 @@ impl<'c> ArrayTree<'c> {
 
 /// Wrappers.
 impl<'i, 'c> Initialization<'i, 'c> {
-  pub fn new(
-    sema: &'i Sema<'c>,
-    requires_folding: bool,
-    all_recovery: bool,
-  ) -> Self {
+  pub fn new(sema: &'i Sema<'c>, requires_folding: bool) -> Self {
     Self {
       sema,
       requires_folding,
-      all_recovery,
     }
   }
 
@@ -227,7 +220,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
     match target_type {
       Some(target_type) => match target_type.unqualified_type {
         ast::Type::Array(ast::Array {
-          size: ast::ArraySize::Incomplete | ast::ArraySize::Variable(_),
+          size: ast::ArraySize::Incomplete,
           ..
         }) => self.top_incomplete_dimension(list, target_type),
         _ => (self.list(list, target_type).into(), target_type),
@@ -254,8 +247,13 @@ impl<'i, 'c> Initialization<'i, 'c> {
       &mut state,
     );
 
-    let qualified_type =
-      self.complete_array_type_from_tree(incomplete_array_type, &state);
+    let inferred_size = state.max_index.saturating_add(1);
+    let qualified_type = ast::Type::Array(ast::Array::new(
+      incomplete_array_type.as_array_unchecked().element_type,
+      ast::ArraySize::Constant(inferred_size),
+    ))
+    .lookup(self.context())
+    .into();
     let entries = self.materialize_array_entries(state, qualified_type);
 
     (
@@ -314,43 +312,6 @@ impl<'i, 'c> Initialization<'i, 'c> {
     }
   }
 
-  fn complete_array_type_from_tree(
-    &self,
-    array_type: QualifiedType<'c>,
-    tree: &ArrayTree<'c>,
-  ) -> QualifiedType<'c> {
-    let ast::Type::Array(array) = array_type.unqualified_type else {
-      return array_type;
-    };
-
-    let fallback = ArrayTree::new(tree.span);
-    let child = tree
-      .entries
-      .iter()
-      .filter_map(|entry| match &entry.node {
-        InitNode::List(child) => Some(child),
-        InitNode::Scalar(_) => None,
-      })
-      .max_by_key(|child| child.max_index)
-      .unwrap_or(&fallback);
-
-    let completed_element = if array.element_type.is_array() {
-      self.complete_array_type_from_tree(array.element_type, child)
-    } else {
-      array.element_type
-    };
-
-    let completed_size = match array.size {
-      ast::ArraySize::Constant(size) => ast::ArraySize::Constant(size),
-      ast::ArraySize::Incomplete | ast::ArraySize::Variable(_) =>
-        ast::ArraySize::Constant(tree.max_index.saturating_add(1)),
-    };
-
-    ast::Type::Array(ast::Array::new(completed_element, completed_size))
-      .lookup(self.context())
-      .into()
-  }
-
   fn make_singleton_array_type(
     &self,
     element_type: QualifiedType<'c>,
@@ -369,21 +330,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
 
     // struct/union unimplemented
     while let ast::Type::Array(array) = object_type.unqualified_type {
-      let stride = self.scalar_leaf_width(array.element_type);
-
-      if self.all_recovery && matches!(array.size, ast::ArraySize::Variable(_))
-      {
-        path.push(0);
-        object_type = array.element_type;
-        continue;
-      }
-
-      if stride == 0 {
-        path.push(0);
-        object_type = array.element_type;
-        continue;
-      }
-
+      let stride = self.scalar_leaf_width(array.element_type).max(1);
       let index = flat_index / stride;
       path.push(index);
       flat_index %= stride;
@@ -420,18 +367,6 @@ impl<'i, 'c> Initialization<'i, 'c> {
           );
         },
         pd::Initializer::Expression(expression) => {
-          if Self::is_character_array_type(target_type)
-            && Self::is_parse_string_literal(&expression)
-          {
-            self.record_array_node(
-              state,
-              object_path,
-              InitNode::Scalar(expression),
-              kind,
-            );
-            return;
-          }
-
           // scalar-to-aggregate brace elision: initialize the first scalar leaf.
           let (mut rel_path, _) =
             self.rel_scalar_path_from_flat(target_type, 0);
@@ -681,27 +616,6 @@ impl<'i, 'c> Initialization<'i, 'c> {
           return;
         }
 
-        if element_type.is_array()
-          && Self::is_character_array_type(element_type)
-          && Self::is_parse_string_literal(&expression)
-        {
-          let object_index = *cursor_flat / element_scalar_width;
-          let mut object_path = prefix.to_vec();
-          object_path.push(object_index);
-          self.consume_object_initializer(
-            pd::Initializer::Expression(expression),
-            element_type,
-            object_path,
-            state,
-            Implicit,
-          );
-
-          let next_object =
-            (*cursor_flat / element_scalar_width).saturating_add(1);
-          *cursor_flat = next_object.saturating_mul(element_scalar_width);
-          return;
-        }
-
         if element_type.is_array() {
           let mut rel_path =
             self.rel_scalar_path_from_flat(array_type, *cursor_flat).0;
@@ -852,20 +766,6 @@ impl<'i, 'c> Initialization<'i, 'c> {
       ast::Type::Primitive(
         ast::Primitive::Char | ast::Primitive::SChar | ast::Primitive::UChar
       )
-    )
-  }
-
-  fn is_character_array_type(target_type: QualifiedType<'c>) -> bool {
-    match target_type.unqualified_type {
-      ast::Type::Array(array) => Self::is_character_type(array.element_type),
-      _ => false,
-    }
-  }
-
-  fn is_parse_string_literal(expression: &pe::Expression<'c>) -> bool {
-    matches!(
-      expression,
-      pe::Expression::Constant(constant) if constant.inner.is_char_array()
     )
   }
 

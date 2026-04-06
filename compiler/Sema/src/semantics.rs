@@ -186,16 +186,8 @@ impl<'c> Sema<'c> {
                       );
                       ArraySize::Constant(0)
                     },
-                  Failure(_vla) => {
-                    self.add_error(
-                      UnsupportedFeature(
-                        "VLA is not supported yet; treating as incomplete for \
-                         recovery"
-                          .to_string(),
-                      ),
-                      analyzed_expr.span(),
-                    );
-                    ArraySize::Incomplete
+                  Failure(_) => {
+                    todo!("VLA not supported")
                   },
                 }
               } else {
@@ -759,7 +751,6 @@ impl<'c> Sema<'c> {
               storage,
               Some(Storage::Constexpr | Storage::Static | Storage::ThreadLocal)
             ),
-          false,
         )
       });
       if let Some((initializer, qualified_type)) = out {
@@ -779,14 +770,8 @@ impl<'c> Sema<'c> {
         "variable cannot have function specifier; this should be handled in \
          parser"
       );
-      let errors_before_typing = self.diag().errors().len();
       let raw_qualified_type =
         self.apply_modifiers_for_varty(raw_qualified_type, modifiers);
-      let recovery_from_typing =
-        self.diag().errors().len() > errors_before_typing;
-      let recover_ilist = self
-        .should_recover_initializer(Some(raw_qualified_type))
-        || recovery_from_typing;
       let out = initializer.map(|initializer| {
         self.initializer(
           initializer,
@@ -796,7 +781,6 @@ impl<'c> Sema<'c> {
               storage,
               Some(Storage::Constexpr | Storage::Static | Storage::ThreadLocal)
             ),
-          recover_ilist,
         )
       });
       if let Some((initializer, qualified_type)) = out {
@@ -908,35 +892,8 @@ impl<'c> Sema<'c> {
     initializer: pd::Initializer<'c>,
     target_type: Option<QualifiedType<'c>>,
     requires_folding: bool,
-    all_recovery: bool,
   ) -> (sd::Initializer<'c>, QualifiedType<'c>) {
-    Initialization::new(self, requires_folding, all_recovery)
-      .doit(initializer, target_type)
-  }
-
-  fn should_recover_initializer(
-    &self,
-    target_type: Option<QualifiedType<'c>>,
-  ) -> bool {
-    let Some(mut target_type) = target_type else {
-      return false;
-    };
-
-    let mut depth: usize = 0;
-    while let Type::Array(array) = target_type.unqualified_type {
-      if matches!(array.size, ArraySize::Variable(_)) {
-        return true;
-      }
-
-      if depth > 0 && matches!(array.size, ArraySize::Incomplete) {
-        return true;
-      }
-
-      depth = depth.saturating_add(1);
-      target_type = array.element_type;
-    }
-
-    false
+    Initialization::new(self, requires_folding).doit(initializer, target_type)
   }
 
   fn global_vardef(

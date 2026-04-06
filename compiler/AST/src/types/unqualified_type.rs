@@ -90,6 +90,12 @@ impl<'c> Type<'c> {
     }
   }
 
+  pub fn is_character_type(&self) -> bool {
+    self
+      .as_primitive()
+      .is_some_and(Primitive::is_character_type)
+  }
+
   pub fn lookup(self, context: &Context<'c>) -> TypeRef<'c> {
     context.intern(self)
   }

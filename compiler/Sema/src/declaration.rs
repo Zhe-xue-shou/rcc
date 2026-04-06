@@ -62,19 +62,19 @@ pub struct InitializerList<'c> {
 
 #[derive(Debug)]
 pub struct InitializerListEntry<'c> {
-  pub designators: &'c [Designator<'c>],
+  pub designator: Designator<'c>,
   initializer: Initializer<'c>,
   pub is_implicit: bool,
 }
 
 impl<'c> InitializerListEntry<'c> {
   pub fn new(
-    designators: &'c [Designator<'c>],
+    designators: Designator<'c>,
     initializer: Initializer<'c>,
     is_implicit: bool,
   ) -> Self {
     Self {
-      designators,
+      designator: designators,
       initializer,
       is_implicit,
     }
@@ -328,12 +328,11 @@ mod fmt {
           write!(f, ", ")?;
         }
 
-        for designator in entry.designators.iter() {
-          match designator {
-            Designator::Array(index) => write!(f, "[{}]", index)?,
-            Designator::Field(_) => write!(f, ".<field>")?,
-          }
+        match entry.designator {
+          Designator::Array(index) => write!(f, "[{}]", index)?,
+          Designator::Field(_) => write!(f, ".<field>")?,
         }
+
         write!(f, " = {}", entry.initializer())?;
       }
 

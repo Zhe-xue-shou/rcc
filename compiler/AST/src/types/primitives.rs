@@ -149,6 +149,11 @@ impl Primitive {
       signed_and_unsigned(lhs, rhs)
     }
   }
+
+  pub const fn is_character_type(&self) -> bool {
+    use Primitive::*;
+    matches!(self, Char | UChar | SChar)
+  }
 }
 use ::rcc_adt::FloatFormat;
 

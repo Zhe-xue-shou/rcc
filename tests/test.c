@@ -2,7 +2,7 @@
 char s1[] = "abc";
 
 // Valid: 'a', 'b', 'c'. No null terminator added because size is explicit.
-char s2[3] = "abc";
+char s2[4] = "abc";
 
 // Error: String too long for the array
 char s3[2] = "abc";

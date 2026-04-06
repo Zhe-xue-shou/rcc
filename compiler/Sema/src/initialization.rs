@@ -5,9 +5,13 @@
 //!
 //! ### Implementation Note:
 //! - C99 designated initializers and brace elision is one of the **most complex parts** I've ever implemented!!!
-//! - Struct and union initializers are not implemented yet.
 //! - The implementation is currently focused on correctness and clarity rather than performance.
 //!   I know there's a lot of room for optimization, but I want to get it working first.
+//!
+//! ### todos:
+//! - [`SourceSpan`] handling is very bad.
+//! - Struct and union initializers are not implemented yet.
+//! - VLA is out of consideration. it's simple here, but the upstream has blocked it as [`unimplemented!`].
 //!
 
 use ::rcc_ast::types::{self as ast, QualifiedType, TypeInfo};
@@ -20,6 +24,7 @@ use crate::{Sema, declaration as sd, expression as se, semantics::HandleWith};
 
 #[allow(non_upper_case_globals)]
 const npos: usize = sd::Designator::npos;
+/// See the [Module level](self) for more information.
 pub struct Initialization<'i, 'c>
 where
   'c: 'i,
@@ -90,6 +95,7 @@ struct ArrayTree<'c> {
 }
 
 impl<'c> ArrayTree<'c> {
+  #[inline]
   fn new(span: SourceSpan) -> Self {
     Self {
       span,
@@ -98,7 +104,7 @@ impl<'c> ArrayTree<'c> {
   }
 
   #[inline]
-  fn note_index(&mut self, index: usize) {
+  fn update_max_index(&mut self, index: usize) {
     if index == npos {
       return;
     }
@@ -111,7 +117,7 @@ impl<'c> ArrayTree<'c> {
     node: InitNode<'c>,
     is_implicit: bool,
   ) -> bool {
-    self.note_index(index);
+    self.update_max_index(index);
     if let Some(&pos) = self.positions.get(&index) {
       let entry = &mut self.entries[pos];
       entry.node = node;
@@ -140,9 +146,8 @@ impl<'c> ArrayTree<'c> {
       return self.insert_leaf(index, node, is_implicit);
     }
 
-    self.note_index(index);
+    self.update_max_index(index);
 
-    let span = node.span();
     let pos = if let Some(&pos) = self.positions.get(&index) {
       pos
     } else {
@@ -150,7 +155,7 @@ impl<'c> ArrayTree<'c> {
       self.positions.insert(index, pos);
       self.entries.push(TreeEntry::new(
         index,
-        InitNode::List(ArrayTree::new(span)),
+        InitNode::List(ArrayTree::new(node.span())),
         is_implicit,
       ));
       pos
@@ -160,7 +165,7 @@ impl<'c> ArrayTree<'c> {
     entry.is_implicit = is_implicit;
 
     let is_overridden = if !matches!(entry.node, InitNode::List(_)) {
-      entry.node = InitNode::List(ArrayTree::new(span));
+      entry.node = InitNode::List(ArrayTree::new(node.span()));
       true
     } else {
       false
@@ -205,8 +210,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
       self.scalar(expr, target_type.unwrap_or(self.ast().void_type().into()));
     let qualified_type = match target_type {
       None => *scalar.qualified_type(),
-      Some(target_type) =>
-        self.complete_array_type_from_string_if_eligible(target_type, scalar),
+      Some(target_type) => self.complete_type_if_eligible(target_type, scalar),
     };
 
     (scalar.into(), qualified_type)
@@ -218,48 +222,15 @@ impl<'i, 'c> Initialization<'i, 'c> {
     target_type: Option<QualifiedType<'c>>,
   ) -> (sd::Initializer<'c>, QualifiedType<'c>) {
     match target_type {
-      Some(target_type) => match target_type.unqualified_type {
-        ast::Type::Array(ast::Array {
-          size: ast::ArraySize::Incomplete,
-          ..
-        }) => self.top_incomplete_dimension(list, target_type),
-        _ => (self.list(list, target_type).into(), target_type),
+      Some(target_type) => {
+        let (list, inferred_type) = self.list(list, target_type);
+        (list.into(), inferred_type)
       },
       None => {
         self.add_error(DeducedTypeWithBracedInitializer, list.span);
         (self.__empty_expr.into(), self.ast().void_type().into())
       },
     }
-  }
-
-  fn top_incomplete_dimension(
-    &self,
-    list: pd::InitializerList<'c>,
-    incomplete_array_type: QualifiedType<'c>,
-  ) -> (sd::Initializer<'c>, QualifiedType<'c>) {
-    let pd::InitializerList { entries, span } = list;
-
-    let mut state = ArrayTree::new(span);
-    self.consume_array_ilist(
-      entries,
-      incomplete_array_type,
-      Vec::default(),
-      &mut state,
-    );
-
-    let inferred_size = state.max_index.saturating_add(1);
-    let qualified_type = ast::Type::Array(ast::Array::new(
-      incomplete_array_type.as_array_unchecked().element_type,
-      ast::ArraySize::Constant(inferred_size),
-    ))
-    .lookup(self.context())
-    .into();
-    let entries = self.materialize_array_entries(state, qualified_type);
-
-    (
-      sd::Initializer::List(sd::InitializerList::new(entries, span)),
-      qualified_type,
-    )
   }
 }
 /// Commons.
@@ -268,25 +239,32 @@ impl<'i, 'c> Initialization<'i, 'c> {
     &self,
     list: pd::InitializerList<'c>,
     target_type: QualifiedType<'c>,
-  ) -> sd::InitializerList<'c> {
+  ) -> (sd::InitializerList<'c>, QualifiedType<'c>) {
     let pd::InitializerList { entries, span } = list;
 
-    let entries = match target_type.unqualified_type {
-      init_type if init_type.is_scalar() => self.array(
-        entries,
-        ast::Type::Array(ast::Array::new(
-          target_type,
-          ast::ArraySize::Constant(1),
-        ))
-        .lookup(self.context())
-        .into(),
-      ),
-      ast::Type::Array(_) => self.array(entries, target_type),
-      _ => {
-        todo!("struct/union initializer")
-      },
-    };
-    sd::InitializerList::new(entries, span)
+    if target_type.is_scalar() {
+      let (entries, _inferred) =
+        self.array(entries, self.make_singleton_array_type(target_type));
+      (sd::InitializerList::new(entries, span), target_type)
+    } else if target_type.is_array() {
+      let (entries, inferred_type) = self.array(entries, target_type);
+      (sd::InitializerList::new(entries, span), inferred_type)
+    } else {
+      self.add_error(
+        UnsupportedFeature(
+          "Struct/union initializer not implemented yet".to_string(),
+        ),
+        span,
+      );
+      // ik the code here is a mess but idc this unimpltmtend amatch arm
+      let pesudo_entry =
+        self.ast().arena().alloc([sd::InitializerListEntry::new(
+          sd::Designator::Array(npos),
+          sd::Initializer::Scalar(self.__empty_expr),
+          true,
+        )]);
+      (sd::InitializerList::new(pesudo_entry, span), target_type)
+    }
   }
 
   fn scalar(
@@ -330,7 +308,15 @@ impl<'i, 'c> Initialization<'i, 'c> {
 
     // struct/union unimplemented
     while let ast::Type::Array(array) = object_type.unqualified_type {
-      let stride = self.scalar_leaf_width(array.element_type).max(1);
+      let stride = self.scalar_leaf_width(array.element_type);
+      if stride == 0 {
+        // unknown downstream extent. keep this dimension at zero and let
+        // deeper dimensions absorb the flat cursor for recovery.
+        path.push(0);
+        object_type = array.element_type;
+        continue;
+      }
+
       let index = flat_index / stride;
       path.push(index);
       flat_index %= stride;
@@ -367,6 +353,16 @@ impl<'i, 'c> Initialization<'i, 'c> {
           );
         },
         pd::Initializer::Expression(expression) => {
+          if Self::is_char_array_string_literal(&expression, target_type) {
+            self.record_array_node(
+              state,
+              object_path,
+              InitNode::Scalar(expression),
+              kind,
+            );
+            return;
+          }
+
           // scalar-to-aggregate brace elision: initialize the first scalar leaf.
           let (mut rel_path, _) =
             self.rel_scalar_path_from_flat(target_type, 0);
@@ -442,11 +438,102 @@ impl<'i, 'c> Initialization<'i, 'c> {
     &self,
     entries: Vec<pd::InitializerListEntry<'c>>,
     array_type: QualifiedType<'c>,
-  ) -> &'c [sd::InitializerListEntry<'c>] {
+  ) -> (&'c [sd::InitializerListEntry<'c>], QualifiedType<'c>) {
     let mut state = ArrayTree::new(Default::default());
     self.consume_array_ilist(entries, array_type, Vec::default(), &mut state);
 
-    self.materialize_array_entries(state, array_type)
+    let inferred_type = self.infer_array_type(array_type, &state);
+    (
+      self.materialize_array_entries(state, inferred_type),
+      inferred_type,
+    )
+  }
+
+  fn infer_array_type(
+    &self,
+    array_type: QualifiedType<'c>,
+    tree: &ArrayTree<'c>,
+  ) -> QualifiedType<'c> {
+    let ast::Type::Array(array) = array_type.unqualified_type else {
+      return array_type;
+    };
+
+    let element_type = if array.element_type.is_array() {
+      self.infer_child_element_type(array.element_type, tree)
+    } else {
+      array.element_type
+    };
+
+    use ast::ArraySize::*;
+
+    let size = match array.size {
+      Constant(size) => Constant(size),
+      Incomplete => Constant(tree.max_index.saturating_add(1)),
+      Variable(_) => {
+        self.add_error(
+          UnsupportedFeature("VLA initializer not supported".to_string()),
+          tree.span,
+        );
+        Constant(tree.max_index.saturating_add(1))
+      },
+    };
+
+    ast::Type::Array(ast::Array::new(element_type, size))
+      .lookup(self.context())
+      .into()
+  }
+
+  fn infer_child_element_type(
+    &self,
+    default_element_type: QualifiedType<'c>,
+    tree: &ArrayTree<'c>,
+  ) -> QualifiedType<'c> {
+    let mut inferred = None;
+
+    for entry in &tree.entries {
+      if let InitNode::List(child) = &entry.node {
+        let child_inferred = self.infer_array_type(default_element_type, child);
+        inferred = Some(match inferred {
+          None => child_inferred,
+          Some(prev) => self.merge_array_types_max(prev, child_inferred),
+        });
+      }
+    }
+
+    inferred.unwrap_or(default_element_type)
+  }
+
+  fn merge_array_types_max(
+    &self,
+    lhs: QualifiedType<'c>,
+    rhs: QualifiedType<'c>,
+  ) -> QualifiedType<'c> {
+    let (ast::Type::Array(lhs_array), ast::Type::Array(rhs_array)) =
+      (lhs.unqualified_type, rhs.unqualified_type)
+    else {
+      return lhs;
+    };
+
+    let element_type = if lhs_array.element_type.is_array()
+      && rhs_array.element_type.is_array()
+    {
+      self.merge_array_types_max(lhs_array.element_type, rhs_array.element_type)
+    } else {
+      lhs_array.element_type
+    };
+    use ast::ArraySize::*;
+
+    let size = match (lhs_array.size, rhs_array.size) {
+      (Variable(_), _) | (_, Variable(_)) => todo!("VLA not supported"),
+      (Constant(lhs), Constant(rhs)) => Constant(lhs.max(rhs)),
+      (Constant(lhs), Incomplete) => Constant(lhs),
+      (Incomplete, Constant(rhs)) => Constant(rhs),
+      (Incomplete, Incomplete) => Incomplete,
+    };
+
+    ast::Type::Array(ast::Array::new(element_type, size))
+      .lookup(self.context())
+      .into()
   }
 
   fn resolve_array_designator_path(
@@ -508,63 +595,72 @@ impl<'i, 'c> Initialization<'i, 'c> {
     state: &mut ArrayTree<'c>,
   ) {
     let mut cursor_flat: usize = 0;
-    let element_scalar_width = self
-      .scalar_leaf_width(array_type.as_array_unchecked().element_type)
-      .max(1);
+    let element_scalar_width = Ord::max(
+      self.scalar_leaf_width(array_type.as_array_unchecked().element_type),
+      1,
+    );
 
-    for entry in entries {
-      match entry {
-        pd::InitializerListEntry::Designated(designated) => {
-          let pd::Designated {
-            designators,
-            initializer,
-            span,
-          } = designated;
+    entries.into_iter().for_each(|entry| match entry {
+      pd::InitializerListEntry::Initializer(initializer) => self
+        .consume_anonymous_array_entry(
+          initializer,
+          array_type,
+          &prefix,
+          &mut cursor_flat,
+          element_scalar_width,
+          state,
+        ),
+      pd::InitializerListEntry::Designated(designated) => self
+        .consume_designated_array_entry(
+          array_type,
+          &prefix,
+          state,
+          &mut cursor_flat,
+          element_scalar_width,
+          designated,
+        ),
+    });
+  }
 
-          let (rel_path, designated_type) =
-            self.resolve_array_designator_path(designators, array_type, span);
-
-          let mut rel_path = rel_path;
-          if rel_path.is_empty() {
-            rel_path.push(npos);
-          }
-          if rel_path.contains(&npos) {
-            continue;
-          }
-
-          let first_index = rel_path[0];
-          if first_index != npos {
-            cursor_flat = first_index.saturating_mul(element_scalar_width);
-          }
-
-          let mut object_path = prefix.clone();
-          object_path.extend(rel_path);
-          self.consume_object_initializer(
-            initializer,
-            designated_type,
-            object_path,
-            state,
-            Explicit,
-          );
-
-          if first_index != npos {
-            cursor_flat = first_index
-              .saturating_add(1)
-              .saturating_mul(element_scalar_width);
-          }
-        },
-        pd::InitializerListEntry::Initializer(initializer) => {
-          self.consume_anonymous_array_entry(
-            initializer,
-            array_type,
-            &prefix,
-            &mut cursor_flat,
-            element_scalar_width,
-            state,
-          );
-        },
-      }
+  fn consume_designated_array_entry(
+    &self,
+    array_type: QualifiedType<'c>,
+    prefix: &[usize],
+    state: &mut ArrayTree<'c>,
+    cursor_flat: &mut usize,
+    element_scalar_width: usize,
+    designated: pd::Designated<'c>,
+  ) {
+    let pd::Designated {
+      designators,
+      initializer,
+      span,
+    } = designated;
+    let (relative_path, designated_type) =
+      self.resolve_array_designator_path(designators, array_type, span);
+    if relative_path.is_empty() || relative_path.contains(&npos) {
+      return;
     }
+    let first_index = relative_path[0];
+
+    debug_assert!(first_index != npos);
+
+    *cursor_flat = first_index.saturating_mul(element_scalar_width);
+
+    let mut object_path = prefix.to_owned();
+    object_path.extend(relative_path);
+    self.consume_object_initializer(
+      initializer,
+      designated_type,
+      object_path,
+      state,
+      Explicit,
+    );
+    debug_assert!(first_index != npos);
+
+    *cursor_flat = first_index
+      .saturating_add(1)
+      .saturating_mul(element_scalar_width);
   }
 
   fn consume_anonymous_array_entry(
@@ -617,6 +713,32 @@ impl<'i, 'c> Initialization<'i, 'c> {
         }
 
         if element_type.is_array() {
+          if Self::is_char_array_string_literal(&expression, element_type) {
+            let object_index = *cursor_flat / element_scalar_width;
+            if let Some(bound) = array_bound
+              && object_index >= bound
+            {
+              self.add_warning(ExcessElemInInitializer, expression.span());
+              *cursor_flat = cursor_flat.saturating_add(1);
+              return;
+            }
+
+            let mut object_path = prefix.to_vec();
+            object_path.push(object_index);
+            self.consume_object_initializer(
+              pd::Initializer::Expression(expression),
+              element_type,
+              object_path,
+              state,
+              Implicit,
+            );
+
+            *cursor_flat = object_index
+              .saturating_add(1)
+              .saturating_mul(element_scalar_width);
+            return;
+          }
+
           let mut rel_path =
             self.rel_scalar_path_from_flat(array_type, *cursor_flat).0;
           let mut full_path = prefix.to_vec();
@@ -629,7 +751,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
           );
         } else {
           let object_index = *cursor_flat;
-          let mut full_path = prefix.to_vec();
+          let mut full_path = prefix.to_owned();
           full_path.push(object_index);
           self.record_array_node(
             state,
@@ -660,9 +782,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
     if state.insert_path(&path, node, kind.is_implicit()) {
       /// Diag helper. render a designator path like `[0][2][3]`.
       fn render_array_path(path: &[usize]) -> String {
-        if path.is_empty() {
-          return String::from("<root>");
-        }
+        debug_assert!(!path.is_empty());
 
         let mut rendered = String::with_capacity(path.len() * 4);
 
@@ -685,19 +805,12 @@ impl<'i, 'c> Initialization<'i, 'c> {
       .entries
       .into_iter()
       .map(|entry| {
-        let designators = [sd::Designator::Array(entry.index)]
-          .into_iter()
-          .collect_in::<ArenaVec<_>>(self.context().arena())
-          .into_bump_slice();
-
-        let initializer = self.materialize_node(
-          entry.node,
-          array_type.as_array_unchecked().element_type,
-        );
-
         sd::InitializerListEntry::new(
-          designators,
-          initializer,
+          sd::Designator::Array(entry.index),
+          self.materialize_node(
+            entry.node,
+            array_type.as_array_unchecked().element_type,
+          ),
           entry.is_implicit,
         )
       })
@@ -731,7 +844,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
 }
 /// helpers
 impl<'i, 'c> Initialization<'i, 'c> {
-  fn complete_array_type_from_string_if_eligible(
+  fn complete_type_if_eligible(
     &self,
     target_type: QualifiedType<'c>,
     expr: se::ExprRef<'c>,
@@ -741,7 +854,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
     };
 
     if !matches!(array.size, ast::ArraySize::Incomplete)
-      || !Self::is_character_type(array.element_type)
+      || !array.element_type.is_character_type()
     {
       return target_type;
     }
@@ -760,21 +873,25 @@ impl<'i, 'c> Initialization<'i, 'c> {
     .into()
   }
 
-  fn is_character_type(target_type: QualifiedType<'c>) -> bool {
-    matches!(
-      target_type.unqualified_type,
-      ast::Type::Primitive(
-        ast::Primitive::Char | ast::Primitive::SChar | ast::Primitive::UChar
-      )
-    )
-  }
-
   fn string_literal_len(expr: se::ExprRef<'c>) -> Option<usize> {
     expr
       .raw_expr()
       .as_constant()
       .and_then(|constant| constant.as_string())
       .map(|&string| string.len())
+  }
+
+  fn is_char_array_string_literal(
+    expression: &pe::Expression<'c>,
+    target_type: QualifiedType<'c>,
+  ) -> bool {
+    target_type
+      .as_array()
+      .is_some_and(|arr| arr.element_type.is_character_type())
+      && matches!(
+        expression,
+        pe::Expression::Constant(constant) if constant.inner.is_string()
+      )
   }
 
   fn assign_cvt_if_eligible(
@@ -784,7 +901,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
   ) -> se::ExprRef<'c> {
     // NASTY EXCEPTION: character arrays initialized with strings
     if let ast::Type::Array(array) = target_type.unqualified_type
-      && Self::is_character_type(array.element_type)
+      && array.element_type.is_character_type()
       && let Some(string_len) = Self::string_literal_len(expr)
     {
       if let Some(bound) = array.size_opt()

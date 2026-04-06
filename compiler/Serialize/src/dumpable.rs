@@ -840,14 +840,12 @@ impl<'c> Dumpable<'c> for InitializerListEntry<'_> {
     dumper.newline();
 
     let subprefix = dumper.child_prefix(prefix, is_last);
-    self.designators.iter().for_each(|designator| {
-      designator.dump(
-        dumper,
-        &subprefix,
-        /* is_implicit = */ self.is_implicit,
-        palette,
-      )
-    });
+    self.designator.dump(
+      dumper,
+      &subprefix,
+      /* is_implicit = */ self.is_implicit,
+      palette,
+    );
 
     self.initializer().dump(dumper, &subprefix, true, old);
   }

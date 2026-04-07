@@ -706,10 +706,12 @@ impl<'c> Dumpable<'c> for VarDef<'_> {
     );
     dumper.write("]\n", &palette.skeleton);
 
+    let subprefix = dumper.child_prefix(prefix, is_last);
     if let Some(initializer) = &self.initializer {
-      let subprefix = dumper.child_prefix(prefix, is_last);
       initializer.dump(dumper, &subprefix, true, palette);
     }
+    dumper.write(subprefix, &palette.skeleton);
+    dumper.newline();
   }
 }
 impl<'c> Dumpable<'c> for Function<'_> {
@@ -752,10 +754,12 @@ impl<'c> Dumpable<'c> for Function<'_> {
     );
     dumper.write("]\n", &palette.skeleton);
 
+    let subprefix = dumper.child_prefix(prefix, is_last);
     if let Some(body) = &self.body {
-      let subprefix = dumper.child_prefix(prefix, is_last);
       body.dump(dumper, &subprefix, true, palette);
     }
+    dumper.write(subprefix, &palette.skeleton);
+    dumper.newline();
   }
 }
 
@@ -789,29 +793,14 @@ impl<'c> Dumpable<'c> for InitializerList<'_> {
     dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
     self.span.dump(dumper, prefix, is_last, palette);
 
-    match self.len() {
-      0 => dumper.write("zeroinit\n", &palette.info),
-      1 => {
-        // if it's only one entry, just flatten it instead of nesting it under an InitializerList node.
-        dumper.newline();
-        // if the designator is implicit, dont show it.
-        let entry = &self.entries[0];
-        let subprefix = dumper.child_prefix(prefix, is_last);
-        if entry.is_implicit {
-          entry
-            .initializer()
-            .dump(dumper, &subprefix, is_last, palette);
-        } else {
-          entry.dump(dumper, &subprefix, is_last, palette);
-        }
-      },
-      _ => {
-        dumper.newline();
-        let subprefix = dumper.child_prefix(prefix, is_last);
-        self.entries.iter().enumerate().for_each(|(i, entry)| {
-          entry.dump(dumper, &subprefix, i == self.entries.len() - 1, palette)
-        });
-      },
+    if self.is_empty() {
+      dumper.write("zeroinit\n", &palette.info)
+    } else {
+      dumper.newline();
+      let subprefix = dumper.child_prefix(prefix, is_last);
+      self.entries.iter().enumerate().for_each(|(i, entry)| {
+        entry.dump(dumper, &subprefix, i == self.entries.len() - 1, palette)
+      });
     }
   }
 }
@@ -824,51 +813,38 @@ impl<'c> Dumpable<'c> for InitializerListEntry<'_> {
     is_last: bool,
     palette: &Palette,
   ) {
-    let old = palette;
-    let palette = if self.is_implicit {
+    let dimmed = if self.is_implicit {
       &Palette::dimmed()
     } else {
       palette
     };
-
     dumper.print_indent(prefix, is_last);
-    dumper.write("Designated", &palette.node);
-    dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
+
+    dumper.write("Designated", &dimmed.node);
+    dumper.write_fmt(format_args!(" {:p} ", self), &dimmed.dim);
+
+    self.designator.dump(dumper, prefix, false, dimmed);
+
     if self.is_implicit {
-      dumper.write("implicit", &palette.info);
+      dumper.write(" implicit ", &dimmed.info);
     }
+
     dumper.newline();
 
     let subprefix = dumper.child_prefix(prefix, is_last);
-    self.designator.dump(
-      dumper,
-      &subprefix,
-      /* is_implicit = */ self.is_implicit,
-      palette,
-    );
-
-    self.initializer().dump(dumper, &subprefix, true, old);
+    self.initializer.dump(dumper, &subprefix, true, palette);
   }
 }
 
 impl<'c> Dumpable<'c> for Designator<'_> {
+  #[inline]
   fn dump(
     &self,
     dumper: &mut impl Dumper<'c>,
-    prefix: &str,
-    is_implicit: bool,
+    _prefix: &str,
+    _is_last: bool,
     palette: &Palette,
   ) {
-    let palette = if is_implicit {
-      &Palette::dimmed()
-    } else {
-      palette
-    };
-
-    dumper.print_indent(prefix, false);
-    dumper.write("Designator", &palette.node);
-    dumper.write_fmt(format_args!(" {:p} ", self), &palette.dim);
-
     match self {
       Self::Array(index) =>
         if *index == Designator::npos {
@@ -879,8 +855,6 @@ impl<'c> Dumpable<'c> for Designator<'_> {
         },
       Self::Field(_) => todo!(),
     }
-
-    dumper.newline();
   }
 }
 

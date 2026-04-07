@@ -49,6 +49,8 @@ pub struct Parameter<'c> {
 #[derive(Debug)]
 pub enum Initializer<'c> {
   /// fixme: dont do [`ExprRef`] here but store a real expr so that we have cache locality.
+  ///
+  /// FAILED: Don't try to do this once the 1k LOC is done...
   Scalar(ExprRef<'c>),
   List(InitializerList<'c>),
 }
@@ -63,7 +65,7 @@ pub struct InitializerList<'c> {
 #[derive(Debug)]
 pub struct InitializerListEntry<'c> {
   pub designator: Designator<'c>,
-  initializer: Initializer<'c>,
+  pub initializer: Initializer<'c>,
   pub is_implicit: bool,
 }
 
@@ -78,10 +80,6 @@ impl<'c> InitializerListEntry<'c> {
       initializer,
       is_implicit,
     }
-  }
-
-  pub fn initializer(&self) -> &Initializer<'c> {
-    &self.initializer
   }
 }
 
@@ -333,7 +331,7 @@ mod fmt {
           Designator::Field(_) => write!(f, ".<field>")?,
         }
 
-        write!(f, " = {}", entry.initializer())?;
+        write!(f, " = {}", entry.initializer)?;
       }
 
       if !self.entries.is_empty() {

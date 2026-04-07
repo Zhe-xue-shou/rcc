@@ -5,7 +5,7 @@ use ::rcc_ir::{
 use ::rcc_lex::Lexer;
 use ::rcc_parse::Parser;
 use ::rcc_sema::Sema;
-use ::rcc_serialize::{render_ast, render_ir};
+use ::rcc_serialize::{ASTDumper, IRPrinter};
 use ::rcc_shared::{Arena, Diagnosis, OpDiag, SourceManager};
 use ::rcc_utils::DisplayWith;
 enum Stage {
@@ -104,7 +104,16 @@ fn pipeline(manager: SourceManager, stage: Stage, pretty_print: bool) -> i32 {
   let mut analyzer = Sema::new(program, &ast_session);
   let translation_unit = analyzer.analyze();
 
-  render_ast(&translation_unit, &ast_session).unwrap();
+  ASTDumper::dump(&translation_unit, &ast_session).unwrap();
+
+  if ast_session.diag().has_warnings() {
+    eprintln!("Analyzer warnings:");
+    ast_session
+      .diag()
+      .warnings()
+      .iter()
+      .for_each(|e| eprintln!("{}", e.display_with(ast_session.src())));
+  }
 
   if ast_session.diag().has_errors() {
     eprintln!("Analyzer errors:");
@@ -123,14 +132,6 @@ fn pipeline(manager: SourceManager, stage: Stage, pretty_print: bool) -> i32 {
     println!("Analyze succeeded.");
   }
 
-  if ast_session.diag().has_warnings() {
-    eprintln!("Analyzer warnings:");
-    ast_session
-      .diag()
-      .warnings()
-      .iter()
-      .for_each(|e| eprintln!("{}", e.display_with(ast_session.src())));
-  }
   if let Stage::Analyze = stage {
     return 0;
   }
@@ -144,8 +145,8 @@ fn pipeline(manager: SourceManager, stage: Stage, pretty_print: bool) -> i32 {
   );
   let builder = IREmitter::new(&session);
 
-  let m = builder.build(translation_unit);
-  render_ir(&m, &session).unwrap();
+  let module = builder.build(translation_unit);
+  IRPrinter::print(&module, &session).unwrap();
   0
 }
 

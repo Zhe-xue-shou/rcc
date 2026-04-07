@@ -158,6 +158,7 @@ impl Palette {
     }
   }
 
+  /// A dimmed palette. Useful for less important info.
   pub fn dimmed() -> Self {
     let dimmed = ColorSpec::new()
       .set_fg(Some(Color::White))

@@ -104,6 +104,11 @@ impl<'c> ArrayTree<'c> {
   }
 
   #[inline]
+  fn is_empty(&self) -> bool {
+    self.entries.is_empty()
+  }
+
+  #[inline]
   fn update_max_index(&mut self, index: usize) {
     if index == npos {
       return;
@@ -299,7 +304,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
       .into()
   }
 
-  fn rel_scalar_path_from_flat(
+  fn relative_scalar_path_from_flat(
     &self,
     mut object_type: QualifiedType<'c>,
     mut flat_index: usize,
@@ -339,12 +344,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
         pd::Initializer::InitializerList(list) => {
           let pd::InitializerList { entries, span } = list;
           let mut local_state = ArrayTree::new(span);
-          self.consume_array_ilist(
-            entries,
-            target_type,
-            Vec::default(),
-            &mut local_state,
-          );
+          self.consume_array_ilist(entries, target_type, &[], &mut local_state);
           self.record_array_node(
             state,
             object_path,
@@ -365,7 +365,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
 
           // scalar-to-aggregate brace elision: initialize the first scalar leaf.
           let (mut rel_path, _) =
-            self.rel_scalar_path_from_flat(target_type, 0);
+            self.relative_scalar_path_from_flat(target_type, 0);
           let mut full_path = object_path;
           full_path.append(&mut rel_path);
           self.record_array_node(
@@ -408,28 +408,85 @@ impl<'i, 'c> Initialization<'i, 'c> {
           InitNode::Scalar(expression),
           kind,
         ),
-        pd::Initializer::InitializerList(list) => {
-          self.add_warning(ExcessBraceAroundScalarInitializer, list.span);
-
-          let mut local_state = ArrayTree::new(list.span);
-          let pseudo_scalar = self.make_singleton_array_type(target_type);
-
-          self.consume_array_ilist(
-            list.entries,
-            pseudo_scalar,
-            Vec::default(),
-            &mut local_state,
-          );
-
-          self.record_array_node(
-            state,
-            object_path,
-            InitNode::List(local_state),
-            kind,
-          );
-        },
+        pd::Initializer::InitializerList(list) => self.consume_braced_scalar(
+          target_type,
+          object_path,
+          state,
+          kind,
+          list,
+        ),
       },
     }
+  }
+
+  fn consume_braced_scalar(
+    &self,
+    target_type: QualifiedType<'c>,
+    object_path: Vec<usize>,
+    state: &mut ArrayTree<'c>,
+    kind: Kind,
+    list: pd::InitializerList<'c>,
+  ) {
+    self.add_warning(ExcessBraceAroundScalarInitializer, list.span);
+
+    let mut local_state = ArrayTree::new(list.span);
+    let pseudo_scalar = self.make_singleton_array_type(target_type);
+    self.consume_array_ilist(
+      list.entries,
+      pseudo_scalar,
+      &[],
+      &mut local_state,
+    );
+
+    // zeroinit.
+    if local_state.is_empty() {
+      self.record_array_node(
+        state,
+        object_path,
+        InitNode::List(local_state),
+        kind,
+      );
+      return;
+    }
+
+    debug_assert!(
+      local_state.entries.len() == 1,
+      "excess elements shall be warned and ignored few lines above, so there \
+       shall be at most one entry here."
+    );
+
+    // dont report error/warning(handled line up), just flatten this.
+    let Some(entry) = local_state.entries.into_iter().next() else {
+      return;
+    };
+    let TreeEntry {
+      node,
+      index,
+      is_implicit,
+    } = entry;
+
+    debug_assert!(
+      index == 0,
+      "shall be handled just inside the ilist call few line above and \
+       `assume`d it as zeroinit."
+    );
+
+    if !is_implicit {
+      self.add_error(
+        DesignatorForNonAggregate(target_type.to_string()),
+        local_state.span,
+      );
+      // continue without recording this entry.
+      return;
+    }
+
+    debug_assert!(
+      !matches!(node, InitNode::List(ref list) if !list.is_empty()),
+      "shall be flattened recursively via the execution of this function \
+       upstream... except it's zeroinit"
+    );
+
+    self.record_array_node(state, object_path, node, kind);
   }
 }
 /// Arrays.
@@ -439,68 +496,14 @@ impl<'i, 'c> Initialization<'i, 'c> {
     entries: Vec<pd::InitializerListEntry<'c>>,
     array_type: QualifiedType<'c>,
   ) -> (&'c [sd::InitializerListEntry<'c>], QualifiedType<'c>) {
-    let mut state = ArrayTree::new(Default::default());
-    self.consume_array_ilist(entries, array_type, Vec::default(), &mut state);
+    let mut state = Default::default();
+    self.consume_array_ilist(entries, array_type, &[], &mut state);
 
     let inferred_type = self.infer_array_type(array_type, &state);
     (
       self.materialize_array_entries(state, inferred_type),
       inferred_type,
     )
-  }
-
-  fn infer_array_type(
-    &self,
-    array_type: QualifiedType<'c>,
-    tree: &ArrayTree<'c>,
-  ) -> QualifiedType<'c> {
-    let ast::Type::Array(array) = array_type.unqualified_type else {
-      return array_type;
-    };
-
-    let element_type = if array.element_type.is_array() {
-      self.infer_child_element_type(array.element_type, tree)
-    } else {
-      array.element_type
-    };
-
-    use ast::ArraySize::*;
-
-    let size = match array.size {
-      Constant(size) => Constant(size),
-      Incomplete => Constant(tree.max_index.saturating_add(1)),
-      Variable(_) => {
-        self.add_error(
-          UnsupportedFeature("VLA initializer not supported".to_string()),
-          tree.span,
-        );
-        Constant(tree.max_index.saturating_add(1))
-      },
-    };
-
-    ast::Type::Array(ast::Array::new(element_type, size))
-      .lookup(self.context())
-      .into()
-  }
-
-  fn infer_child_element_type(
-    &self,
-    default_element_type: QualifiedType<'c>,
-    tree: &ArrayTree<'c>,
-  ) -> QualifiedType<'c> {
-    let mut inferred = None;
-
-    for entry in &tree.entries {
-      if let InitNode::List(child) = &entry.node {
-        let child_inferred = self.infer_array_type(default_element_type, child);
-        inferred = Some(match inferred {
-          None => child_inferred,
-          Some(prev) => self.merge_array_types_max(prev, child_inferred),
-        });
-      }
-    }
-
-    inferred.unwrap_or(default_element_type)
   }
 
   fn merge_array_types_max(
@@ -547,23 +550,21 @@ impl<'i, 'c> Initialization<'i, 'c> {
     for designator in designators {
       match designator {
         pd::Designator::Index(expression) => {
-          let mut index =
-            self.try_fold_to_usize(expression, span).unwrap_or(npos);
+          let index = self.try_fold_to_usize(expression, span);
 
           match target_type.unqualified_type {
             ast::Type::Array(array) => {
               if let ast::ArraySize::Constant(bound) = array.size
-                && index != npos
+                && let Some(index) = index
                 && index >= bound
               {
                 self.add_error(DesignatorIndexOutOfBound(index, bound), span);
-                index = npos;
               }
-              resolved.push(index);
+              resolved.push(index.unwrap_or(npos));
               target_type = array.element_type;
             },
             _ => {
-              if index != npos {
+              if let Some(index) = index {
                 self.add_error(
                   Custom(format!(
                     "designator [{}] cannot be applied to non-array type '{}'",
@@ -591,7 +592,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
     &self,
     entries: Vec<pd::InitializerListEntry<'c>>,
     array_type: QualifiedType<'c>,
-    prefix: Vec<usize>,
+    prefix: &[usize], // always empty for now, but leave rooms for extension...
     state: &mut ArrayTree<'c>,
   ) {
     let mut cursor_flat: usize = 0;
@@ -600,26 +601,47 @@ impl<'i, 'c> Initialization<'i, 'c> {
       1,
     );
 
-    entries.into_iter().for_each(|entry| match entry {
+    entries.into_iter().for_each(|entry| {
+      self.consume_array_entry(
+        array_type,
+        prefix,
+        state,
+        &mut cursor_flat,
+        element_scalar_width,
+        entry,
+      )
+    });
+  }
+
+  fn consume_array_entry(
+    &self,
+    array_type: QualifiedType<'c>,
+    prefix: &[usize],
+    state: &mut ArrayTree<'c>,
+    cursor_flat: &mut usize,
+    element_scalar_width: usize,
+    entry: pd::InitializerListEntry<'c>,
+  ) {
+    match entry {
       pd::InitializerListEntry::Initializer(initializer) => self
         .consume_anonymous_array_entry(
-          initializer,
           array_type,
-          &prefix,
-          &mut cursor_flat,
-          element_scalar_width,
+          prefix,
           state,
+          element_scalar_width,
+          cursor_flat,
+          initializer,
         ),
       pd::InitializerListEntry::Designated(designated) => self
         .consume_designated_array_entry(
           array_type,
-          &prefix,
+          prefix,
           state,
-          &mut cursor_flat,
           element_scalar_width,
+          cursor_flat,
           designated,
         ),
-    });
+    }
   }
 
   fn consume_designated_array_entry(
@@ -627,8 +649,8 @@ impl<'i, 'c> Initialization<'i, 'c> {
     array_type: QualifiedType<'c>,
     prefix: &[usize],
     state: &mut ArrayTree<'c>,
-    cursor_flat: &mut usize,
     element_scalar_width: usize,
+    cursor_flat: &mut usize,
     designated: pd::Designated<'c>,
   ) {
     let pd::Designated {
@@ -636,8 +658,10 @@ impl<'i, 'c> Initialization<'i, 'c> {
       initializer,
       span,
     } = designated;
+
     let (relative_path, designated_type) =
       self.resolve_array_designator_path(designators, array_type, span);
+
     if relative_path.is_empty() || relative_path.contains(&npos) {
       return;
     }
@@ -665,12 +689,12 @@ impl<'i, 'c> Initialization<'i, 'c> {
 
   fn consume_anonymous_array_entry(
     &self,
-    initializer: pd::Initializer<'c>,
     array_type: QualifiedType<'c>,
     prefix: &[usize],
-    cursor_flat: &mut usize,
-    element_scalar_width: usize,
     state: &mut ArrayTree<'c>,
+    element_scalar_width: usize,
+    cursor_flat: &mut usize,
+    initializer: pd::Initializer<'c>,
   ) {
     let element_type = array_type.as_array_unchecked().element_type;
 
@@ -739,8 +763,9 @@ impl<'i, 'c> Initialization<'i, 'c> {
             return;
           }
 
-          let mut rel_path =
-            self.rel_scalar_path_from_flat(array_type, *cursor_flat).0;
+          let mut rel_path = self
+            .relative_scalar_path_from_flat(array_type, *cursor_flat)
+            .0;
           let mut full_path = prefix.to_vec();
           full_path.append(&mut rel_path);
           self.record_array_node(
@@ -842,8 +867,83 @@ impl<'i, 'c> Initialization<'i, 'c> {
     }
   }
 }
-/// helpers
+/// array helpers.
 impl<'i, 'c> Initialization<'i, 'c> {
+  fn infer_array_type(
+    &self,
+    array_type: QualifiedType<'c>,
+    tree: &ArrayTree<'c>,
+  ) -> QualifiedType<'c> {
+    let ast::Type::Array(array) = array_type.unqualified_type else {
+      return array_type;
+    };
+
+    let element_type = if array.element_type.is_array() {
+      self.infer_child_element_type(array.element_type, tree)
+    } else {
+      array.element_type
+    };
+
+    use ast::ArraySize::*;
+
+    let size = match array.size {
+      Constant(size) => Constant(size),
+      Incomplete => Constant(tree.max_index.saturating_add(1)),
+      Variable(_) => {
+        self.add_error(
+          UnsupportedFeature("VLA initializer not supported".to_string()),
+          tree.span,
+        );
+        Constant(tree.max_index.saturating_add(1))
+      },
+    };
+
+    ast::Type::Array(ast::Array::new(element_type, size))
+      .lookup(self.context())
+      .into()
+  }
+
+  fn infer_child_element_type(
+    &self,
+    default_element_type: QualifiedType<'c>,
+    tree: &ArrayTree<'c>,
+  ) -> QualifiedType<'c> {
+    let mut inferred = None;
+
+    for entry in &tree.entries {
+      if let InitNode::List(child) = &entry.node {
+        let child_inferred = self.infer_array_type(default_element_type, child);
+        inferred = Some(match inferred {
+          None => child_inferred,
+          Some(prev) => self.merge_array_types_max(prev, child_inferred),
+        });
+      }
+    }
+
+    inferred.unwrap_or(default_element_type)
+  }
+
+  fn string_literal_len(expr: se::ExprRef<'c>) -> Option<usize> {
+    expr
+      .raw_expr()
+      .as_constant()
+      .and_then(|constant| constant.as_string())
+      .map(|&string| string.len())
+  }
+
+  fn is_char_array_string_literal(
+    expression: &pe::Expression<'c>,
+    target_type: QualifiedType<'c>,
+  ) -> bool {
+    target_type
+      .as_array()
+      .is_some_and(|arr| arr.element_type.is_character_type())
+      && matches!(
+        expression,
+        pe::Expression::Constant(constant) if constant.inner.is_string()
+      )
+  }
+
   fn complete_type_if_eligible(
     &self,
     target_type: QualifiedType<'c>,
@@ -871,27 +971,6 @@ impl<'i, 'c> Initialization<'i, 'c> {
     ))
     .lookup(self.context())
     .into()
-  }
-
-  fn string_literal_len(expr: se::ExprRef<'c>) -> Option<usize> {
-    expr
-      .raw_expr()
-      .as_constant()
-      .and_then(|constant| constant.as_string())
-      .map(|&string| string.len())
-  }
-
-  fn is_char_array_string_literal(
-    expression: &pe::Expression<'c>,
-    target_type: QualifiedType<'c>,
-  ) -> bool {
-    target_type
-      .as_array()
-      .is_some_and(|arr| arr.element_type.is_character_type())
-      && matches!(
-        expression,
-        pe::Expression::Constant(constant) if constant.inner.is_string()
-      )
   }
 
   fn assign_cvt_if_eligible(

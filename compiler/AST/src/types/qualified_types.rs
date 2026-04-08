@@ -1,5 +1,5 @@
 use ::rcc_shared::{Keyword, Literal};
-use ::rcc_utils::{IntoWith, RefEq, ensure_is_pod};
+use ::rcc_utils::{IntoWith, RefEq, concat_static_str as css, ensure_is_pod};
 
 use super::{TypeRef, TypeRefMut};
 
@@ -26,6 +26,39 @@ ensure_is_pod!(QualifiedType);
     const Atomic = 0x08; // ignore for now
   }
 }
+#[allow(non_upper_case_globals)]
+const Pad: &str = " ";
+impl Qualifiers {
+  #[allow(non_upper_case_globals)]
+  pub(crate) const MetaStaticStr: [&'static str; 4] =
+    ["const", "volatile", "restrict", "_Atomic"];
+  #[allow(non_upper_case_globals)]
+  pub const StaticStr: [&'static str; 16] = [
+    css!(),                                                      // 0x00
+    css!(QMeta[0]),                                              // 0x01
+    css!(QMeta[1]),                                              // 0x02
+    css!(QMeta[0], Pad, QMeta[1]),                               // 0x03
+    css!(QMeta[2]),                                              // 0x04
+    css!(QMeta[0], Pad, QMeta[2]),                               // 0x05
+    css!(QMeta[1], Pad, QMeta[2]),                               // 0x06
+    css!(QMeta[0], Pad, QMeta[1], Pad, QMeta[2]),                // 0x07
+    css!(QMeta[3]),                                              // 0x08
+    css!(QMeta[0], Pad, QMeta[3]),                               // 0x09
+    css!(QMeta[1], Pad, QMeta[3]),                               // 0x0A
+    css!(QMeta[0], Pad, QMeta[1], Pad, QMeta[3]),                // 0x0B
+    css!(QMeta[2], Pad, QMeta[3]),                               // 0x0C
+    css!(QMeta[0], Pad, QMeta[2], Pad, QMeta[3]),                // 0x0D
+    css!(QMeta[1], Pad, QMeta[2], Pad, QMeta[3]),                // 0x0E
+    css!(QMeta[0], Pad, QMeta[1], Pad, QMeta[2], Pad, QMeta[3]), // 0x0F
+  ];
+
+  #[inline(always)]
+  pub const fn into_static_str(self) -> &'static str {
+    Self::StaticStr[self.bits() as usize]
+  }
+}
+#[allow(non_upper_case_globals)]
+const QMeta: [&str; 4] = Qualifiers::MetaStaticStr;
 ::bitflags::bitflags! {
   #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
   pub struct FunctionSpecifier : u8 {
@@ -33,6 +66,25 @@ ensure_is_pod!(QualifiedType);
     const Noreturn = 0x10;
   }
 }
+impl FunctionSpecifier {
+  #[allow(non_upper_case_globals)]
+  pub(crate) const MetaStaticStr: [&'static str; 2] = ["inline", "_Noreturn"];
+  #[allow(non_upper_case_globals)]
+  pub const StaticStr: [&'static str; 4] = [
+    css!(),                        // 0x00
+    css!(FMeta[0]),                // 0x01
+    css!(FMeta[1]),                // 0x10
+    css!(FMeta[0], Pad, FMeta[1]), // 0x11
+  ];
+
+  #[inline(always)]
+  pub const fn into_static_str(self) -> &'static str {
+    Self::StaticStr[self.bits() as usize]
+  }
+}
+
+#[allow(non_upper_case_globals)]
+const FMeta: [&str; 2] = FunctionSpecifier::MetaStaticStr;
 
 impl<'c> QualifiedType<'c> {
   pub const fn new(

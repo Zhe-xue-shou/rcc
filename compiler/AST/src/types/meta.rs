@@ -144,30 +144,6 @@ impl<'c> Enum<'c> {
   }
 }
 
-// macro_rules! to_qualified_type {
-//   ($ty:ty) => {
-//     impl<'c> From<$ty> for QualifiedType<'c> {
-//       fn from(value: $ty) -> Self {
-//         QualifiedType::new_unqualified(Type::from(value).into())
-//       }
-//     }
-
-//     impl<'c> From<$ty> for Box<QualifiedType<'c>> {
-//       fn from(value: $ty) -> Self {
-//         Box::new(QualifiedType::from(value))
-//       }
-//     }
-//   };
-// }
-
-// to_qualified_type!(Primitive);
-// to_qualified_type!(Array<'c>);
-// to_qualified_type!(Pointer<'c>);
-// to_qualified_type!(FunctionProto<'c>);
-// to_qualified_type!(Enum<'c>);
-// to_qualified_type!(Record<'c>);
-// to_qualified_type!(Union<'c>);
-
 ::rcc_utils::interconvert!(Primitive, Type<'c>);
 ::rcc_utils::interconvert!(Array, Type, 'c);
 ::rcc_utils::interconvert!(Pointer, Type, 'c);

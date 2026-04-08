@@ -8,6 +8,7 @@
 #![feature(const_type_name)]
 #![feature(const_eval_select)]
 #![feature(likely_unlikely)]
+mod concat;
 mod macros;
 mod num_traits;
 mod opaque;
@@ -16,7 +17,7 @@ mod fwd {
   pub use ::paste::paste;
   pub type SmallString = ::compact_str::CompactString;
 }
-pub use self::{fwd::*, num_traits::*, opaque::Opaque};
+pub use self::{concat::StaticStr, fwd::*, num_traits::*, opaque::Opaque};
 
 /// A handy trait for converting between types with additional context.
 pub trait IntoWith<With, To> {

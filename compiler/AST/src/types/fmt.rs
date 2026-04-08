@@ -7,30 +7,13 @@ use super::{
 impl Display for Qualifiers {
   #[inline]
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    let mut qualifiers = Vec::with_capacity(1);
-    if self.contains(Qualifiers::Const) {
-      qualifiers.push("const");
-    }
-    if self.contains(Qualifiers::Volatile) {
-      qualifiers.push("volatile");
-    }
-    if self.contains(Qualifiers::Restrict) {
-      qualifiers.push("restrict");
-    }
-    write!(f, "{}", qualifiers.join(" "))
+    write!(f, "{}", self.into_static_str())
   }
 }
 impl Display for FunctionSpecifier {
   #[inline]
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    let mut specifiers = Vec::with_capacity(1);
-    if self.contains(FunctionSpecifier::Inline) {
-      specifiers.push("inline");
-    }
-    if self.contains(FunctionSpecifier::Noreturn) {
-      specifiers.push("_Noreturn");
-    }
-    write!(f, "{}", specifiers.join(" "))
+    write!(f, "{}", self.into_static_str())
   }
 }
 impl Display for QualifiedType<'_> {
@@ -105,7 +88,7 @@ impl Display for Union<'_> {
 //   }
 // }
 impl Type<'_> {
-  /// reverse-bakc the type for printing
+  /// reverse-back the type for printing. TODO: function pointers still incorrect.
   fn pretty_print(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     // base
     self.print_base_type(f)?;
@@ -148,18 +131,22 @@ impl Type<'_> {
         write!(f, "]")?;
         arr.element_type.unqualified_type.print_declarator(f)
       },
-      Pointer(ptr) => {
+      Pointer(ptr)
+        if matches!(
+          ptr.pointee.unqualified_type,
+          Array(_) | FunctionProto(_)
+        ) =>
+      {
         // if the pointee is an array or function, parentheses is needed, e.g., `(*)[10]`
-        let needs_parens =
-          matches!(ptr.pointee.unqualified_type, Array(_) | FunctionProto(_));
 
-        if needs_parens {
-          write!(f, "(")?;
-        }
+        write!(f, "(*)")?;
+
+        ptr.pointee.qualifiers.fmt(f)?;
+        ptr.pointee.unqualified_type.print_declarator(f)?;
+        Ok(())
+      },
+      Pointer(ptr) => {
         write!(f, "*")?;
-        if needs_parens {
-          write!(f, ")")?;
-        }
         ptr.pointee.qualifiers.fmt(f)?;
         ptr.pointee.unqualified_type.print_declarator(f)?;
         Ok(())
@@ -184,6 +171,7 @@ impl Type<'_> {
         write!(f, ")")?;
         func.return_type.unqualified_type.print_declarator(f)
       },
+      // the rest of types is considered `base type` here.
       _ => Ok(()),
     }
   }

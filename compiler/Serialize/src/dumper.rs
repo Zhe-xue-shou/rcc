@@ -1,6 +1,6 @@
 use ::rcc_ast::{Context, Session};
 use ::rcc_shared::{Diagnosis, SourceManager, SourceSpan};
-use ::termcolor::{BufferedStandardStream, ColorChoice, ColorSpec};
+use ::termcolor::{BufferedStandardStream, ColorSpec};
 
 use crate::{FlushOnDropRAII, Palette, RenderEngine, StickyWriter, TreeDumper};
 
@@ -77,7 +77,7 @@ impl<'c> ASTDumper<'c> {
       session.ast(),
       session.src(),
       StickyWriter::new(FlushOnDropRAII::new(BufferedStandardStream::stdout(
-        ColorChoice::Auto,
+        Self::auto_color(),
       ))),
       Palette::colored(),
     );

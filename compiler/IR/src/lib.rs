@@ -1,5 +1,5 @@
 #[macro_use]
-mod emitter;
+mod builder;
 mod context;
 mod emitable;
 mod fmt;
@@ -9,8 +9,8 @@ mod types;
 mod value;
 
 pub use self::{
+  builder::Builder,
   context::{Context, Session},
-  emitter::Emitter,
   module::{
     Argument, BasicBlock, Function as IRFunction,
     Initializer as IRStaticInitializer, Module, Variable as IRGlobalValue,

@@ -5,7 +5,7 @@ use ::rcc_ast::{
 use ::rcc_utils::RefEq;
 
 use super::{
-  Argument, Emitter, Value, ValueData, ValueID,
+  Argument, Builder, Value, ValueData, ValueID,
   instruction::{self as inst, Instruction},
   module,
 };
@@ -21,7 +21,7 @@ pub trait Emitable<'a, ValueType> {
   fn emit(&mut self, value: ValueType, ast_type: ast::TypeRef<'a>) -> ValueID;
 }
 
-impl<'c> Emitable<'c, inst::Binary> for Emitter<'c> {
+impl<'c> Emitable<'c, inst::Binary> for Builder<'c> {
   fn emit(
     &mut self,
     binary: inst::Binary,
@@ -31,13 +31,13 @@ impl<'c> Emitable<'c, inst::Binary> for Emitter<'c> {
   }
 }
 
-impl<'c> Emitable<'c, inst::Call> for Emitter<'c> {
+impl<'c> Emitable<'c, inst::Call> for Builder<'c> {
   fn emit(&mut self, call: inst::Call, ast_type: ast::TypeRef<'c>) -> ValueID {
     self.emit_common_instruction(call, ast_type)
   }
 }
 
-impl<'c> Emitable<'c, module::Function<'c>> for Emitter<'c> {
+impl<'c> Emitable<'c, module::Function<'c>> for Builder<'c> {
   fn emit(
     &mut self,
     value: module::Function<'c>,
@@ -46,7 +46,7 @@ impl<'c> Emitable<'c, module::Function<'c>> for Emitter<'c> {
     self.emit_globals(value, ast_type)
   }
 }
-impl<'c> Emitable<'c, module::Variable<'c>> for Emitter<'c> {
+impl<'c> Emitable<'c, module::Variable<'c>> for Builder<'c> {
   fn emit(
     &mut self,
     value: module::Variable<'c>,
@@ -55,7 +55,7 @@ impl<'c> Emitable<'c, module::Variable<'c>> for Emitter<'c> {
     self.emit_globals(value, ast_type)
   }
 }
-impl<'c> Emitable<'c, Constant<'c>> for Emitter<'c> {
+impl<'c> Emitable<'c, Constant<'c>> for Builder<'c> {
   fn emit(
     &mut self,
     value: Constant<'c>,
@@ -64,7 +64,7 @@ impl<'c> Emitable<'c, Constant<'c>> for Emitter<'c> {
     self.ir().intern_constant(value, ast_type)
   }
 }
-impl<'c> Emitable<'c, Argument> for Emitter<'c> {
+impl<'c> Emitable<'c, Argument> for Builder<'c> {
   fn emit(&mut self, value: Argument, ast_type: ast::TypeRef<'c>) -> ValueID {
     self.ir().insert(Value::new(
       ast_type,
@@ -82,7 +82,7 @@ mod instruction {
   use super::*;
   mod terminator {
     use super::*;
-    impl<'c> Emitable<'c, Jump> for Emitter<'c> {
+    impl<'c> Emitable<'c, Jump> for Builder<'c> {
       fn emit(&mut self, jump: Jump, ast_type: ast::TypeRef<'c>) -> ValueID {
         debug_assert!(
           ast_type.is_void(),
@@ -96,7 +96,7 @@ mod instruction {
         self.emit_terminator(jump, ast_type, self.current_block)
       }
     }
-    impl<'c> Emitable<'c, Branch> for Emitter<'c> {
+    impl<'c> Emitable<'c, Branch> for Builder<'c> {
       fn emit(
         &mut self,
         branch: Branch,
@@ -129,7 +129,7 @@ mod instruction {
         self.emit_terminator(branch, ast_type, self.current_block)
       }
     }
-    impl<'c> Emitable<'c, Return> for Emitter<'c> {
+    impl<'c> Emitable<'c, Return> for Builder<'c> {
       fn emit(&mut self, ret: Return, ast_type: ast::TypeRef<'c>) -> ValueID {
         debug_assert!(
           ast_type.is_void(),
@@ -139,7 +139,7 @@ mod instruction {
         self.emit_terminator(ret, ast_type, self.current_block)
       }
     }
-    impl<'c> Emitable<'c, Unreachable> for Emitter<'c> {
+    impl<'c> Emitable<'c, Unreachable> for Builder<'c> {
       fn emit(
         &mut self,
         unreachable: Unreachable,
@@ -155,7 +155,7 @@ mod instruction {
   }
   mod cmp {
     use super::*;
-    impl<'c> Emitable<'c, ICmp> for Emitter<'c> {
+    impl<'c> Emitable<'c, ICmp> for Builder<'c> {
       fn emit(&mut self, icmp: ICmp, ast_type: ast::TypeRef<'c>) -> ValueID {
         // debug_assert!(
         //   RefEq::ref_eq(ast_type, self.ast().i1_bool_type()),
@@ -182,7 +182,7 @@ mod instruction {
       }
     }
 
-    impl<'c> Emitable<'c, FCmp> for Emitter<'c> {
+    impl<'c> Emitable<'c, FCmp> for Builder<'c> {
       fn emit(&mut self, fcmp: FCmp, ast_type: ast::TypeRef<'c>) -> ValueID {
         // debug_assert!(
         //   RefEq::ref_eq(ast_type, self.ast().i1_bool_type()),
@@ -211,7 +211,7 @@ mod instruction {
   // Cast vvv
   mod cast {
     use super::*;
-    impl<'c> Emitable<'c, Zext> for Emitter<'c> {
+    impl<'c> Emitable<'c, Zext> for Builder<'c> {
       fn emit(&mut self, zext: Zext, ast_type: ast::TypeRef<'c>) -> ValueID {
         debug_assert!(
           ast_type.as_primitive().is_some_and(|p| p.is_unsigned())
@@ -233,7 +233,7 @@ mod instruction {
         self.emit_common_instruction(Cast::Zext(zext), ast_type)
       }
     }
-    impl<'c> Emitable<'c, Sext> for Emitter<'c> {
+    impl<'c> Emitable<'c, Sext> for Builder<'c> {
       fn emit(&mut self, sext: Sext, ast_type: ast::TypeRef<'c>) -> ValueID {
         debug_assert!(
           ast_type
@@ -251,7 +251,7 @@ mod instruction {
         self.emit_common_instruction(Cast::Sext(sext), ast_type)
       }
     }
-    impl<'c> Emitable<'c, Trunc> for Emitter<'c> {
+    impl<'c> Emitable<'c, Trunc> for Builder<'c> {
       fn emit(&mut self, trunc: Trunc, ast_type: ast::TypeRef<'c>) -> ValueID {
         debug_assert!(
           ast_type.is_integer(),
@@ -267,7 +267,7 @@ mod instruction {
         self.emit_common_instruction(Cast::Trunc(trunc), ast_type)
       }
     }
-    impl<'c> Emitable<'c, FPExt> for Emitter<'c> {
+    impl<'c> Emitable<'c, FPExt> for Builder<'c> {
       fn emit(&mut self, fpext: FPExt, ast_type: ast::TypeRef<'c>) -> ValueID {
         debug_assert!(
           ast_type.is_floating_point(),
@@ -283,7 +283,7 @@ mod instruction {
         self.emit_common_instruction(Cast::FPExt(fpext), ast_type)
       }
     }
-    impl<'c> Emitable<'c, FPTrunc> for Emitter<'c> {
+    impl<'c> Emitable<'c, FPTrunc> for Builder<'c> {
       fn emit(
         &mut self,
         fptrunc: FPTrunc,
@@ -304,7 +304,7 @@ mod instruction {
       }
     }
 
-    impl<'c> Emitable<'c, FPToSI> for Emitter<'c> {
+    impl<'c> Emitable<'c, FPToSI> for Builder<'c> {
       fn emit(
         &mut self,
         fptosi: FPToSI,
@@ -327,7 +327,7 @@ mod instruction {
       }
     }
 
-    impl<'c> Emitable<'c, FPToUI> for Emitter<'c> {
+    impl<'c> Emitable<'c, FPToUI> for Builder<'c> {
       fn emit(
         &mut self,
         fptoui: FPToUI,
@@ -348,7 +348,7 @@ mod instruction {
       }
     }
 
-    impl<'c> Emitable<'c, UIToFP> for Emitter<'c> {
+    impl<'c> Emitable<'c, UIToFP> for Builder<'c> {
       fn emit(
         &mut self,
         uitofp: UIToFP,
@@ -377,7 +377,7 @@ mod instruction {
         self.emit_common_instruction(Cast::UIToFP(uitofp), ast_type)
       }
     }
-    impl<'c> Emitable<'c, IntToPtr> for Emitter<'c> {
+    impl<'c> Emitable<'c, IntToPtr> for Builder<'c> {
       fn emit(
         &mut self,
         inttoptr: IntToPtr,
@@ -395,7 +395,7 @@ mod instruction {
       }
     }
 
-    impl<'c> Emitable<'c, PtrToInt> for Emitter<'c> {
+    impl<'c> Emitable<'c, PtrToInt> for Builder<'c> {
       fn emit(
         &mut self,
         ptrtoint: PtrToInt,
@@ -413,7 +413,7 @@ mod instruction {
       }
     }
 
-    impl<'c> Emitable<'c, SIToFP> for Emitter<'c> {
+    impl<'c> Emitable<'c, SIToFP> for Builder<'c> {
       fn emit(
         &mut self,
         sitofp: SIToFP,
@@ -443,7 +443,7 @@ mod instruction {
       }
     }
 
-    impl<'c> Emitable<'c, BitCast> for Emitter<'c> {
+    impl<'c> Emitable<'c, BitCast> for Builder<'c> {
       fn emit(
         &mut self,
         bitcast: BitCast,
@@ -460,7 +460,7 @@ mod instruction {
   }
   mod memory {
     use super::*;
-    impl<'c> Emitable<'c, Alloca> for Emitter<'c> {
+    impl<'c> Emitable<'c, Alloca> for Builder<'c> {
       fn emit(
         &mut self,
         alloca: Alloca,
@@ -492,7 +492,7 @@ mod instruction {
         })
       }
     }
-    impl<'c> Emitable<'c, Load> for Emitter<'c> {
+    impl<'c> Emitable<'c, Load> for Builder<'c> {
       fn emit(&mut self, load: Load, ast_type: ast::TypeRef<'c>) -> ValueID {
         debug_assert!(
           self.visit(load.addr(), |value| value.ir_type.is_pointer()),
@@ -501,7 +501,7 @@ mod instruction {
         self.emit_common_instruction(Memory::Load(load), ast_type)
       }
     }
-    impl<'c> Emitable<'c, Store> for Emitter<'c> {
+    impl<'c> Emitable<'c, Store> for Builder<'c> {
       fn emit(&mut self, store: Store, ast_type: ast::TypeRef<'c>) -> ValueID {
         debug_assert!(
           ast_type.is_void(),
@@ -517,7 +517,7 @@ mod instruction {
   }
   mod misc {
     use super::*;
-    impl<'c> Emitable<'c, Phi> for Emitter<'c> {
+    impl<'c> Emitable<'c, Phi> for Builder<'c> {
       fn emit(&mut self, phi: Phi, ast_type: ast::TypeRef<'c>) -> ValueID {
         debug_assert!(
           self.visit(self.current_block, |value| {
@@ -533,7 +533,7 @@ mod instruction {
         self.emit_common_instruction(phi, ast_type)
       }
     }
-    impl<'c> Emitable<'c, GetElementPtr> for Emitter<'c> {
+    impl<'c> Emitable<'c, GetElementPtr> for Builder<'c> {
       fn emit(
         &mut self,
         gep: GetElementPtr,
@@ -563,7 +563,7 @@ mod instruction {
         self.emit_common_instruction(gep, ast_type)
       }
     }
-    impl<'c> Emitable<'c, Unary> for Emitter<'c> {
+    impl<'c> Emitable<'c, Unary> for Builder<'c> {
       fn emit(&mut self, unary: Unary, ast_type: ast::TypeRef<'c>) -> ValueID {
         debug_assert!(
           self.visit(unary.operand(), |value| value.ir_type.is_floating()),
@@ -575,7 +575,7 @@ mod instruction {
     }
   }
 }
-impl<'c> Emitter<'c> {
+impl<'c> Builder<'c> {
   fn emit_common_instruction<T: Into<Instruction>>(
     &self,
     value: T,

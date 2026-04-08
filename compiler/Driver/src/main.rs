@@ -1,6 +1,6 @@
 use ::rcc_ast::{Context as ASTContext, Session as ASTSession};
 use ::rcc_ir::{
-  Context as IRContext, Emitter as IREmitter, Session as IRSession,
+  Builder as IRBuilder, Context as IRContext, Session as IRSession,
 };
 use ::rcc_lex::Lexer;
 use ::rcc_parse::Parser;
@@ -143,7 +143,7 @@ fn pipeline(manager: SourceManager, stage: Stage, pretty_print: bool) -> i32 {
     ast_session.ast(),
     ir_context,
   );
-  let builder = IREmitter::new(&session);
+  let builder = IRBuilder::new(&session);
 
   let module = builder.build(translation_unit);
   IRPrinter::print(&module, &session).unwrap();

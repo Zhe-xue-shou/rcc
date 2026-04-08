@@ -2,7 +2,7 @@ use ::rcc_ir::{Context, Session, ValueID};
 use ::rcc_shared::{Diagnosis, SourceManager};
 use ::slotmap::SecondaryMap;
 use ::std::cell::RefCell;
-use ::termcolor::{BufferedStandardStream, ColorChoice, ColorSpec};
+use ::termcolor::{BufferedStandardStream,  ColorSpec};
 
 use crate::{FlushOnDropRAII, Palette, RenderEngine, StickyWriter, TreeDumper};
 
@@ -105,7 +105,7 @@ impl<'c> IRPrinter<'c> {
       session.ir(),
       session.src(),
       StickyWriter::new(FlushOnDropRAII::new(BufferedStandardStream::stdout(
-        ColorChoice::Auto,
+        Self::auto_color(),
       ))),
       Palette::colored(),
     );

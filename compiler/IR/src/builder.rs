@@ -36,7 +36,7 @@ impl ControlFlowContext {
     }
   }
 }
-pub struct Emitter<'c> {
+pub struct Builder<'c> {
   pub(super) session: SessionRef<'c, OpDiag<'c>>,
   /// The basic block currently being written into
   pub(super) current_block: ValueID,
@@ -49,7 +49,7 @@ pub struct Emitter<'c> {
   pub(super) globals: HashMap<sd::DeclRef<'c>, ValueID>,
   pub(super) module: Module,
 }
-impl<'a> ::std::ops::Deref for Emitter<'a> {
+impl<'a> ::std::ops::Deref for Builder<'a> {
   type Target = Session<'a, OpDiag<'a>>;
 
   fn deref(&self) -> &Self::Target {
@@ -74,7 +74,7 @@ mod macros {
     };
   }
 }
-impl<'c> Emitter<'c> {
+impl<'c> Builder<'c> {
   pub fn new(session: SessionRef<'c, OpDiag<'c>>) -> Self {
     Self {
       session,
@@ -111,7 +111,7 @@ impl<'c> Emitter<'c> {
     self.session().ir().apply(id, action)
   }
 }
-impl<'c> Emitter<'c> {
+impl<'c> Builder<'c> {
   fn contextual_convert_to_i1(&mut self, value_id: ValueID) -> ValueID {
     use inst::*;
 
@@ -140,7 +140,7 @@ impl<'c> Emitter<'c> {
     }
   }
 }
-impl<'c> Emitter<'c> {
+impl<'c> Builder<'c> {
   #[must_use]
   fn push_block(&mut self, block_id: ValueID) -> ValueID {
     let old_id = self.current_block;
@@ -214,7 +214,7 @@ impl<'c> Emitter<'c> {
   }
 }
 
-impl<'c> Emitter<'c> {
+impl<'c> Builder<'c> {
   pub fn build(mut self, translation_unit: sd::TranslationUnit<'c>) -> Module {
     self.current_block = self.new_empty_block();
 
@@ -233,7 +233,7 @@ impl<'c> Emitter<'c> {
   }
 }
 
-impl<'c> Emitter<'c> {
+impl<'c> Builder<'c> {
   fn global_decl(&mut self, declaration: &sd::ExternalDeclarationRef<'c>) {
     match declaration {
       sd::ExternalDeclarationRef::Function(function) =>
@@ -505,7 +505,7 @@ impl<'c> Emitter<'c> {
   }
 }
 
-impl<'c> Emitter<'c> {
+impl<'c> Builder<'c> {
   fn statement(&mut self, statement: ss::StmtRef<'c>) {
     use ss::Statement::*;
     match statement {
@@ -858,7 +858,7 @@ impl<'c> Emitter<'c> {
     debug_assert_eq!(now_block_id, _should_be_now);
   }
 }
-impl<'c> Emitter<'c> {
+impl<'c> Builder<'c> {
   fn expression(&mut self, expression: se::ExprRef<'c>) -> ValueID {
     // the fold here contains partial fold. e.g. `3 + 6 + func(4 + 5)` would be folded to `9 + func(9)`.
     let expression = expression.fold(&self.session().as_ast_session()).take();
@@ -1163,7 +1163,7 @@ impl<'c> Emitter<'c> {
     casted_back
   }
 }
-impl<'c> Emitter<'c> {
+impl<'c> Builder<'c> {
   fn do_cast(
     &mut self,
     operand: ValueID,
@@ -1405,7 +1405,7 @@ impl<'c> Emitter<'c> {
   }
 }
 
-impl<'c> Emitter<'c> {
+impl<'c> Builder<'c> {
   fn binary(
     &mut self,
     binary: &se::Binary<'c>,
@@ -1759,7 +1759,7 @@ impl<'c> Emitter<'c> {
     right
   }
 }
-impl<'c> Emitter<'c> {
+impl<'c> Builder<'c> {
   fn relational(
     &mut self,
     operator: Operator,
@@ -1892,7 +1892,7 @@ impl<'c> Emitter<'c> {
     self.emit(inst::FCmp::new(operator, left, right), ast_type)
   }
 }
-impl<'c> Emitter<'c> {
+impl<'c> Builder<'c> {
   fn unary(
     &mut self,
     unary: &se::Unary<'c>,

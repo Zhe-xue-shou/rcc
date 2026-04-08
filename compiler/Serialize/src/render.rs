@@ -1,5 +1,5 @@
 use ::rcc_shared::SourceManager;
-use ::termcolor::ColorSpec;
+use ::termcolor::{ColorChoice, ColorSpec};
 
 use crate::Palette;
 
@@ -37,4 +37,16 @@ pub trait RenderEngine<'c> {
   fn src(&self) -> &'c SourceManager;
 
   fn finalize(self) -> ::std::io::Result<()>;
+
+  #[must_use]
+  #[inline]
+  fn auto_color() -> ColorChoice {
+    use ::std::io::{IsTerminal, stdout};
+
+    if stdout().is_terminal() {
+      ColorChoice::Auto
+    } else {
+      ColorChoice::Never
+    }
+  }
 }

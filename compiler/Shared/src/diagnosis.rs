@@ -152,6 +152,8 @@ mod data {
        requires an initializer"
     )]
     DeducedTypeWithNoInitializer(Elem),
+    #[error("Variable '{0}' has incomplete type '{1}'")]
+    VariableIncompleteType(StrRef<'c>, QualTyStr),
     #[error("Variable '{0}' already defined")]
     VariableAlreadyDefined(Elem),
     #[error("Function '{0}' already defined")]

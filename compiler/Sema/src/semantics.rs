@@ -62,12 +62,23 @@ impl<'c> DeclEnvironment<'c> {
       .and_then(|scope| scope.get(name).copied())
   }
 
-  fn declare(&mut self, name: StrRef<'c>, declaration: sd::DeclRef<'c>) {
+  fn declare(
+    &mut self,
+    name: StrRef<'c>,
+    declaration: sd::DeclRef<'c>,
+  ) -> Result<(), DiagData<'c>> {
+    if !declaration.qualified_type().is_complete() {
+      Err(VariableIncompleteType(
+        name,
+        declaration.qualified_type().to_string(),
+      ))?
+    }
     self
       .scopes
       .last_mut()
       .shall_ok("No scope to declare symbol")
       .insert(name, declaration);
+    Ok(())
   }
 }
 
@@ -254,7 +265,19 @@ impl<'c> Sema<'c> {
     let parameters = self.parse_parameters(function_signature.parameters);
     let parameter_types = parameters
       .iter()
-      .map(|param| param.declaration.qualified_type())
+      .map(|param| {
+        let qualified_type = param.declaration.qualified_type();
+        if !qualified_type.is_complete() {
+          self.add_error(
+            VariableIncompleteType(
+              param.declaration.name(),
+              qualified_type.to_string(),
+            ),
+            param.span,
+          );
+        }
+        qualified_type
+      })
       .collect_in::<ArenaVec<_>>(self.context().arena());
     Ok((
       self
@@ -600,7 +623,10 @@ impl<'c> Sema<'c> {
       previous_decl,
     );
 
-    self.environment.declare(name, declaration);
+    _ = self
+      .environment
+      .declare(name, declaration)
+      .map_err(|e| self.add_error(e, span));
 
     let function = sd::Function::new(
       self.context(),
@@ -653,9 +679,11 @@ impl<'c> Sema<'c> {
         if parameter.declaration.name().starts_with('<') {
           // unnamed parameter - do nothing currently
         } else {
-          self
+          _ = self
             .environment
-            .declare(parameter.declaration.name(), parameter.declaration);
+            .declare(parameter.declaration.name(), parameter.declaration)
+          // if it's incomplete type, this has already reported when building the functionproto.
+          // .map_err(|e| self.add_error(e, parameter.span));
         }
       });
 
@@ -883,7 +911,10 @@ impl<'c> Sema<'c> {
       }
     }
 
-    self.environment.declare(name, vardef.declaration);
+    _ = self
+      .environment
+      .declare(name, vardef.declaration)
+      .map_err(|e| self.add_error(e, span));
     Ok(vardef)
   }
 

@@ -514,20 +514,11 @@ impl<'c> Parser<'c> {
     // (functionnoproto type, deprecated in C23) a function declaration without a parameter list
     //  or function body provides no information about that function’s parameters
     // but I won't support that obselete feature :(
-    if self.peek_lit() == Keyword::Void {
+    if self.peek_lit() == Keyword::Void
+      && self.peek_lit_with_offset(1) == RightParen
+    {
       // single void parameter
       self.must_get_key::<{ Keyword::Void }>();
-      if self.peek_lit() != RightParen {
-        self.add_error(
-          VoidVariableDecl(
-            "Unexpected token after 'void' in parameter list".to_string(),
-          ),
-          *self.peek_loc(),
-        );
-        while self.peek_lit() != RightParen {
-          self.get();
-        }
-      }
       FunctionSignature::default()
     } else if self.peek_lit() == RightParen {
       // empty parameter list -- assuming no parameters

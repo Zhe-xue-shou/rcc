@@ -706,12 +706,10 @@ impl<'c> Dumpable<'c> for VarDef<'_> {
     );
     dumper.write("]\n", &palette.skeleton);
 
-    let subprefix = dumper.child_prefix(prefix, is_last);
     if let Some(initializer) = &self.initializer {
+      let subprefix = dumper.child_prefix(prefix, is_last);
       initializer.dump(dumper, &subprefix, true, palette);
     }
-    dumper.write(subprefix, &palette.skeleton);
-    dumper.newline();
   }
 }
 impl<'c> Dumpable<'c> for Function<'_> {
@@ -754,12 +752,10 @@ impl<'c> Dumpable<'c> for Function<'_> {
     );
     dumper.write("]\n", &palette.skeleton);
 
-    let subprefix = dumper.child_prefix(prefix, is_last);
     if let Some(body) = &self.body {
+      let subprefix = dumper.child_prefix(prefix, is_last);
       body.dump(dumper, &subprefix, true, palette);
     }
-    dumper.write(subprefix, &palette.skeleton);
-    dumper.newline();
   }
 }
 

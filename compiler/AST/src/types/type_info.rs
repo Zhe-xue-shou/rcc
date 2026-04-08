@@ -247,9 +247,14 @@ impl<'c> const TypeInfo<'c> for Pointer<'c> {
 }
 
 impl<'c> TypeInfo<'c> for FunctionProto<'c> {
+  /// function types have no size
+  /// and it is invalid to use `sizeof` w.r.t. `void`, `function designator` and `incomplete type`
+  ///
+  /// Clang returns `1` -- and previously here it returns `0` but it causes lot of trouble.
+  /// So now it returns `1`.
   #[inline(always)]
   fn size(&self) -> usize {
-    0 // function types have no size
+    1
   }
 
   #[inline(always)]

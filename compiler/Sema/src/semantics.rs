@@ -152,11 +152,15 @@ impl<'c> Sema<'c> {
   /// IMPORTANT: currently, caller shoould check:
   /// 1. whether the `restrict` is valid; (it's only valid for pointers and non-static local variable.)
   /// 2. the type is complete or not, via [`TypeInfo::size`].
-  fn apply_modifiers_for_varty(
+  fn apply_modifiers_for_varty<I>(
     &self,
     mut qualified_type: QualifiedType<'c>,
-    modifiers: Vec<pd::Modifier<'c>>,
-  ) -> QualifiedType<'c> {
+    modifiers: I,
+  ) -> QualifiedType<'c>
+  where
+    I: IntoIterator<Item = pd::Modifier<'c>>,
+    I::IntoIter: DoubleEndedIterator,
+  {
     // reverse order
     for modifier in modifiers.into_iter().rev() {
       match modifier {
@@ -242,7 +246,7 @@ impl<'c> Sema<'c> {
 
   fn apply_modifiers_for_functiondecl(
     &self,
-    return_type: QualifiedType<'c>,
+    base_return_type: QualifiedType<'c>,
     modifiers: Vec<pd::Modifier<'c>>,
   ) -> Result<
     (
@@ -252,16 +256,17 @@ impl<'c> Sema<'c> {
     ),
     Diag<'c>,
   > {
-    contract_assert!(
-      modifiers.len() == 1,
-      "function declarator should have only one modifier"
-    );
-    let function_signature = match modifiers.into_iter().next().unwrap() {
+    let mut it = modifiers.into_iter();
+    let function_signature = match it
+      .next()
+      .expect("function declarator should have at least one modifier(function)")
+    {
       pd::Modifier::Function(function_signature) => function_signature,
       _ => {
         contract_violation!("function declarator should have function modifier")
       },
     };
+    let return_type = self.apply_modifiers_for_varty(base_return_type, it);
     // we need to build function type
     let parameters = self.parse_parameters(function_signature.parameters);
     let parameter_types = parameters
@@ -381,121 +386,87 @@ impl<'c> Sema<'c> {
     assert!(!type_specifiers.is_empty());
     assert!(type_specifiers.len() <= 5); // unsigned long long int complex (integer complex not in standard) is the max
     type_specifiers.sort_by_key(|s| s.sort_key());
-    type TS<'a> = pd::TypeSpecifier<'a>;
+    use pd::TypeSpecifier::*;
     // 6.7.3.1
     match type_specifiers.as_slice() {
-      [TS::Nullptr] => Ok(
-        Type::Primitive(Primitive::Nullptr)
-          .lookup(self.context())
-          .into(),
-      ),
-      [TS::Void] => Ok(
-        Type::Primitive(Primitive::Void)
-          .lookup(self.context())
-          .into(),
-      ),
+      [Nullptr] => Ok(self.context().nullptr_type().into()),
+      [Void] => Ok(self.context().void_type().into()),
 
-      [TS::Bool] => Ok(
-        Type::Primitive(Primitive::Bool)
-          .lookup(self.context())
-          .into(),
-      ),
+      [Bool] => Ok(self.context().i8_bool_type().into()),
 
-      [TS::Char] => Ok(
-        Type::Primitive(Primitive::Char)
-          .lookup(self.context())
-          .into(),
-      ),
-      [TS::Signed, TS::Char] => Ok(
-        Type::Primitive(Primitive::SChar)
-          .lookup(self.context())
-          .into(),
-      ),
-      [TS::Unsigned, TS::Char] => Ok(
-        Type::Primitive(Primitive::UChar)
-          .lookup(self.context())
-          .into(),
-      ),
+      [Char] => Ok(self.context().char_type().into()),
+      [Signed, Char] => Ok(self.context().schar_type().into()),
+      [Unsigned, Char] => Ok(self.context().uchar_type().into()),
 
-      [TS::Short]
-      | [TS::Short, TS::Int]
-      | [TS::Signed, TS::Short]
-      | [TS::Signed, TS::Short, TS::Int] =>
+      [Short] | [Short, Int] | [Signed, Short] | [Signed, Short, Int] =>
         Ok(self.context().short_type().into()),
-      [TS::Unsigned, TS::Short] | [TS::Unsigned, TS::Short, TS::Int] =>
+      [Unsigned, Short] | [Unsigned, Short, Int] =>
         Ok(self.context().ushort_type().into()),
 
-      [TS::Int] | [TS::Signed] | [TS::Signed, TS::Int] =>
-        Ok(self.context().int_type().into()),
-      [TS::Unsigned] | [TS::Unsigned, TS::Int] =>
-        Ok(self.context().uint_type().into()),
+      [Int] | [Signed] | [Signed, Int] => Ok(self.context().int_type().into()),
+      [Unsigned] | [Unsigned, Int] => Ok(self.context().uint_type().into()),
 
-      [TS::Long]
-      | [TS::Long, TS::Int]
-      | [TS::Signed, TS::Long]
-      | [TS::Signed, TS::Long, TS::Int] =>
+      [Long] | [Long, Int] | [Signed, Long] | [Signed, Long, Int] =>
         Ok(self.context().long_type().into()),
-      [TS::Unsigned, TS::Long] | [TS::Unsigned, TS::Long, TS::Int] =>
+      [Unsigned, Long] | [Unsigned, Long, Int] =>
         Ok(self.context().ulong_type().into()),
 
-      [TS::Long, TS::Long]
-      | [TS::Long, TS::Long, TS::Int]
-      | [TS::Signed, TS::Long, TS::Long]
-      | [TS::Signed, TS::Long, TS::Long, TS::Int] =>
-        Ok(self.context().long_long_type().into()),
-      [TS::Unsigned, TS::Long, TS::Long]
-      | [TS::Unsigned, TS::Long, TS::Long, TS::Int] =>
+      [Long, Long]
+      | [Long, Long, Int]
+      | [Signed, Long, Long]
+      | [Signed, Long, Long, Int] => Ok(self.context().long_long_type().into()),
+      [Unsigned, Long, Long] | [Unsigned, Long, Long, Int] =>
         Ok(self.context().ulong_long_type().into()),
 
-      [TS::Float] => Ok(self.context().float32_type().into()),
-      [TS::Double] => Ok(self.context().float64_type().into()),
-      [TS::Long, TS::Double] => Ok(
+      [Float] => Ok(self.context().float32_type().into()),
+      [Double] => Ok(self.context().float64_type().into()),
+      [Long, Double] => Ok(
         Type::Primitive(Primitive::LongDouble)
           .lookup(self.context())
           .into(),
       ),
 
-      [TS::Float, TS::Complex] => Ok(
+      [Float, Complex] => Ok(
         Type::Primitive(Primitive::ComplexFloat)
           .lookup(self.context())
           .into(),
       ),
-      [TS::Double, TS::Complex] => Ok(
+      [Double, Complex] => Ok(
         Type::Primitive(Primitive::ComplexDouble)
           .lookup(self.context())
           .into(),
       ),
-      [TS::Long, TS::Double, TS::Complex] => Ok(
+      [Long, Double, Complex] => Ok(
         Type::Primitive(Primitive::ComplexLongDouble)
           .lookup(self.context())
           .into(),
       ),
 
       // treat complex integers as error
-      [TS::Char, TS::Complex]
-      | [TS::Signed, TS::Char, TS::Complex]
-      | [TS::Unsigned, TS::Char, TS::Complex]
-      | [TS::Short, TS::Complex]
-      | [TS::Short, TS::Int, TS::Complex]
-      | [TS::Signed, TS::Short, TS::Complex]
-      | [TS::Signed, TS::Short, TS::Int, TS::Complex]
-      | [TS::Unsigned, TS::Short, TS::Complex]
-      | [TS::Unsigned, TS::Short, TS::Int, TS::Complex]
-      | [TS::Int, TS::Complex]
-      | [TS::Signed, TS::Complex]
-      | [TS::Signed, TS::Int, TS::Complex]
-      | [TS::Unsigned, TS::Complex]
-      | [TS::Unsigned, TS::Int, TS::Complex]
-      | [TS::Long, TS::Complex]
-      | [TS::Long, TS::Int, TS::Complex]
-      | [TS::Signed, TS::Long, TS::Complex]
-      | [TS::Signed, TS::Long, TS::Int, TS::Complex]
-      | [TS::Unsigned, TS::Long, TS::Complex]
-      | [TS::Unsigned, TS::Long, TS::Int, TS::Complex] => {
+      [Char, Complex]
+      | [Signed, Char, Complex]
+      | [Unsigned, Char, Complex]
+      | [Short, Complex]
+      | [Short, Int, Complex]
+      | [Signed, Short, Complex]
+      | [Signed, Short, Int, Complex]
+      | [Unsigned, Short, Complex]
+      | [Unsigned, Short, Int, Complex]
+      | [Int, Complex]
+      | [Signed, Complex]
+      | [Signed, Int, Complex]
+      | [Unsigned, Complex]
+      | [Unsigned, Int, Complex]
+      | [Long, Complex]
+      | [Long, Int, Complex]
+      | [Signed, Long, Complex]
+      | [Signed, Long, Int, Complex]
+      | [Unsigned, Long, Complex]
+      | [Unsigned, Long, Int, Complex] => {
         not_implemented_feature!("Complex integer types are not supported");
       },
 
-      [TS::Typedef(t)] => {
+      [Typedef(t)] => {
         let typedef = self.environment.find(t).shall_ok("identifier not found");
         if typedef.is_typedef() {
           Ok(typedef.qualified_type())
@@ -545,7 +516,7 @@ impl<'c> Sema<'c> {
       declspecs,
       span,
     } = function;
-    let (function_specifier, storage, return_type) = self
+    let (function_specifier, storage, base_return_type) = self
       .parse_declspecs(declspecs)
       .shall_ok("current implementation shall not return Err here");
     let storage = storage.unwrap_or(Storage::Extern);
@@ -558,7 +529,7 @@ impl<'c> Sema<'c> {
       .shall_ok("function must have a name; it should be handled in parser");
 
     let (qualified_type, parameters) = self
-      .apply_modifiers_for_functiondecl(return_type, modifiers)
+      .apply_modifiers_for_functiondecl(base_return_type, modifiers)
       .shall_ok("failed to apply modifiers for function declarator");
 
     if name == "main" {

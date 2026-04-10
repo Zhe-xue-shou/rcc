@@ -15,6 +15,7 @@ pub struct Context<'c> {
   void_type: TypeRef<'c>,
   bool_type: TypeRef<'c>,
   char_type: TypeRef<'c>,
+  schar_type: TypeRef<'c>,
   short_type: TypeRef<'c>,
   int_type: TypeRef<'c>,
   long_type: TypeRef<'c>,
@@ -143,6 +144,11 @@ impl<'c> Context<'c> {
   }
 
   #[must_use]
+  pub fn schar_type(&self) -> TypeRef<'c> {
+    self.schar_type
+  }
+
+  #[must_use]
   pub fn nullptr_type(&self) -> TypeRef<'c> {
     self.nullptr_type
   }
@@ -220,35 +226,38 @@ impl<'c> Context<'c> {
 }
 impl<'c> Context<'c> {
   pub fn new(arena: &'c Arena) -> Self {
-    let void_type = arena.alloc(Primitive::Void.into());
-    let int_type = arena.alloc(Primitive::Int.into());
+    use Primitive::*;
+
+    let void_type = arena.alloc(Void.into());
+    let int_type = arena.alloc(Int.into());
     let this = Self {
       arena,
       ast_type_interner: Default::default(),
       // str_interner: Default::default(),
       int_type,
-      float_type: arena.alloc(Primitive::Float.into()),
-      short_type: arena.alloc(Primitive::Short.into()),
-      ptrdiff_type: arena.alloc(Primitive::LongLong.into()),
-      uintptr_type: arena.alloc(Primitive::ULongLong.into()),
+      float_type: arena.alloc(Float.into()),
+      short_type: arena.alloc(Short.into()),
+      ptrdiff_type: arena.alloc(LongLong.into()),
+      uintptr_type: arena.alloc(ULongLong.into()),
       void_type,
-      char_type: arena.alloc(Primitive::Char.into()),
-      uchar_type: arena.alloc(Primitive::UChar.into()),
-      ushort_type: arena.alloc(Primitive::UShort.into()),
-      uint_type: arena.alloc(Primitive::UInt.into()),
-      ulong_long_type: arena.alloc(Primitive::ULongLong.into()),
-      long_type: arena.alloc(Primitive::Long.into()),
-      ulong_type: arena.alloc(Primitive::ULong.into()),
+      char_type: arena.alloc(Char.into()),
+      schar_type: arena.alloc(SChar.into()),
+      uchar_type: arena.alloc(UChar.into()),
+      ushort_type: arena.alloc(UShort.into()),
+      uint_type: arena.alloc(UInt.into()),
+      ulong_long_type: arena.alloc(ULongLong.into()),
+      long_type: arena.alloc(Long.into()),
+      ulong_type: arena.alloc(ULong.into()),
 
-      nullptr_type: arena.alloc(Primitive::Nullptr.into()),
-      double_type: arena.alloc(Primitive::Double.into()),
-      bool_type: arena.alloc(Primitive::Bool.into()),
-      long_long_type: arena.alloc(Primitive::LongLong.into()),
+      nullptr_type: arena.alloc(Nullptr.into()),
+      double_type: arena.alloc(Double.into()),
+      bool_type: arena.alloc(Bool.into()),
+      long_long_type: arena.alloc(LongLong.into()),
       voidptr_type: arena
         .alloc(Pointer::new(QualifiedType::new_unqualified(void_type)).into()),
 
       converted_bool: int_type,
-      fake_bool_type: arena.alloc(Primitive::__IRBit.into()),
+      fake_bool_type: arena.alloc(__IRBit.into()),
 
       unnamed_str: arena.alloc_str("<unnamed>"),
       langopts: 23,

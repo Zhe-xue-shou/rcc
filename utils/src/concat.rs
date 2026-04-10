@@ -40,7 +40,7 @@ macro_rules! concat_static_str {
 mod tests {
   use crate::static_assert_eq;
   #[test]
-  fn basic_concat() {
+  const fn basic_concat() {
     const PREFIX: &str = "Hello, ";
     const SUFFIX: &str = "World!";
     const FULL_KEY: &str = concat_static_str!(PREFIX, SUFFIX);
@@ -48,7 +48,7 @@ mod tests {
   }
 
   #[test]
-  fn multiple_concat() {
+  const fn multiple_concat() {
     const PART1: &str = "The quick ";
     const PART2: &str = "brown fox ";
     const PART3: &str = "jumps over ";

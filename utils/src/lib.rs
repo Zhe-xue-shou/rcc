@@ -107,7 +107,7 @@ impl<T: ?Sized> !PtrEq for &mut T {}
 ///
 /// # Invoke it directly is wrong.
 #[track_caller]
-#[inline]
+#[inline(always)]
 pub const fn _static_assert_impl_(cond: bool, _: &str) {
   assert!(cond, "static assertion failed");
 }
@@ -115,7 +115,7 @@ pub const fn _static_assert_impl_(cond: bool, _: &str) {
 ///
 /// # Invoke it directly has no additional effect than [`debug_assert`].
 #[track_caller]
-#[inline]
+#[inline(always)]
 pub fn _debug_assertion_impl_(cond: bool, msg: &str) {
   debug_assert!(cond, "debug assertion failed: {}", msg);
 }

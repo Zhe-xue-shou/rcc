@@ -279,10 +279,7 @@ impl<'c> Parser<'c> {
   }
 
   fn parse_function_specifier(&self) -> Option<FunctionSpecifier> {
-    match self.peek_lit() {
-      Literal::Keyword(kw) => FunctionSpecifier::try_from(kw).ok(),
-      _ => None,
-    }
+    FunctionSpecifier::try_from(self.peek_lit()).ok()
   }
 
   fn parse_qualifier(&mut self) -> Qualifiers {

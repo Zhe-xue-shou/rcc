@@ -1,5 +1,5 @@
 use ::rcc_utils::{
-  BuiltinFloat, BuiltinIntegerOrBoolean, NumFrom, NumTo, const_pre,
+  BuiltinIntegerOrBoolean, BuiltinNumeric, NumFrom, NumTo, const_pre,
   ensure_is_pod, signed_type_of,
 };
 
@@ -324,22 +324,7 @@ impl Integral {
 
   #[inline]
   pub const fn to_builtin<
-    T: [const] BuiltinIntegerOrBoolean
-      + [const] NumFrom<Underlying>
-      + [const] NumFrom<SignedUnderlying>,
-  >(
-    &self,
-  ) -> T {
-    if self.is_signed() {
-      self.as_signed().to()
-    } else {
-      self.bits.to()
-    }
-  }
-
-  #[inline]
-  pub const fn to_builtin_float<
-    T: [const] BuiltinFloat
+    T: [const] BuiltinNumeric
       + [const] NumFrom<Underlying>
       + [const] NumFrom<SignedUnderlying>,
   >(

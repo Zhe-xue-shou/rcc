@@ -444,3 +444,47 @@ impl<'c> Compatibility<'c> for Union<'c> {
     todo!()
   }
 }
+
+impl<'c> QualifiedType<'c> {
+  /// Apply only for types inside parameter's function proto.
+  ///
+  ///
+  /// ### 6.7.7.4p6
+  /// A declaration of a parameter as *array of type* shall be adjusted to *qualified pointer to type*, where
+  /// the type qualifiers (if any) are those specified within the [ and ] of the array type derivation. If the
+  /// keyword static also appears within the [ and ] of the array type derivation, then for each call to
+  /// the function, the value of the corresponding actual argument shall provide access to the first element
+  /// of an array with at least as many elements as specified by the size expression.
+  ///
+  /// ```c
+  /// void f(int  a[const]); // or `volatile`, `restrict`.
+  /// void f(int * const a); // adjusted.
+  /// void f(const int a[]); // incompatible with above.
+  /// ```
+  ///
+  /// ### 6.7.7.4p7
+  /// A declaration of a parameter as *function returning type*
+  /// shall be adjusted to *pointer to function returning type*.
+  ///
+  /// ### Implementation Status:
+  ///
+  /// **ALL** of those nasty parts, like
+  ///
+  /// - the size of the array
+  /// - `static` keyword
+  /// - star modifier `*`
+  /// - qualifiers like `const` between `[` and `]`
+  ///
+  /// are currently ignored.
+  pub fn parameter_adjustment(self, context: &Context<'c>) -> Self {
+    match self.unqualified_type {
+      Type::Array(Array { element_type, size }) => Self::new(
+        element_type.qualifiers,
+        Type::Pointer(Pointer::new(*element_type)).lookup(context),
+      ),
+      Type::FunctionProto(_) =>
+        Self::new_unqualified(Type::Pointer(Pointer::new(self)).lookup(context)),
+      _ => self,
+    }
+  }
+}

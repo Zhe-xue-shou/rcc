@@ -14,7 +14,7 @@
 //! - VLA is out of consideration. it's simple here, but the upstream has blocked it as [`unimplemented!`].
 //!
 
-use ::rcc_ast::types::{self as ast, QualifiedType, TypeInfo};
+use ::rcc_ast::types::{Array, ArraySize, QualifiedType, Type, TypeInfo};
 use ::rcc_parse::{declaration as pd, expression as pe};
 use ::rcc_shared::{ArenaVec, CollectIn, DiagData::*, SourceSpan};
 use ::rcc_utils::RefEq;
@@ -286,10 +286,10 @@ impl<'i, 'c> Initialization<'i, 'c> {
 
   fn scalar_leaf_width(&self, target_type: QualifiedType<'c>) -> usize {
     match target_type.unqualified_type {
-      ast::Type::Array(array) => match array.size {
-        ast::ArraySize::Constant(size) =>
+      Type::Array(array) => match array.size {
+        ArraySize::Constant(size) =>
           size.saturating_mul(self.scalar_leaf_width(array.element_type)),
-        ast::ArraySize::Incomplete | ast::ArraySize::Variable(_) => 0,
+        ArraySize::Incomplete | ArraySize::Variable(_) => 0,
       },
       _ => 1,
     }
@@ -299,7 +299,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
     &self,
     element_type: QualifiedType<'c>,
   ) -> QualifiedType<'c> {
-    ast::Type::Array(ast::Array::new(element_type, ast::ArraySize::Constant(1)))
+    Type::Array(Array::new(element_type, ArraySize::Constant(1)))
       .lookup(self.context())
       .into()
   }
@@ -312,7 +312,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
     let mut path = Vec::default();
 
     // struct/union unimplemented
-    while let ast::Type::Array(array) = object_type.unqualified_type {
+    while let Type::Array(array) = object_type.unqualified_type {
       let stride = self.scalar_leaf_width(array.element_type);
       if stride == 0 {
         // unknown downstream extent. keep this dimension at zero and let
@@ -340,7 +340,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
     kind: Kind,
   ) {
     match target_type.unqualified_type {
-      ast::Type::Array(_) => match initializer {
+      Type::Array(_) => match initializer {
         pd::Initializer::InitializerList(list) => {
           let pd::InitializerList { entries, span } = list;
           let mut local_state = ArrayTree::new(span);
@@ -376,7 +376,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
           );
         },
       },
-      ast::Type::Record(_) | ast::Type::Union(_) => {
+      Type::Record(_) | Type::Union(_) => {
         self.add_error(
           UnsupportedFeature(
             "struct/union initializer not implemented yet".to_string(),
@@ -511,7 +511,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
     lhs: QualifiedType<'c>,
     rhs: QualifiedType<'c>,
   ) -> QualifiedType<'c> {
-    let (ast::Type::Array(lhs_array), ast::Type::Array(rhs_array)) =
+    let (Type::Array(lhs_array), Type::Array(rhs_array)) =
       (lhs.unqualified_type, rhs.unqualified_type)
     else {
       return lhs;
@@ -524,17 +524,17 @@ impl<'i, 'c> Initialization<'i, 'c> {
     } else {
       lhs_array.element_type
     };
-    use ast::ArraySize::*;
+    use ArraySize::*;
 
     let size = match (lhs_array.size, rhs_array.size) {
       (Variable(_), _) | (_, Variable(_)) => todo!("VLA not supported"),
-      (Constant(lhs), Constant(rhs)) => Constant(lhs.max(rhs)),
+      (Constant(lhs), Constant(rhs)) => Constant(Ord::max(lhs, rhs)),
       (Constant(lhs), Incomplete) => Constant(lhs),
       (Incomplete, Constant(rhs)) => Constant(rhs),
       (Incomplete, Incomplete) => Incomplete,
     };
 
-    ast::Type::Array(ast::Array::new(element_type, size))
+    Type::Array(Array::new(element_type, size))
       .lookup(self.context())
       .into()
   }
@@ -553,8 +553,8 @@ impl<'i, 'c> Initialization<'i, 'c> {
           let index = self.try_fold_to_usize(expression, span);
 
           match target_type.unqualified_type {
-            ast::Type::Array(array) => {
-              if let ast::ArraySize::Constant(bound) = array.size
+            Type::Array(array) => {
+              if let ArraySize::Constant(bound) = array.size
                 && let Some(index) = index
                 && index >= bound
               {
@@ -874,7 +874,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
     array_type: QualifiedType<'c>,
     tree: &ArrayTree<'c>,
   ) -> QualifiedType<'c> {
-    let ast::Type::Array(array) = array_type.unqualified_type else {
+    let Type::Array(array) = array_type.unqualified_type else {
       return array_type;
     };
 
@@ -884,7 +884,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
       array.element_type
     };
 
-    use ast::ArraySize::*;
+    use ArraySize::*;
 
     let size = match array.size {
       Constant(size) => Constant(size),
@@ -898,7 +898,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
       },
     };
 
-    ast::Type::Array(ast::Array::new(element_type, size))
+    Type::Array(Array::new(element_type, size))
       .lookup(self.context())
       .into()
   }
@@ -949,11 +949,11 @@ impl<'i, 'c> Initialization<'i, 'c> {
     target_type: QualifiedType<'c>,
     expr: se::ExprRef<'c>,
   ) -> QualifiedType<'c> {
-    let ast::Type::Array(array) = target_type.unqualified_type else {
+    let Type::Array(array) = target_type.unqualified_type else {
       return target_type;
     };
 
-    if !matches!(array.size, ast::ArraySize::Incomplete)
+    if !matches!(array.size, ArraySize::Incomplete)
       || !array.element_type.is_character_type()
     {
       return target_type;
@@ -965,9 +965,9 @@ impl<'i, 'c> Initialization<'i, 'c> {
       return target_type;
     };
 
-    ast::Type::Array(ast::Array::new(
+    Type::Array(Array::new(
       array.element_type,
-      ast::ArraySize::Constant(required_size),
+      ArraySize::Constant(required_size),
     ))
     .lookup(self.context())
     .into()
@@ -979,7 +979,7 @@ impl<'i, 'c> Initialization<'i, 'c> {
     expr: se::ExprRef<'c>,
   ) -> se::ExprRef<'c> {
     // NASTY EXCEPTION: character arrays initialized with strings
-    if let ast::Type::Array(array) = target_type.unqualified_type
+    if let Type::Array(array) = target_type.unqualified_type
       && array.element_type.is_character_type()
       && let Some(string_len) = Self::string_literal_len(expr)
     {

@@ -273,8 +273,6 @@ mod data {
     #[error("Cannot use {} '{}' inside {} ilist", if *.0 {"field designator"} else {"array"}, &.1, if !*.0 {"field designator"} else {"array"})]
     InvalidDesignator(/* is_array */ bool, String),
     #[error("{0}")]
-    Placeholder(CustomMessage),
-    #[error("{0}")]
     Custom(CustomMessage),
     #[error("{0}")]
     UnsupportedFeature(CustomMessage),

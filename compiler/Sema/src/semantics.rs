@@ -162,7 +162,7 @@ impl<'c> Sema<'c> {
     I::IntoIter: DoubleEndedIterator,
   {
     // reverse order
-    for modifier in modifiers.into_iter().rev() {
+    modifiers.into_iter().rev().for_each(|modifier| {
       match modifier {
         pd::Modifier::Pointer(qualifiers) => {
           qualified_type = QualifiedType::new(
@@ -186,24 +186,31 @@ impl<'c> Sema<'c> {
               if analyzed_expr.qualified_type().is_scalar() {
                 use super::folding::FoldingResult::*;
                 match analyzed_expr.fold(self.session) {
-                  Success(v) =>
-                    if v.is_integer_constant() {
+                  Success(value) =>
+                    if value.is_integer_constant() {
                       ArraySize::Constant(
-                        match v.raw_expr().as_constant_unchecked() {
-                          se::Constant::Integral(integral) =>
-                            integral.to_builtin(),
-                          _ => unreachable!(),
-                        },
+                        value
+                          .raw_expr()
+                          .as_constant_unchecked()
+                          .as_integral_unchecked()
+                          .to_builtin(),
                       )
                     } else {
                       self.add_error(
-                        NonIntegerInArraySubscript(v.to_string()),
-                        v.span(),
+                        NonIntegerInArraySubscript(value.to_string()),
+                        value.span(),
                       );
                       ArraySize::Constant(0)
                     },
-                  Failure(_) => {
-                    todo!("VLA not supported")
+                  Failure(expr) => {
+                    self.add_error(
+                      UnsupportedFeature(format!(
+                        "Expression {expr} could not be evaluated to a \
+                         constant; VLA is not supported currently."
+                      )),
+                      expr.span(),
+                    );
+                    ArraySize::Constant(0)
                   },
                 }
               } else {
@@ -240,7 +247,7 @@ impl<'c> Sema<'c> {
           qualified_type = p.into();
         },
       }
-    }
+    });
     qualified_type
   }
 
@@ -322,7 +329,9 @@ impl<'c> Sema<'c> {
           name: _,
           span: _,
         } = declarator;
-        self.apply_modifiers_for_varty(base_type, modifiers)
+        self
+          .apply_modifiers_for_varty(base_type, modifiers)
+          .parameter_adjustment(self.context())
       })
       .collect_in(&**(self.context().arena()))
   }
@@ -350,8 +359,9 @@ impl<'c> Sema<'c> {
           name,
           span: _,
         } = declarator;
-        let qualified_type =
-          self.apply_modifiers_for_varty(base_type, modifiers);
+        let qualified_type = self
+          .apply_modifiers_for_varty(base_type, modifiers)
+          .parameter_adjustment(self.context());
         let declaration = declref::DeclNode::decl(
           self.context(),
           qualified_type,

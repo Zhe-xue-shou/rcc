@@ -2,7 +2,6 @@
 mod builder;
 mod context;
 mod emitable;
-mod fmt;
 pub mod instruction;
 pub mod module;
 mod types;

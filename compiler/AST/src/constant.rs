@@ -29,7 +29,7 @@ use ::std::marker::PhantomData;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Address<'c> {
-  /// [`DeclNode`]is sufficient, but use [`DeclRef`] to improve clearity at tehe expense of tow indirect.
+  /// [`DeclNode`] is sufficient, but use [`DeclRef`] to improve clearity at tehe expense of tow indirect.
   inner: Opaque,
   /// this shall not be [`Address`] again, except is two base is the same: &a[5] - &a[2].
   offset: Option<ConstantRef<'c>>,

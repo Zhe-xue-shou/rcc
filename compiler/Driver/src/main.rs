@@ -15,7 +15,7 @@ enum Stage {
   Ir,
 }
 fn main() {
-  let args = ::std::env::args().collect::<Vec<String>>();
+  let args = ::std::env::args().collect::<Vec<_>>();
 
   println!("Args: {:?}", args);
 
@@ -75,7 +75,7 @@ fn pipeline(manager: SourceManager, stage: Stage, pretty_print: bool) -> i32 {
         if pretty_print {
           println!("{t}");
         } else {
-          println!("{} ", t);
+          println!("{t} ");
         }
       });
     println!("Lex succeeded.");

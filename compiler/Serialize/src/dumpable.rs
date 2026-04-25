@@ -14,7 +14,9 @@ use ::rcc_sema::{
   },
 };
 
-use crate::{DumpSpan, Dumpable, Dumper, Palette, quoted};
+use crate::{
+  DumpSpan, Dumpable, Dumper, Palette, quoted, render::RenderEngineMixin,
+};
 
 impl<'c, T> Dumpable<'c> for &T
 where

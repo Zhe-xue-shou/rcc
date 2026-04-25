@@ -4,6 +4,10 @@ use ::std::{
 };
 use ::termcolor::{Color, ColorSpec, WriteColor};
 
+/// I'm being a bit of lazy here, ususally we use [`?`](std::ops::Try)
+/// to propagate errors of [`std::io::Result`],
+/// but in this case we want to keep writing even if some writes fail,
+/// and report the first error at the end.
 pub struct StickyWriter<W: Write> {
   inner: W,
   error: ::std::io::Result<()>,
@@ -40,6 +44,8 @@ impl<W: Write> StickyWriter<W> {
     self.error
   }
 }
+/// A wrapper around a [`Write`] that flushes the stream when dropped.
+/// This is useful for ensuring that all output is flushed even if the dumper panics or returns early.
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct FlushOnDropRAII<W: Write> {
@@ -99,8 +105,9 @@ impl<W: Write + WriteColor> WriteColor for FlushOnDropRAII<W> {
   }
 }
 /// A palette of colors for different parts of the dump output.
+///
 /// The dumper will use the appropriate color from the palette when printing different parts of the output.
-///  This allows for consistent and customizable coloring of the dump output across different dumpable types.
+/// This allows for consistent and customizable coloring of the dump output across different dumpable types.
 #[derive(Default, Clone)]
 pub struct Palette {
   /// The color for node headers, e.g., "BinaryExpr", "ArrayType", etc.

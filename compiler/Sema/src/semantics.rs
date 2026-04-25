@@ -1111,9 +1111,8 @@ impl<'c> Sema<'c> {
       callee,
       span,
     } = call;
-    let analyzed_callee = self.expression(*callee)?
-    // .decay(self.context()) // this `should` decay, but clang decay only if the return result is assigned to a variable.
-    ;
+    let analyzed_callee =
+      self.expression(*callee)?.lvalue_conversion(self.context());
 
     let function_proto = match analyzed_callee.unqualified_type() {
       Type::FunctionProto(proto) => proto,

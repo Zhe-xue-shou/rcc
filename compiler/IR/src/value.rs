@@ -1,11 +1,11 @@
-use ::rcc_ast::{Constant, types as ast};
+use ::rcc_ast::types as ast;
 use ::slotmap::{Key, new_key_type};
-use ::std::cell::{Ref, RefMut};
 
 use super::{
-  Argument, BasicBlock, TypeRef,
+  BasicBlock, ConstantData, GlobalValue, TypeRef,
+  constant::Constant,
+  global::{Function, Variable},
   instruction::{Instruction, User},
-  module::{Function, Variable},
 };
 
 new_key_type! {
@@ -72,26 +72,35 @@ impl ValueID {
     <Self as Key>::is_null(self)
   }
 }
+#[derive(Debug)]
+pub struct Arguments {
+  /// Shall be [`Function`].
+  pub index: usize,
+}
+
+impl Arguments {
+  pub fn new(index: usize) -> Self {
+    Self { index }
+  }
+}
 
 #[derive(Debug)]
 pub enum Data<'c> {
   Instruction(Instruction),
   Constant(Constant<'c>),
-  Function(Function<'c>),
-  Variable(Variable<'c>),
   BasicBlock(BasicBlock),
-  Argument(Argument),
+  Arguments(Arguments),
 }
 impl User for Data<'_> {
   fn use_list(&self) -> &[ValueID] {
     ::rcc_utils::static_dispatch!(
       self, |variant| variant.use_list() =>
-      Instruction Constant Function Variable BasicBlock Argument
+      Instruction Constant BasicBlock Arguments
     )
   }
 }
 
-impl User for Argument {
+impl User for Arguments {
   fn use_list(&self) -> &[ValueID] {
     &[]
   }
@@ -104,8 +113,24 @@ impl User for BasicBlock {
 
 impl User for Constant<'_> {
   fn use_list(&self) -> &[ValueID] {
+    ::rcc_utils::static_dispatch!(
+      self, |variant| variant.use_list() =>
+      Data Global
+    )
+  }
+}
+impl User for ConstantData<'_> {
+  fn use_list(&self) -> &[ValueID] {
     // TODO
     &[]
+  }
+}
+impl User for GlobalValue<'_> {
+  fn use_list(&self) -> &[ValueID] {
+    ::rcc_utils::static_dispatch!(
+      self, |variant| variant.use_list() =>
+      Function Variable
+    )
   }
 }
 impl User for Function<'_> {
@@ -152,38 +177,25 @@ impl<'c> Value<'c> {
     }
   }
 }
-pub(super) trait WithActionMut<T> {
-  fn with_action_mut<R, F: FnOnce(&mut T) -> R>(&mut self, f: F) -> R;
-}
-impl<'c, T> WithActionMut<T> for RefMut<'c, T> {
-  fn with_action_mut<R, F: FnOnce(&mut T) -> R>(&mut self, f: F) -> R {
-    f(self)
-  }
-}
-pub(super) trait WithAction<T> {
-  fn with_action<R, F: FnOnce(&T) -> R>(&self, f: F) -> R;
-}
-impl<'c, T> WithAction<T> for RefMut<'c, T> {
-  fn with_action<R, F: FnOnce(&T) -> R>(&self, f: F) -> R {
-    f(self)
-  }
-}
-impl<'c, T> WithAction<T> for Ref<'c, T> {
-  fn with_action<R, F: FnOnce(&T) -> R>(&self, f: F) -> R {
-    f(self)
-  }
-}
-use ::rcc_utils::{interconvert, make_trio_for};
-interconvert!(Instruction, Data<'c>);
-interconvert!(Function, Data, 'c);
-interconvert!(Constant, Data, 'c);
-interconvert!(Variable, Data, 'c);
-interconvert!(BasicBlock, Data<'c>);
-interconvert!(Argument, Data<'c>);
 
-make_trio_for!(Instruction, Data<'c>);
-make_trio_for!(Function, Data, 'c);
-make_trio_for!(Constant, Data, 'c);
-make_trio_for!(Variable, Data, 'c);
-make_trio_for!(BasicBlock, Data<'c>);
-make_trio_for!(Argument, Data<'c>);
+mod cvt {
+  use ::rcc_utils::{interconvert, make_trio_for};
+
+  use super::*;
+
+  interconvert!(Instruction, Data<'c>);
+  interconvert!(Constant, Data, 'c);
+  interconvert!(BasicBlock, Data<'c>);
+  interconvert!(Arguments, Data<'c>);
+
+  make_trio_for!(Instruction, Data<'c>);
+  make_trio_for!(Constant, Data, 'c);
+  make_trio_for!(BasicBlock, Data<'c>);
+  make_trio_for!(Arguments, Data<'c>);
+
+  impl<'c> From<ConstantData<'c>> for Data<'c> {
+    fn from(value: ConstantData<'c>) -> Self {
+      Constant::from(value).into()
+    }
+  }
+}

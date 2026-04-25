@@ -1,19 +1,23 @@
 #[macro_use]
 mod builder;
+mod constant;
 mod context;
 mod emitable;
+mod global;
 pub mod instruction;
-pub mod module;
 mod types;
 mod value;
 
+use ::rcc_ast::Constant as ConstantData;
+
 pub use self::{
   builder::Builder,
+  constant::{Constant as IRConstant, Global as GlobalValue},
   context::{Context, Session},
-  module::{
-    Argument, BasicBlock, Function as IRFunction,
-    Initializer as IRStaticInitializer, Module, Variable as IRGlobalValue,
+  global::{
+    BasicBlock, Function as IRFunction, Initializer as IRStaticInitializer,
+    Module, Variable as IRVariable,
   },
   types::{Type, TypeRef, TypeRefMut},
-  value::{Data as ValueData, Value, ValueID},
+  value::{Arguments as IRArguments, Data as ValueData, Value, ValueID},
 };

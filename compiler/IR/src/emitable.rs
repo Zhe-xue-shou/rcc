@@ -1,18 +1,17 @@
-use ::rcc_ast::{
-  Constant,
-  types::{self as ast, TypeInfo},
-};
+use ::rcc_ast::types::{self as ast, TypeInfo};
 use ::rcc_utils::RefEq;
 
 use super::{
-  Argument, Builder, Value, ValueData, ValueID,
+  Builder, ConstantData, GlobalValue, Value, ValueID,
+  constant::Constant,
+  global,
   instruction::{self as inst, Instruction},
-  module,
+  value,
 };
 
 /// Overload helper. I love overloading.
 ///
-/// Also, this `emit` function acts like the ctor but with assertions
+/// Also, this `emit` function acts like the ctor but with assertions, which is **crucial**.
 pub trait Emitable<'a, ValueType> {
   #[must_use = "Usually the return value_id shall not be ignored; one such \
                 exception is for `store` instruction, which returns void. use \
@@ -33,39 +32,47 @@ impl<'c> Emitable<'c, inst::Binary> for Builder<'c> {
 
 impl<'c> Emitable<'c, inst::Call> for Builder<'c> {
   fn emit(&mut self, call: inst::Call, ast_type: ast::TypeRef<'c>) -> ValueID {
+    debug_assert!(
+      self.visit(call.callee(), |callee| callee.ir_type.is_pointer()),
+      "Call inst callee must be a pointer."
+    );
     self.emit_common_instruction(call, ast_type)
   }
 }
 
-impl<'c> Emitable<'c, module::Function<'c>> for Builder<'c> {
+impl<'c> Emitable<'c, global::Function<'c>> for Builder<'c> {
   fn emit(
     &mut self,
-    value: module::Function<'c>,
+    value: global::Function<'c>,
     ast_type: ast::TypeRef<'c>,
   ) -> ValueID {
-    self.emit_globals(value, ast_type)
+    self.emit_globals(GlobalValue::from(value), ast_type)
   }
 }
-impl<'c> Emitable<'c, module::Variable<'c>> for Builder<'c> {
+impl<'c> Emitable<'c, global::Variable<'c>> for Builder<'c> {
   fn emit(
     &mut self,
-    value: module::Variable<'c>,
+    value: global::Variable<'c>,
     ast_type: ast::TypeRef<'c>,
   ) -> ValueID {
-    self.emit_globals(value, ast_type)
+    self.emit_globals(GlobalValue::from(value), ast_type)
   }
 }
-impl<'c> Emitable<'c, Constant<'c>> for Builder<'c> {
+impl<'c> Emitable<'c, ConstantData<'c>> for Builder<'c> {
   fn emit(
     &mut self,
-    value: Constant<'c>,
+    value: ConstantData<'c>,
     ast_type: ast::TypeRef<'c>,
   ) -> ValueID {
     self.ir().intern_constant(value, ast_type)
   }
 }
-impl<'c> Emitable<'c, Argument> for Builder<'c> {
-  fn emit(&mut self, value: Argument, ast_type: ast::TypeRef<'c>) -> ValueID {
+impl<'c> Emitable<'c, value::Arguments> for Builder<'c> {
+  fn emit(
+    &mut self,
+    value: value::Arguments,
+    ast_type: ast::TypeRef<'c>,
+  ) -> ValueID {
     self.ir().insert(Value::new(
       ast_type,
       ty!(self, ast_type),
@@ -478,7 +485,12 @@ mod instruction {
 
         let entry_id = self
           .visit(self.current_function, |value| {
-            value.data.as_function_unchecked().entry()
+            value
+              .data
+              .as_constant_unchecked()
+              .as_global_unchecked()
+              .as_function_unchecked()
+              .entry()
           })
           // shall only be called if current block is entry block
           .unwrap_or(self.current_block);
@@ -600,14 +612,14 @@ impl<'c> Builder<'c> {
     })
   }
 
-  fn emit_globals<T: Into<ValueData<'c>>>(
+  fn emit_globals<T: Into<Constant<'c>>>(
     &mut self,
     value: T,
     ast_type: ast::TypeRef<'c>,
   ) -> ValueID {
     let value_id = self.ir().insert(Value::new(
       ast_type,
-      ty!(self, ast_type),
+      self.ir().pointer_type(),
       value.into(),
       Default::default(),
     ));

@@ -3,10 +3,15 @@
 use ::rcc_adt::Integral;
 use ::rcc_ast::Constant;
 use ::rcc_ir::{
-  Module, Value, ValueData, ValueID, instruction as inst, module,
+  BasicBlock, GlobalValue, IRArguments, IRConstant, IRFunction,
+  IRStaticInitializer, IRVariable, Module, Value, ValueData, ValueID,
+  instruction as inst,
 };
 
-use crate::{Palette, Printable, pre, printer::Printer, quoted, suff};
+use crate::{
+  Palette, Printable, pre, printer::Printer, quoted, render::RenderEngineMixin,
+  suff,
+};
 
 #[macro_use]
 mod macros {
@@ -28,7 +33,7 @@ fn pretty_print_contant_or_id<'c>(
       &palette.meta,
     );
   }
-  if let Some(value) = printer.ir().get_by_constant_id(&value_id) {
+  if let Some(value) = printer.ir().get_by_constantdata_id(&value_id) {
     use ::rcc_ir::Type::*;
     match printer.ir().get(value_id).ir_type {
       Floating(_) => printer.write_fmt(
@@ -49,7 +54,7 @@ fn pretty_print_contant_or_id<'c>(
       _ => printer.write(value, &palette.literal),
     }
   } else {
-    printer.write(pre!("%"=> printer.get_id(value_id)), &palette.skeleton)
+    printer.write_id(value_id);
   }
 }
 fn print_users<'c>(
@@ -109,7 +114,7 @@ impl<'c> Printable<'c> for Value<'c> {
     ::rcc_utils::static_dispatch!(
         ValueData: &self.data,
         |variant| Print::print(self, printer, prefix, is_last, palette, variant) =>
-        Instruction Constant Function Variable BasicBlock Argument
+        Instruction Constant BasicBlock Arguments
     )
   }
 }
@@ -164,6 +169,39 @@ impl<'c> Print<'c, inst::Instruction> for Value<'c> {
   }
 }
 
+impl<'c> Print<'c, IRConstant<'_>> for Value<'c> {
+  fn print(
+    &self,
+    printer: &mut impl Printer<'c>,
+    prefix: &str,
+    is_last: bool,
+    palette: &Palette,
+    variant: &IRConstant<'_>,
+  ) {
+    ::rcc_utils::static_dispatch!(
+      IRConstant : variant,
+      |variant| Print::print(self, printer, prefix, is_last, palette, variant) =>
+      Data Global
+    )
+  }
+}
+impl<'c> Print<'c, GlobalValue<'_>> for Value<'c> {
+  fn print(
+    &self,
+    printer: &mut impl Printer<'c>,
+    prefix: &str,
+    is_last: bool,
+    palette: &Palette,
+    variant: &GlobalValue<'_>,
+  ) {
+    ::rcc_utils::static_dispatch!(
+      GlobalValue : variant,
+      |variant| Print::print(self, printer, prefix, is_last, palette, variant) =>
+      Function Variable
+    )
+  }
+}
+
 impl<'c> Print<'c, Constant<'_>> for Value<'c> {
   fn print(
     &self,
@@ -177,14 +215,14 @@ impl<'c> Print<'c, Constant<'_>> for Value<'c> {
     printer.write(variant, &palette.literal);
   }
 }
-impl<'c> Print<'c, module::Function<'_>> for Value<'c> {
+impl<'c> Print<'c, IRFunction<'_>> for Value<'c> {
   fn print(
     &self,
     printer: &mut impl Printer<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
-    variant: &module::Function<'_>,
+    variant: &IRFunction<'_>,
   ) {
     fn preds<'c>(
       printer: &mut impl Printer<'c>,
@@ -209,6 +247,12 @@ impl<'c> Print<'c, module::Function<'_>> for Value<'c> {
         );
       }
     }
+    debug_assert!(
+      self.ir_type.is_pointer(),
+      "function is a global value which should have pointer type"
+    );
+    let ir_function_type =
+      printer.ir().ir_type(self.ast_type).as_function_unchecked();
 
     printer.write(
       suff!(
@@ -216,7 +260,7 @@ impl<'c> Print<'c, module::Function<'_>> for Value<'c> {
         if variant.is_definition() {
           debug_assert!(
             variant.params.len()
-              == self.ir_type.as_function_unchecked().params.len()
+              == ir_function_type.params.len()
           );
           "define"
         } else {
@@ -231,10 +275,7 @@ impl<'c> Print<'c, module::Function<'_>> for Value<'c> {
       &palette.literal,
     );
 
-    printer.write(
-      suff!(" " => self.ir_type.as_function_unchecked().return_type),
-      &palette.meta,
-    );
+    printer.write(suff!(" " => ir_function_type.return_type), &palette.meta);
 
     printer.write(pre!("@" => variant.name), &palette.skeleton);
     printer.write("(", &palette.skeleton);
@@ -251,17 +292,12 @@ impl<'c> Print<'c, module::Function<'_>> for Value<'c> {
             /* index */ &format!("{}", printer.get_id(arg_id)),
             index == variant.params.len() - 1,
             palette,
-            arg.data.as_argument_unchecked(),
+            arg.data.as_arguments_unchecked(),
           );
         });
     } else {
-      self
-        .ir_type
-        .as_function_unchecked()
-        .params
-        .iter()
-        .enumerate()
-        .for_each(|(index, param_ty)| {
+      ir_function_type.params.iter().enumerate().for_each(
+        |(index, param_ty)| {
           printer.write(suff!(" " => param_ty), &palette.meta);
           printer.write(
             if variant.params.is_empty() || index + 1 == variant.params.len() {
@@ -271,7 +307,8 @@ impl<'c> Print<'c, module::Function<'_>> for Value<'c> {
             },
             &palette.dim,
           );
-        });
+        },
+      );
     }
     printer.write(")", &palette.skeleton);
     if variant.is_definition() {
@@ -297,26 +334,39 @@ impl<'c> Print<'c, module::Function<'_>> for Value<'c> {
     printer.reset_counter();
   }
 }
-impl<'c> Print<'c, module::Variable<'_>> for Value<'c> {
+impl<'c> Print<'c, IRVariable<'_>> for Value<'c> {
   fn print(
     &self,
     printer: &mut impl Printer<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
-    variant: &module::Variable<'_>,
+    variant: &IRVariable<'_>,
   ) {
-    todo!()
+    printer.write_fmt(format_args!("@{} = ", variant.name), &palette.skeleton);
+    printer.write("global ", &palette.meta);
+    printer.write(printer.ir().ir_type(self.ast_type), &palette.meta);
+
+    if let Some(initializer) = &variant.initializer {
+      printer.write(" ", &palette.skeleton);
+      match initializer {
+        IRStaticInitializer::Scalar(constant) =>
+          printer.write(constant, &palette.literal),
+        IRStaticInitializer::Aggregate(_) => todo!(),
+      }
+    }
+
+    printer.newline();
   }
 }
-impl<'c> Print<'c, module::BasicBlock> for Value<'c> {
+impl<'c> Print<'c, BasicBlock> for Value<'c> {
   fn print(
     &self,
     printer: &mut impl Printer<'c>,
     prefix: &str,
     is_last: bool,
     palette: &Palette,
-    variant: &module::BasicBlock,
+    variant: &BasicBlock,
   ) {
     variant.instructions.iter().for_each(|&inst_id| {
       printer.write(prefix, &palette.dim);
@@ -349,14 +399,14 @@ impl<'c> Print<'c, module::BasicBlock> for Value<'c> {
     printer.newline();
   }
 }
-impl<'c> Print<'c, module::Argument> for Value<'c> {
+impl<'c> Print<'c, IRArguments> for Value<'c> {
   fn print(
     &self,
     printer: &mut impl Printer<'c>,
     index: &str, // coontext is actually an index
     is_last: bool,
     palette: &Palette,
-    _variant: &module::Argument,
+    _variant: &IRArguments,
   ) {
     printer.write(suff!(" " => self.ir_type), &palette.meta);
     printer.write(pre!("%" => index), &palette.skeleton);
@@ -510,37 +560,47 @@ impl<'c> Print<'c, inst::Call> for Value<'c> {
     palette: &Palette,
     variant: &inst::Call,
   ) {
+    let ptr2printer = ::std::ptr::from_mut(printer);
+    let doit = |args: ::std::fmt::Arguments<'_>| {
+      let printer = unsafe { &mut *ptr2printer };
+      printer.write(suff!(" " => self.ir_type), &palette.meta);
+      printer.write(args, &palette.skeleton);
+      printer.write("(", &palette.skeleton);
+      variant
+        .args()
+        .iter()
+        .enumerate()
+        .for_each(|(index, &arg_id)| {
+          let arg = &*lookup!(printer, arg_id);
+          printer.write(suff!(" " => arg.ir_type), &palette.meta);
+          printer.write(
+            arg.data.as_constant().map_or_else(
+              || format!("%{}", printer.get_id(arg_id)),
+              |constant| format!("{}", constant),
+            ),
+            &palette.skeleton,
+          );
+          if index + 1 != variant.args().len() {
+            printer.write(", ", &palette.skeleton);
+          }
+        });
+      printer.write(")", &palette.skeleton);
+    };
+
     printer.write("call ", &palette.literal);
     match &lookup!(printer, variant.callee()).data {
-      ValueData::Instruction(instruction) => todo!(),
-      ValueData::Constant(constant) => todo!(),
-      ValueData::Variable(variable) => todo!(),
-      ValueData::Argument(_) =>
-        unreachable!("this should be impossible, or not implemented."),
-      ValueData::Function(function) => {
-        printer.write(suff!(" " => self.ir_type), &palette.meta);
-        printer.write(quoted!("@", function.name, "("), &palette.skeleton);
-        variant
-          .args()
-          .iter()
-          .enumerate()
-          .for_each(|(index, &arg_id)| {
-            let arg = &*lookup!(printer, arg_id);
-            printer.write(suff!(" " => arg.ir_type), &palette.meta);
-            printer.write(
-              arg.data.as_constant().map_or_else(
-                || format!("%{}", printer.get_id(arg_id)),
-                |constant| format!("{}", constant),
-              ),
-              &palette.skeleton,
-            );
-            if index != variant.args().len() {
-              printer.write(", ", &palette.skeleton);
-            }
-          });
-        printer.write(")", &palette.skeleton);
+      ValueData::Constant(constant) => match constant {
+        IRConstant::Data(constant) =>
+          todo!("when is it possible to reach here?"),
+        IRConstant::Global(global) => match global {
+          GlobalValue::Function(function) => doit(pre!("@" => function.name)),
+          GlobalValue::Variable(variable) => todo!(),
+        },
       },
-      ValueData::BasicBlock(_) => unreachable!(),
+      ValueData::Instruction(_) =>
+        doit(pre!("%" => printer.get_id(variant.callee()))),
+      ValueData::Arguments(_) | ValueData::BasicBlock(_) =>
+        unreachable!("this should be impossible, or not implemented."),
     }
   }
 }
@@ -743,10 +803,7 @@ impl<'c> Print<'c, inst::Load> for Value<'c> {
     debug_assert!(lookup!(printer, variant.addr()).ir_type.is_pointer());
 
     printer.write("ptr ", &palette.meta);
-    printer.write(
-      pre!("%" => printer.get_id(variant.addr())),
-      &palette.skeleton,
-    );
+    printer.write_id(variant.addr());
   }
 }
 impl<'c> Print<'c, inst::Store> for Value<'c> {
@@ -768,10 +825,7 @@ impl<'c> Print<'c, inst::Store> for Value<'c> {
     debug_assert!(lookup!(printer, variant.dest()).ir_type.is_pointer());
 
     printer.write("ptr ", &palette.meta);
-    printer.write(
-      pre!("%" => printer.get_id(variant.dest())),
-      &palette.skeleton,
-    );
+    printer.write_id(variant.dest());
   }
 }
 

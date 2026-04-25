@@ -1,5 +1,3 @@
-use ::rcc_utils::static_dispatch;
-
 pub use self::{
   binary::{Binary, BinaryOp},
   cast::{
@@ -35,7 +33,7 @@ pub enum Instruction {
 }
 impl User for Instruction {
   fn use_list(&self) -> &[ValueID] {
-    static_dispatch!(
+    ::rcc_utils::static_dispatch!(
       self,
       |variant| variant.use_list() =>
       Terminator Unary Binary Memory Cast Call Cmp Phi Select GetElementPtr

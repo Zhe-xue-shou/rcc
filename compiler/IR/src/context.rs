@@ -1,12 +1,11 @@
 use ::rcc_adt::{FloatFormat, Floating, Integral};
-use ::rcc_ast::{Constant, Context as ASTContext, types as ast};
+use ::rcc_ast::{Context as ASTContext, types as ast};
 use ::rcc_shared::{Arena, Diagnosis, SourceManager};
 
 use super::{
-  Type, TypeRef, Value, ValueID,
+  ConstantData, Type, TypeRef, Value, ValueID,
   instruction::User,
   types::{Array, Function},
-  value::{WithAction, WithActionMut},
 };
 
 #[derive(Debug)]
@@ -29,7 +28,7 @@ pub struct Context<'c> {
   common_floating_one: [ValueID; 2],
   common_floating_zero: [ValueID; 2],
   /// currently only for ir stage. use it in previous stage could cause unprecedented catastrophe. see the git stash.
-  constant_interner: RefCell<BiHashMap<ValueID, Constant<'c>>>,
+  constant_interner: RefCell<BiHashMap<ValueID, ConstantData<'c>>>,
 
   ast_arena: &'c Arena,
 }
@@ -133,7 +132,7 @@ impl<'c> Context<'c> {
       16 => 2,
       32 => 3,
       64 => 4,
-      128 => 5,
+      // 128 => 5,
       _ => panic!("intern other integer constant on the fly"),
     };
     self.common_integer_zero[index]
@@ -146,7 +145,7 @@ impl<'c> Context<'c> {
       16 => 2,
       32 => 3,
       64 => 4,
-      128 => 5,
+      // 128 => 5,
       _ => panic!("intern other integer constant on the fly"),
     };
     self.common_integer_one[index]
@@ -167,7 +166,7 @@ impl<'c> Context<'c> {
     self.do_intern(value.into())
   }
 
-  pub fn intern_constant<T: Into<Constant<'c>>>(
+  pub fn intern_constant<T: Into<ConstantData<'c>>>(
     &self,
     value: T,
     ast_type: ast::TypeRef<'c>,
@@ -188,10 +187,10 @@ impl<'c> Context<'c> {
     }
   }
 
-  pub fn get_by_constant_id(
+  pub fn get_by_constantdata_id(
     &self,
     id: &ValueID,
-  ) -> Option<Ref<'_, Constant<'c>>> {
+  ) -> Option<Ref<'_, ConstantData<'c>>> {
     Ref::filter_map(self.constant_interner.borrow(), |interner| {
       interner.get_by_left(id)
     })
@@ -205,7 +204,7 @@ impl<'c> Context<'c> {
       16 => self.common_integer_types[2],
       32 => self.common_integer_types[3],
       64 => self.common_integer_types[4],
-      128 => self.common_integer_types[5],
+      // 128 => self.common_integer_types[5],
       _ => self.intern(Type::Integer(bits)),
     }
   }
@@ -288,7 +287,16 @@ impl<'c> Context<'c> {
     id: ValueID,
     action: F,
   ) -> R {
-    self.get(id).with_action(action)
+    action(&self.get(id))
+  }
+
+  pub fn inspect<R, F: FnOnce(&Value<'c>, &Value<'c>) -> R>(
+    &self,
+    left: ValueID,
+    right: ValueID,
+    action: F,
+  ) -> R {
+    action(&self.get(left), &self.get(right))
   }
 
   pub fn apply<R, F: FnOnce(&mut Value<'c>) -> R>(
@@ -296,7 +304,7 @@ impl<'c> Context<'c> {
     id: ValueID,
     action: F,
   ) -> R {
-    self.get_mut(id).with_action_mut(action)
+    action(&mut self.get_mut(id))
   }
 }
 
@@ -392,51 +400,51 @@ impl<'c> Context<'c> {
       this.nullptr = ir_arena_ref.insert(Value::new(
         ast_context.nullptr_type(),
         this.pointer_type,
-        Constant::Nullptr(),
+        ConstantData::Nullptr(),
         Default::default(),
       ));
-      refmut.insert(this.nullptr, Constant::Nullptr());
+      refmut.insert(this.nullptr, ConstantData::Nullptr());
 
       this.common_floating_zero[0] = ir_arena_ref.insert(Value::new(
         ast_context.float32_type(),
         this.float32_type(),
-        Constant::Floating(Floating::zero(FloatFormat::IEEE32)),
+        ConstantData::Floating(Floating::zero(FloatFormat::IEEE32)),
         Default::default(),
       ));
       refmut.insert(
         this.common_floating_zero[0],
-        Constant::Floating(Floating::zero(FloatFormat::IEEE32)),
+        ConstantData::Floating(Floating::zero(FloatFormat::IEEE32)),
       );
 
       this.common_floating_zero[1] = ir_arena_ref.insert(Value::new(
         ast_context.float64_type(),
         this.float64_type(),
-        Constant::Floating(Floating::zero(FloatFormat::IEEE64)),
+        ConstantData::Floating(Floating::zero(FloatFormat::IEEE64)),
         Default::default(),
       ));
       refmut.insert(
         this.common_floating_zero[1],
-        Constant::Floating(Floating::zero(FloatFormat::IEEE64)),
+        ConstantData::Floating(Floating::zero(FloatFormat::IEEE64)),
       );
       this.common_floating_one[0] = ir_arena_ref.insert(Value::new(
         ast_context.float32_type(),
         this.float32_type,
-        Constant::Floating(Floating::one(FloatFormat::IEEE32)),
+        ConstantData::Floating(Floating::one(FloatFormat::IEEE32)),
         Default::default(),
       ));
       refmut.insert(
         this.common_floating_one[0],
-        Constant::Floating(Floating::one(FloatFormat::IEEE32)),
+        ConstantData::Floating(Floating::one(FloatFormat::IEEE32)),
       );
       this.common_floating_one[1] = ir_arena_ref.insert(Value::new(
         ast_context.float64_type(),
         this.float64_type,
-        Constant::Floating(Floating::one(FloatFormat::IEEE64)),
+        ConstantData::Floating(Floating::one(FloatFormat::IEEE64)),
         Default::default(),
       ));
       refmut.insert(
         this.common_floating_one[1],
-        Constant::Floating(Floating::one(FloatFormat::IEEE64)),
+        ConstantData::Floating(Floating::one(FloatFormat::IEEE64)),
       );
 
       let ast_types = [
@@ -452,23 +460,23 @@ impl<'c> Context<'c> {
           this.common_integer_one[index] = ir_arena_ref.insert(Value::new(
             ast_type,
             this.common_integer_types[index],
-            Constant::Integral(Integral::from_unsigned(1, width)),
+            ConstantData::Integral(Integral::from_unsigned(1, width)),
             Default::default(),
           ));
           refmut.insert(
             this.common_integer_one[index],
-            Constant::Integral(Integral::from_unsigned(1, width)),
+            ConstantData::Integral(Integral::from_unsigned(1, width)),
           );
 
           this.common_integer_zero[index] = ir_arena_ref.insert(Value::new(
             ast_type,
             this.common_integer_types[index],
-            Constant::Integral(Integral::from_unsigned(0, width)),
+            ConstantData::Integral(Integral::from_unsigned(0, width)),
             Default::default(),
           ));
           refmut.insert(
             this.common_integer_zero[index],
-            Constant::Integral(Integral::from_unsigned(0, width)),
+            ConstantData::Integral(Integral::from_unsigned(0, width)),
           );
         },
       );

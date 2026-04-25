@@ -2,7 +2,10 @@ use ::rcc_ast::{Context, Session};
 use ::rcc_shared::{Diagnosis, SourceManager, SourceSpan};
 use ::termcolor::{BufferedStandardStream, ColorSpec};
 
-use crate::{FlushOnDropRAII, Palette, RenderEngine, StickyWriter, TreeDumper};
+use crate::{
+  FlushOnDropRAII, Palette, RenderEngine, StickyWriter, TreeDumper,
+  render::RenderEngineMixin,
+};
 
 pub trait Dumper<'c>: RenderEngine<'c> {
   #[must_use]

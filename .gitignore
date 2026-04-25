@@ -5,7 +5,6 @@
 test_compiler.ps1
 # output 
 out.txt
-test.ll
-test.s
-test2.ll
+test*.ll
+test*.S
 .idea/

@@ -1,7 +1,8 @@
 use ::rcc_ast::Constant;
 use ::rcc_utils::StrRef;
 
-use super::value::ValueID;
+use super::ValueID;
+
 #[derive(Debug, Default)]
 pub struct Module {
   /// global function and variable entry. Shall be either [`Function`] or [`Variable`], or [`Constant`].
@@ -90,18 +91,6 @@ impl BasicBlock {
 
   pub fn is_empty(&self) -> bool {
     self.instructions.is_empty() && self.terminator.is_null()
-  }
-}
-
-#[derive(Debug)]
-pub struct Argument {
-  /// Shall be [`Function`].
-  pub index: usize,
-}
-
-impl Argument {
-  pub fn new(index: usize) -> Self {
-    Self { index }
   }
 }
 

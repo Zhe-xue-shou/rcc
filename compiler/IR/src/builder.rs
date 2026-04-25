@@ -1,6 +1,6 @@
 use ::rcc_adt::{Integral, Signedness};
 use ::rcc_ast::{
-  Constant, UnaryKind,
+  UnaryKind,
   types::{self as ast, TypeInfo},
 };
 use ::rcc_sema::{declaration as sd, expression as se, statement as ss};
@@ -9,12 +9,12 @@ use ::rcc_utils::{RefEq, StrRef, contract_violation};
 use ::std::collections::HashMap;
 
 use super::{
-  Argument,
+  ConstantData,
   context::{Session, SessionRef},
   emitable::Emitable,
-  instruction::{self as inst},
-  module::{self, BasicBlock, Module},
-  value::{Value, ValueID},
+  global::{self, BasicBlock, Module},
+  instruction as inst,
+  value::{self, Value, ValueID},
 };
 
 #[derive(Default, PartialEq, Eq)]
@@ -99,7 +99,17 @@ impl<'c> Builder<'c> {
     id: ValueID,
     action: F,
   ) -> R {
-    self.session().ir().visit(id, action)
+    self.ir().visit(id, action)
+  }
+
+  #[inline(always)]
+  pub fn inspect<R, F: FnOnce(&Value<'c>, &Value<'c>) -> R>(
+    &self,
+    left: ValueID,
+    right: ValueID,
+    action: F,
+  ) -> R {
+    self.ir().inspect(left, right, action)
   }
 
   #[inline(always)]
@@ -162,6 +172,8 @@ impl<'c> Builder<'c> {
       );
       lookup_mut!(self, self.current_function)
         .data
+        .as_constant_mut_unchecked()
+        .as_global_mut_unchecked()
         .as_function_mut_unchecked()
         .blocks
         .push(self.current_block);
@@ -251,7 +263,10 @@ impl<'c> Builder<'c> {
     let declaration = declaration.canonical_decl();
     if let Some(&value_id) = self.globals.get(&declaration) {
       debug_assert!(
-        lookup!(self, value_id).data.is_function(),
+        lookup!(self, value_id)
+          .data
+          .as_constant()
+          .is_some_and(|c| c.as_global().is_some_and(|g| g.is_function())),
         "pre-registered value should be a function"
       );
     } else {
@@ -261,7 +276,7 @@ impl<'c> Builder<'c> {
       let is_variadic = ast_type.as_functionproto_unchecked().is_variadic;
 
       let value_id = self.emit(
-        module::Function::new_empty(name, Default::default(), is_variadic),
+        global::Function::new_empty(name, Default::default(), is_variadic),
         ast_type,
       );
 
@@ -282,22 +297,28 @@ impl<'c> Builder<'c> {
       self.globals.get(&declaration)
     {
       // should be function and declaration-only
-      debug_assert!(
-          !lookup!(self, value_id).data.as_function().is_some_and(|f| f
+      debug_assert!(!lookup!(self, value_id).
+      data
+      .as_constant()
+      .is_some_and(|c| c
+        .as_global()
+        .is_some_and(|g| g
+          .as_function()
+          .is_some_and(|f| f
             .is_definition()
-            && function_name == self.visit(value_id, |value|value.data.as_function_unchecked().name)
+            && function_name == self.visit(value_id, |value| value.data.as_constant_unchecked().as_global_unchecked().as_function_unchecked().name)
             // RefEq::ref_eq(
             //   &function_name,
             //   &lookup!(self, value_id).data.as_function_unchecked().name
             // )
             && f.is_variadic
-              == ast_type.as_functionproto_unchecked().is_variadic),
+              == ast_type.as_functionproto_unchecked().is_variadic))),
           "pre-registered function should be declaration-only"
         );
       value_id
     } else {
       let function_id = self.emit(
-        module::Function::new_empty(
+        global::Function::new_empty(
           function_name,
           Default::default(),
           ast_type.as_functionproto_unchecked().is_variadic,
@@ -306,11 +327,12 @@ impl<'c> Builder<'c> {
       );
 
       self.globals.insert(declaration, function_id);
-      debug_assert!(
-        lookup!(self, function_id)
-          .data
-          .as_function()
-          .is_some_and(|f| !f.is_definition()),
+      use ::std::debug_assert_matches;
+      debug_assert_matches!(
+        lookup!(self, function_id).data,
+        crate::ValueData::Constant(crate::constant::Constant::Global(
+          crate::GlobalValue::Function(ref f)
+        ))if !f.is_definition(),
         "pre-registered function should be declaration-only"
       );
       function_id
@@ -350,7 +372,7 @@ impl<'c> Builder<'c> {
       .map(|(index, parameter)| {
         let declaration = parameter.declaration;
         let ast_type = declaration.qualified_type().unqualified_type;
-        let arg_id = self.emit(Argument::new(index), ast_type);
+        let arg_id = self.emit(value::Arguments::new(index), ast_type);
         let localed_arg_id = self.emit(inst::Alloca::new(), ast_type);
         self.locals.insert(declaration, localed_arg_id);
         _ = self.emit(
@@ -362,7 +384,12 @@ impl<'c> Builder<'c> {
       .collect::<Vec<_>>();
 
     self.apply(self.current_function, |value| {
-      value.data.as_function_mut_unchecked().params = params
+      value
+        .data
+        .as_constant_mut_unchecked()
+        .as_global_mut_unchecked()
+        .as_function_mut_unchecked()
+        .params = params
     });
 
     self.compound(
@@ -418,7 +445,13 @@ impl<'c> Builder<'c> {
       // only when it has no users does it indicate an traling empty block.
         if !self.ir().get_use_list(self.current_block).is_empty()
         // or user didnt write anything
-          || self.visit(self.current_function, |value|value.data.as_function_unchecked().blocks.is_empty())
+          || self.visit(self.current_function, |value|
+            value.data
+            .as_constant_unchecked()
+            .as_global_unchecked()
+            .as_function_unchecked()
+            .blocks
+            .is_empty())
         {
           let _implicit_return = self.emit(
             inst::Return::new(None),
@@ -444,6 +477,8 @@ impl<'c> Builder<'c> {
     debug_assert!(
       !lookup!(self, self.current_function)
         .data
+        .as_constant_unchecked()
+        .as_global_unchecked()
         .as_function_unchecked()
         .entry()
         .is_null()
@@ -456,14 +491,14 @@ impl<'c> Builder<'c> {
     let declaration = variable.declaration.canonical_decl();
 
     let initializer = match variable.initializer {
-      Some(sd::Initializer::Scalar(expr)) => Some(module::Initializer::Scalar(
+      Some(sd::Initializer::Scalar(expr)) => Some(global::Initializer::Scalar(
         expr.as_constant_unchecked().clone(),
       )),
       Some(sd::Initializer::List(_)) => todo!(),
       None => None,
     };
     let value_id = self.emit(
-      module::Variable::new(
+      global::Variable::new(
         declaration.name(),
         initializer, // TODO: handle initializers
       ),
@@ -988,7 +1023,7 @@ impl<'c> Builder<'c> {
     let se::SizeOf { sizeof, .. } = size_of;
     match sizeof {
       se::SizeOfKind::Type(qualified_type) => self.emit(
-        Constant::Integral(Integral::from_unsigned(
+        ConstantData::Integral(Integral::from_unsigned(
           qualified_type.size(),
           self.ast().uintptr_type().size() as u8,
         )),
@@ -1378,7 +1413,7 @@ impl<'c> Builder<'c> {
     use Either::*;
     let either = self.visit(operand, |value| {
       if let Some(c) = value.data.as_constant() {
-        Left(*c.as_integral_unchecked())
+        Left(*c.as_data_unchecked().as_integral_unchecked())
       } else {
         Right(*value.ir_type.as_integer_unchecked())
       }
@@ -1386,7 +1421,7 @@ impl<'c> Builder<'c> {
 
     match either {
       Left(i) => self.emit(
-        Constant::Integral(i.cast(
+        ConstantData::Integral(i.cast(
           ast_type.size_bits() as u8,
           ast_type.signedness().expect("never fails"),
         )),
@@ -1687,7 +1722,7 @@ impl<'c> Builder<'c> {
     ));
     debug_assert!(RefEq::ref_eq(ast_type, self.ast().ptrdiff_type()));
     let size = self.emit(
-      Constant::Integral(Integral::from_uintptr(
+      ConstantData::Integral(Integral::from_uintptr(
         lhs_ty
           .as_pointer_unchecked()
           .pointee
@@ -2012,7 +2047,7 @@ impl<'c> Builder<'c> {
     debug_assert_eq!(operator, Operator::Tilde);
     debug_assert!(ast_type.as_primitive().is_some_and(|p| p.is_integer()));
     let bitmask = self.emit(
-      Constant::Integral(Integral::bitmask(ast_type.size_bits() as u8)),
+      ConstantData::Integral(Integral::bitmask(ast_type.size_bits() as u8)),
       ast_type,
     );
     self.emit(
@@ -2036,11 +2071,15 @@ impl<'c> Builder<'c> {
         let (width, is_constant) = self.visit(casted, |value| {
           (
             value.ast_type.size_bits() as u8,
-            value.data.as_constant().map(|c| *c.as_integral_unchecked()),
+            value
+              .data
+              .as_constant()
+              .map(|c| *c.as_data_unchecked().as_integral_unchecked()),
           )
         });
         match is_constant {
-          Some(integral) => self.emit(Constant::Integral(-integral), ast_type),
+          Some(integral) =>
+            self.emit(ConstantData::Integral(-integral), ast_type),
           None => {
             let zero = self.ir().integer_zero(width);
             self.emit(

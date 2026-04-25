@@ -1,4 +1,5 @@
 #![allow(non_upper_case_globals)]
+#![allow(clippy::redundant_static_lifetimes)]
 
 use ::rcc_shared::{Keyword, Literal};
 use ::rcc_utils::{IntoWith, RefEq, concat_static_str as css, ensure_is_pod};
@@ -29,14 +30,13 @@ ensure_is_pod!(QualifiedType);
   }
 }
 
-#[allow(clippy::redundant_static_lifetimes)]
 const Pad: &'static str = " ";
 impl Qualifiers {
-  pub(crate) const MetaStaticStr: [&'static str; 4] =
+  const MetaStaticStr: [&'static str; 4] =
     ["const", "volatile", "restrict", "_Atomic"];
   /// [`Self::Restrict`] requires pointer while [`Self::Atomic`] requires integer
   /// Shall never reach `[0x0C, 0x10)`.
-  pub const StaticStr: [&'static str; 16] = [
+  const StaticStr: [&'static str; 16] = [
     css!(),                                                      // 0x00
     css!(QMeta[0]),                                              // 0x01
     css!(QMeta[1]),                                              // 0x02
@@ -61,7 +61,8 @@ impl Qualifiers {
   }
 }
 
-const QMeta: [&str; 4] = Qualifiers::MetaStaticStr;
+const QMeta: [&'static str; 4] = Qualifiers::MetaStaticStr;
+
 ::bitflags::bitflags! {
   #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
   pub struct FunctionSpecifier : u8 {
@@ -70,8 +71,8 @@ const QMeta: [&str; 4] = Qualifiers::MetaStaticStr;
   }
 }
 impl FunctionSpecifier {
-  pub(crate) const MetaStaticStr: [&'static str; 2] = ["inline", "_Noreturn"];
-  pub const StaticStr: [&'static str; 4] = [
+  const MetaStaticStr: [&'static str; 2] = ["inline", "_Noreturn"];
+  const StaticStr: [&'static str; 4] = [
     css!(),                        // 0x00
     css!(FMeta[0]),                // 0x01
     css!(FMeta[1]),                // 0x10
@@ -84,7 +85,7 @@ impl FunctionSpecifier {
   }
 }
 
-const FMeta: [&str; 2] = FunctionSpecifier::MetaStaticStr;
+const FMeta: [&'static str; 2] = FunctionSpecifier::MetaStaticStr;
 
 impl<'c> QualifiedType<'c> {
   pub const fn new(

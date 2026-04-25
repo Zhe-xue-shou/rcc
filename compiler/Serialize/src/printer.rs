@@ -2,9 +2,11 @@ use ::rcc_ir::{Context, Session, ValueID};
 use ::rcc_shared::{Diagnosis, SourceManager};
 use ::slotmap::SecondaryMap;
 use ::std::cell::RefCell;
-use ::termcolor::{BufferedStandardStream,  ColorSpec};
+use ::termcolor::{BufferedStandardStream, ColorSpec};
 
-use crate::{FlushOnDropRAII, Palette, RenderEngine, StickyWriter, TreeDumper};
+use crate::{
+  FlushOnDropRAII, Palette, RenderEngine, StickyWriter, TreeDumper, pre,
+};
 
 pub trait Printable<'c> {
   fn print(
@@ -22,6 +24,10 @@ pub trait Printer<'c>: RenderEngine<'c> {
   fn ir(&self) -> &'c Context<'c>;
   #[must_use]
   fn get_id(&self, value_id: ValueID) -> usize;
+  /// Temporary workaround. usually [`Self::get_id`] is sufficient.
+  ///
+  /// Only use when the `value_id` is probably a global constant.   
+  fn write_id(&mut self, value_id: ValueID);
   fn reset_counter(&self);
 }
 
@@ -73,6 +79,20 @@ impl<'c> Printer<'c> for IRPrinter<'c> {
       let new_id = self.counter.borrow().len();
       self.counter.borrow_mut().insert(value_id, new_id);
       new_id
+    }
+  }
+
+  fn write_id(&mut self, value_id: ValueID) {
+    let skeleton = self.palette().skeleton.clone();
+    if let Some(name) = self.ir().visit(value_id, |value| {
+      value
+        .data
+        .as_constant()
+        .and_then(|c| c.as_global().map(|g| g.name()))
+    }) {
+      self.write_fmt(pre!("@" => name), &skeleton)
+    } else {
+      self.write_fmt(pre!("%" => self.get_id(value_id)), &skeleton)
     }
   }
 

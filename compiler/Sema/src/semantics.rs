@@ -1199,7 +1199,7 @@ impl<'c> Sema<'c> {
     &self,
     expression: pe::Expression<'c>,
   ) -> Result<se::ExprRef<'c>, Diag<'c>> {
-    match expression {
+    ::stacker::maybe_grow(32 * 1024, 1024 * 1024, || match expression {
       pe::Expression::Empty(_) => Ok(self.__empty_expr),
       pe::Expression::Constant(constant) => self.constant(constant),
       pe::Expression::Unary(unary) => self.unary(unary),
@@ -1216,7 +1216,7 @@ impl<'c> Sema<'c> {
         self.array_subscript(array_subscript),
       pe::Expression::CompoundLiteral(compound_literal) =>
         self.compound_literal(compound_literal),
-    }
+    })
   }
 
   fn sizeof(
